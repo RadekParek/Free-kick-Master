@@ -2,10 +2,10 @@ import { createIcons, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, AudioL
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { PLAYERS, PHOTO_LICENSE, getPlayer, type TakerProfile } from '../players';
-import { playerCard, takerHud } from './player-card';
+import { playerCard, showcaseArt, takerHud } from './player-card';
 import { Arena, type Phase } from '../game/arena';
 import { GameAudio } from '../game/audio';
-import { clamp, constrainPosition, distanceBounds, distanceToGoal, recommendedPower, strikeName, type Position } from '../game/physics';
+import { inPenaltyBox, clamp, constrainPosition, distanceBounds, distanceToGoal, recommendedPower, strikeName, type Position } from '../game/physics';
 import { DIFFICULTIES, KEEPER_PROFILES, type Difficulty } from '../game/keeper';
 import { DEFAULT_SETTINGS, emptySession, loadSettings, recordShot, saveSettings, type Settings, type ShotResult } from '../state';
 import { fkLogo, brandSymbol } from './brand';
@@ -66,12 +66,6 @@ export class GameApp {
         power: power => this.onPower(power),
         result: result => this.onResult(result),
         aim: aim => { this.settings.aim = aim; },
-        target: (x, y, visible) => {
-          const reticle = $('#aim-reticle');
-          const transform = `translate(${Math.round(x * 10) / 10}px, ${Math.round(y * 10) / 10}px)`;
-          if (reticle.style.transform !== transform) reticle.style.transform = transform;
-          reticle.hidden = !visible || this.view !== 'game';
-        },
         error: message => this.showGraphicsError(message),
         performance: stats => {
           const monitor = $('#performance');
@@ -126,7 +120,7 @@ export class GameApp {
           <div class="score-line"><div><span>GOALS</span><strong id="stat-goals">0</strong></div><div hidden><strong id="stat-attempts">0</strong><span>ATTEMPTS</span></div><div hidden><span>STREAK</span><strong id="streak-label"><b>0</b></strong></div></div>
           <button id="position-button" class="setup-chip" hidden aria-label="Change kick position, distance and goalkeeper">${icon('Crosshair')}<strong id="stage-distance">24.7<span>m</span></strong><span id="keeper-hud">PRO · 4-MAN WALL</span></button>
         </div>
-        <div class="aim-reticle" id="aim-reticle" hidden><span class="reticle-ring"></span><span class="reticle-center"></span><span class="reticle-label">AIM</span></div>
+        
         <div class="scene-message" id="scene-message" hidden><span id="scene-message-label">SET YOUR POWER</span><strong id="scene-message-title">Make it count.</strong></div>
         <div class="shot-result" id="shot-result" aria-live="polite" hidden><span class="result-eyebrow" id="result-eyebrow">WHAT A HIT.</span><h2 id="result-title">GOAL!</h2><p id="result-description">Right where you wanted it.</p><div class="result-meta"><span id="result-distance"></span><span id="result-speed"></span></div></div>
         <div class="replay-label" id="replay-label" hidden><span></span> INSTANT REPLAY <b>0.55×</b></div>
@@ -447,7 +441,7 @@ export class GameApp {
       $('#taker-button').dataset.player = s.playerId;
     }
     if ($('#showcase').dataset.player !== s.playerId) {
-      $('#showcase').innerHTML = playerCard(player, true, false);
+      $('#showcase').innerHTML = showcaseArt(player);
       $('#showcase').dataset.player = s.playerId;
       $('#showcase-name').textContent = player.name;
     }
@@ -523,8 +517,8 @@ export class GameApp {
     $$<HTMLButtonElement>('[data-foot], [data-strike]').forEach(button => button.disabled = locked);
     $$<HTMLButtonElement>('[data-spot], [data-difficulty]').forEach(button => button.disabled = locked || !!this.challenge);
     $<HTMLInputElement>('#distance-slider').disabled = locked || !!this.challenge;
-    $<HTMLButtonElement>('#wall-minus').disabled = locked || !!this.challenge || this.settings.wall === 0;
-    $<HTMLButtonElement>('#wall-plus').disabled = locked || !!this.challenge || this.settings.wall === 5;
+    $<HTMLButtonElement>('#wall-minus').disabled = locked || !!this.challenge || this.settings.wall === 0 || inPenaltyBox(this.settings.position);
+    $<HTMLButtonElement>('#wall-plus').disabled = locked || !!this.challenge || this.settings.wall === 5 || inPenaltyBox(this.settings.position);
     $('#pitch-map').classList.toggle('locked', locked || !!this.challenge);
     $('#pitch-map').setAttribute('aria-disabled', String(locked || !!this.challenge));
     $('#contact-pad').setAttribute('aria-disabled', String(locked));

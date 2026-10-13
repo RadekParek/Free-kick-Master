@@ -93,7 +93,7 @@ describe('pitch and physical dimensions', () => {
     expect(getWall(p, 5)).toHaveLength(5);
   });
   it('keeps direct kicks outside the penalty area and within the training half', () => {
-    expect(constrainPosition({ x: 0, z: 3 })).toEqual({ x: 0, z: 17.5 });
+    expect(constrainPosition({ x: 0, z: 3 })).toEqual({ x: 0, z: 11 });
     expect(constrainPosition({ x: 25, z: 3 })).toEqual({ x: 25, z: 10 });
     expect(constrainPosition({ x: 100, z: 100 })).toEqual({ x: 30, z: 46 });
     expect(constrainPosition({ x: NaN, z: Infinity })).toEqual({ x: 0, z: 24 });

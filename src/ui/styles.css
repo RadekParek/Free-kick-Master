@@ -7,6 +7,7 @@
 @import '@fontsource/barlow-condensed/latin-600.css';
 @import '@fontsource/barlow-condensed/latin-700.css';
 @import '@fontsource/barlow-condensed/latin-700-italic.css';
+@import '@fontsource/barlow-condensed/latin-800-italic.css';
 @import '@fontsource/caveat/latin-600.css';
 @import '@fontsource/caveat/latin-700.css';
 
@@ -92,10 +93,6 @@ kbd { font: 600 9px 'Manrope', sans-serif; border: 1px solid #ffffff40; padding:
 .setup-chip svg { width: 14px; height: 14px; color: var(--lime); }
 .setup-chip strong { font: 500 22px/1 var(--condensed); letter-spacing: 0; }
 .setup-chip strong span { font: 600 10px 'Manrope', sans-serif; margin-left: 2px; color: #b3c1c5; }
-.aim-reticle { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 2; pointer-events: none; }
-.reticle-ring, .reticle-center { position: absolute; left: -17px; top: -17px; width: 34px; height: 34px; border: 2px solid #d6ff9e; border-radius: 50%; box-shadow: 0 0 14px #b4ff3760; }
-.reticle-center { left: -3px; top: -3px; width: 6px; height: 6px; background: #d6ff9e; border: 0; box-shadow: none; }
-.reticle-label { position: absolute; left: 22px; top: -8px; font-size: 8px; font-weight: 800; letter-spacing: 1.2px; color: #e7ffc4; text-shadow: 0 1px 4px #000; }
 .scene-message { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; }
 .scene-message span { font-size: 9px; font-weight: 800; letter-spacing: 2px; color: var(--lime); text-shadow: 0 2px 8px #000; }
 .scene-message strong { display: block; font: 700 italic 40px/1 var(--condensed); text-shadow: 0 3px 12px #000; }
@@ -428,3 +425,14 @@ dialog::backdrop { background: #04080cc8; backdrop-filter: blur(3px); }
   .taker-copy > strong { font-size: 20px; }
   .drag-hint { top: 18%; }
 }
+
+/* Showcase (main menu): the equipped player, large and unframed. */
+.showcase-art { margin: 0; width: 100%; aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; position: relative; background: radial-gradient(ellipse at 50% 25%, #2b4a36, #0b131c 72%); box-shadow: 0 30px 60px #000b; }
+.showcase-art img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 18%; display: block; }
+.showcase-mono span { position: absolute; inset: 0; display: grid; place-items: center; font: 800 italic 140px/1 var(--condensed); color: #c9f7a0; text-shadow: 0 8px 30px #000a; }
+.showcase-art.is-special { box-shadow: 0 0 0 2px #2fd8c8, 0 30px 60px #000b; }
+/* Settings: compact rows (the previous sizes were oversized). */
+.settings-head h2 { font-size: 22px; }
+.settings-tabs button { font-size: 9px; padding: 10px 0 8px; }
+.settings-scroll { padding-top: 14px; }
+.settings-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }

@@ -44,11 +44,18 @@ export const recommendedPower = (p: Position) => clamp(0.48 + distanceToGoal(p) 
 export const shotSpeed = (power: number, attributes?: TakerAttributes) =>
   (16 + clamp(power, 0, 1) * 21) * (attributes ? 0.9 + (attributes.power - 80) * 0.012 : 1);
 
+/** Penalty spot, 11 m from the goal line. A kick placed inside the box is moved here, with no wall. */
+export const PENALTY_SPOT: Position = { x: 0, z: 11 };
+/** Real penalty-area size: 16.5 m deep, 40.32 m wide (half-width 20.16 m). */
+export function inPenaltyBox(p: Position): boolean { return Math.abs(p.x) <= 20.16 && p.z <= 16.5; }
+
 export function constrainPosition(p: Position): Position {
   const x = clamp(Number.isFinite(p.x) ? p.x : 0, -30, 30);
-  // Direct free kicks are not taken inside the penalty area. Wide positions can be closer.
+  const z = clamp(Number.isFinite(p.z) ? p.z : 24, -5, 46);
+  if (inPenaltyBox({ x, z })) return { ...PENALTY_SPOT };
+  // Outside the box, the minimum distance keeps free kicks at the edge of the area.
   const minZ = Math.abs(x) < 20.65 - 1e-8 ? 17.5 : 10;
-  return { x, z: clamp(Number.isFinite(p.z) ? p.z : 24, minZ, 46) };
+  return { x, z: clamp(z, minZ, 46) };
 }
 
 /** Legal radial range along the selected bearing; avoids a misleading distance slider. */
@@ -123,7 +130,7 @@ export function integrateBall(ball: BallState, dt = FIXED_DT): void {
     const speed = Math.max(1, horizontalSpeed);
     ax += -v.z / speed * sideForce;
     az += v.x / speed * sideForce;
-    ay += (Math.sin(t * 9.7 + 0.6) * 7.5 - 1.2) * wake;
+    ay += (Math.sin(t * 9.7 + 0.6) * 10.5 - 1.6) * wake;
   }
   v.x += ax * dt;
   v.y += ay * dt;

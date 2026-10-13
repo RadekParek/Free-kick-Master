@@ -5,6 +5,7 @@ import {
   lerp, previewShot, recommendedPower, shotSpeed, strikeName, wallJump,
   type Aim, type BallState, type Outcome, type ShotSetup, type Vec3, type WallPlayer,
 } from './physics';
+import { inPenaltyBox } from './physics';
 import { cloneKeeper, createKeeper, KEEPER_Z, type KeeperState } from './keeper';
 import { Player, makeFootball } from './player';
 import { Stadium } from './stadium';
@@ -20,7 +21,6 @@ export interface ArenaEvents {
   power: (power: number) => void;
   result: (result: ShotResult) => void;
   aim: (aim: Aim) => void;
-  target: (x: number, y: number, visible: boolean) => void;
   error: (message: string) => void;
   performance?: (stats: { fps: number; calls: number; triangles: number; pixelRatio: number }) => void;
 }
@@ -54,7 +54,6 @@ export class Arena {
   private readonly guidePositions = new Float32Array(512 * 3);
   private readonly guideDistances = new Float32Array(512);
   private readonly scratchObject = new THREE.Object3D();
-  private readonly projectedAim = new THREE.Vector3();
   private wall: WallPlayer[] = [];
   private metricsStart = 0;
   private metricsFrames = 0;
@@ -167,6 +166,7 @@ export class Arena {
     const gameplayChanged = moved || techniqueChanged || playerChanged || settings.difficulty !== old.difficulty;
     const qualityChanged = settings.quality !== old.quality;
     this.settings = structuredClone(settings);
+    if (inPenaltyBox(this.settings.position)) this.settings.wall = 0;
     if (playerChanged) this.taker.setProfile(getPlayer(settings.playerId));
     if (settings.atmosphere !== old.atmosphere) this.stadium.setAtmosphere(settings.atmosphere);
     if (qualityChanged) {
@@ -209,7 +209,6 @@ export class Arena {
     this.football.rotation.set(0, 0.3, 0.1);
     this.ring.position.set(this.ball.position.x, 0.022, this.ball.position.z);
     const wall = this.wall = getWall(this.settings.position, this.settings.wall);
-    this.stadium.focusPatch(this.settings.position.x, this.settings.position.z);
     this.renderer.shadowMap.needsUpdate = true;
     this.wallModels.forEach((model, i) => {
       model.group.visible = i < wall.length;
@@ -425,8 +424,6 @@ export class Arena {
     (this.ballShadow.material as THREE.MeshBasicMaterial).opacity = Math.max(0.05, 0.32 - this.ball.position.y * 0.055);
     this.stadium.update(this.time);
     this.updateCamera(dt);
-    const aim = this.projectedAim.set(this.settings.aim.x, this.settings.aim.y, 0).project(this.camera);
-    this.events.target((aim.x + 1) / 2 * this.width, (-aim.y + 1) / 2 * this.height, this.phase === 'ready' || this.phase === 'charging');
     this.renderer.shadowMap.needsUpdate = true;
     this.post.render();
     this.metricsFrames++;

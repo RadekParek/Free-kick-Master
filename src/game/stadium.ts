@@ -420,59 +420,71 @@ export class Stadium {
   }
 
   private makeGrassBlades() {
-    // Short tapered turf blades, 36 mm tall. The field is denser near the kick and thins radially,
-    // so there is no visible patch edge. Blades are split into four quadrant patches so the
-    // camera frustum can skip whole patches that are off screen.
+    // Thicker three-segment blades in a fixed grid of 8 m tiles covering the whole play area.
+    // Density falls with distance from the kick, every tile is its own draw call, and the camera
+    // frustum culls tiles that are off screen. Blades sway in the vertex shader (no CPU work).
     const blade = new THREE.BufferGeometry();
     blade.setAttribute('position', new THREE.Float32BufferAttribute([
-      -.006, 0, 0, .006, 0, 0, .0013, .036, .0016,
-      -.006, 0, 0, .0013, .036, .0016, -.0013, .036, .0016,
+      -.0042, 0, 0, .0042, 0, 0, .0024, .02, .0012,
+      -.0042, 0, 0, .0024, .02, .0012, -.0024, .02, .0012,
+      -.0024, .02, .0012, .0024, .02, .0012, 0, .042, .0018,
     ], 3));
     blade.computeVertexNormals();
     const mat = new THREE.MeshBasicMaterial({ color: '#3f7a48', side: THREE.DoubleSide });
-    const MAX = 26000;
+    mat.onBeforeCompile = shader => {
+      shader.uniforms.uTime = this.grassTime;
+      shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+#ifdef USE_INSTANCING
+  float sway = position.y * (sin(uTime * 1.7 + instanceMatrix[3].x * 0.9 + instanceMatrix[3].z * 0.6) * 0.6 + sin(uTime * 3.1 + instanceMatrix[3].z * 1.3) * 0.25);
+  transformed.x += sway * 0.02;
+  transformed.z += sway * 0.008;
+#endif`);
+    };
     const random = seededRandom(767);
     const dummy = new THREE.Object3D();
     const colour = new THREE.Color();
-    const radius = 9;
-    const buckets: { matrix: THREE.Matrix4; colour: THREE.Color }[][] = [[], [], [], []];
-    let placed = 0;
-    while (placed < MAX) {
-      const r = radius * Math.sqrt(random());
-      const a = random() * Math.PI * 2;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r * 0.95;
-      // Radial falloff: the outer ring is sparse so the blades blend into the textured turf.
-      if (random() > 1 - (r / radius) * (r / radius) * 0.85) continue;
-      dummy.position.set(x, 0.002, z);
-      dummy.rotation.set((random() - .5) * .5, random() * Math.PI * 2, (random() - .5) * .35);
-      dummy.scale.set(.75 + random() * .6, .6 + random() * .9, .75 + random() * .6);
-      dummy.updateMatrix();
-      const tint = .72 + random() * .42;
-      colour.setRGB(tint * .85, tint * 1.05, tint * .72);
-      buckets[(x >= 0 ? 1 : 0) + (z >= 0 ? 2 : 0)].push({ matrix: dummy.matrix.clone(), colour: colour.clone() });
-      placed++;
-    }
-    this.grassPatches = buckets.map(items => {
-      const patch = new THREE.InstancedMesh(blade, mat, Math.max(1, items.length));
-      items.forEach((item, i) => { patch.setMatrixAt(i, item.matrix); patch.setColorAt(i, item.colour); });
-      patch.count = items.length;
+    const TILE = 8;
+    const centres: number[] = [];
+    for (let x = -20; x <= 20; x += TILE) for (let z = 4; z <= 44; z += TILE) centres.push(x, z);
+    this.grassPatches = [];
+    this.grassFull = [];
+    for (let i = 0; i < centres.length; i += 2) {
+      const cx = centres[i], cz = centres[i + 1];
+      // Distance from the kick area (0, 22) sets the density: dense near the ball, sparse at the edges.
+      const d = Math.hypot(cx, cz - 22);
+      const count = d < 12 ? 1800 : d < 22 ? 1000 : 480;
+      const patch = new THREE.InstancedMesh(blade, mat, count);
+      for (let n = 0; n < count; n++) {
+        const x = cx + (random() - .5) * TILE, z = cz + (random() - .5) * TILE;
+        dummy.position.set(x, 0.002, z);
+        dummy.rotation.set((random() - .5) * .5, random() * Math.PI * 2, (random() - .5) * .35);
+        dummy.scale.set(.75 + random() * .6, .7 + random() * .9, .75 + random() * .6);
+        dummy.updateMatrix();
+        patch.setMatrixAt(n, dummy.matrix);
+        const tint = .72 + random() * .42;
+        colour.setRGB(tint * .85, tint * 1.05, tint * .72);
+        patch.setColorAt(n, colour);
+      }
       patch.instanceMatrix.needsUpdate = true;
       if (patch.instanceColor) patch.instanceColor.needsUpdate = true;
       patch.computeBoundingSphere();
       patch.frustumCulled = true;
+      // Tiles never move, so their matrices are computed once instead of every frame.
+      patch.matrixAutoUpdate = false;
+      patch.updateMatrix();
       this.group.add(patch);
-      return patch;
-    });
-    this.grassFull = this.grassPatches.map(patch => patch.count);
+      this.grassPatches.push(patch);
+      this.grassFull.push(count);
+    }
   }
 
   private grassPatches: THREE.InstancedMesh[] = [];
+  private readonly grassTime = { value: 0 };
   private grassFull: number[] = [];
-
-  focusPatch(x: number, z: number) { for (const patch of this.grassPatches) patch.position.set(x, 0, z); }
 
   setQuality(quality: Quality) {
     this.quality = quality;
+    this.fill.visible = quality === 'high';
     this.grassPatches.forEach((patch, i) => {
       const full = this.grassFull[i];
       patch.count = quality === 'high' ? full : quality === 'balanced' ? Math.floor(full / 2) : 0;
@@ -608,6 +620,7 @@ export class Stadium {
 
   update(time: number) {
     this.crowdTime.value = time;
+    this.grassTime.value = time;
     const dt = this.lastUpdate ? Math.min(0.1, Math.max(0, time - this.lastUpdate)) : 1 / 30;
     this.lastUpdate = time;
     const cheer = time - this.cheerStart;

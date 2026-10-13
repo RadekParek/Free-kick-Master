@@ -152,26 +152,31 @@ const BASE: (BaseSpec & { id: string })[] = [
 
 /** Turquoise special: a sharper card with a handwritten name and a clean turquoise kit. */
 const TURQUOISE = { shirt: '#2fd8c8', shorts: '#0c4f52', trim: '#f4fffd' };
+/** Card rating is the average of the four stats, minus one: the number always matches the stats shown. */
+const overall = (a: { power: number; curve: number; knuckle: number; control: number }) => Math.round((a.power + a.curve + a.knuckle + a.control) / 4) - 1;
+/** Only three turquoise specials exist for now. */
+const SPECIAL_IDS = ['vinicius', 'yamal', 'mbappe'];
 function specialOf(base: BaseSpec & { id: string }): TakerProfile {
   const bump = (value: number) => Math.min(99, value + 2);
+  const attributes = { power: bump(base.attributes.power), curve: bump(base.attributes.curve), knuckle: bump(base.attributes.knuckle), control: bump(base.attributes.control) };
   return {
     ...base,
     id: `${base.id}-special`,
     baseId: base.id,
     edition: 'special',
-    rating: Math.min(99, base.rating + 3),
+    rating: overall(attributes),
     description: `Turquoise special. ${base.description}`,
-    attributes: { power: bump(base.attributes.power), curve: bump(base.attributes.curve), knuckle: bump(base.attributes.knuckle), control: bump(base.attributes.control) },
+    attributes,
     appearance: { ...base.appearance, shirt: TURQUOISE.shirt, shorts: TURQUOISE.shorts, trim: TURQUOISE.trim },
     ...resolvePhoto(base),
   };
 }
 const standardCards: TakerProfile[] = BASE.map(base => ({
-  ...base, baseId: base.id, edition: 'standard',
+  ...base, rating: overall(base.attributes), baseId: base.id, edition: 'standard',
   ...resolvePhoto(base),
 }));
 /** Standard cards first, then each player's turquoise special. */
-export const PLAYERS: readonly TakerProfile[] = [...standardCards, ...BASE.map(specialOf)];
+export const PLAYERS: readonly TakerProfile[] = [...standardCards, ...BASE.filter(base => SPECIAL_IDS.includes(base.id)).map(specialOf)];
 
 export const DEFAULT_PLAYER_ID = 'ronaldo';
 export function getPlayer(id: string): TakerProfile { return PLAYERS.find(player => player.id === id) ?? PLAYERS[0]; }

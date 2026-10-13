@@ -56,3 +56,10 @@ export function takerHud(player: TakerProfile): string {
   const art = player.portrait ? `<img src="${player.portrait}" alt="" width="500" height="750" draggable="false" />` : `<span class="card-monogram" aria-hidden="true">${monogram(player)}</span>`;
   return `<span class="mini-card ${special ? 'is-special' : ''}"><span>${player.rating}<small>FK</small></span>${art}</span><span class="sr-only"><strong id="taker-name" class="${special ? 'handwritten' : ''}">${player.shortName}</strong></span>`;
 }
+
+/** Main-menu showcase: the equipped player's photo or monogram art, without the card frame. */
+export function showcaseArt(player: TakerProfile): string {
+  const special = player.edition === 'special' ? ' is-special' : '';
+  if (player.portrait) return `<figure class="showcase-art${special}"><img src="${player.portrait}" alt="${player.name}" width="500" height="750" draggable="false" /></figure>`;
+  return `<figure class="showcase-art showcase-mono${special}" aria-label="${player.name}"><span>${monogram(player)}</span></figure>`;
+}
