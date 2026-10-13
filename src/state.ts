@@ -29,6 +29,7 @@ export interface Settings {
   sound: boolean;
   guides: boolean;
   haptics: boolean;
+  music: boolean;
   quality: Quality;
   graphics: GraphicsOptions;
 }
@@ -60,6 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sound: true,
   guides: true,
   haptics: true,
+  music: true,
   quality: 'high',
   graphics: { preset: 'high', ...GRAPHICS_PRESETS.high },
 };
@@ -98,7 +100,7 @@ export function loadSettings(): Settings {
       defaults.graphics = { preset, ...GRAPHICS_PRESETS[preset as Exclude<Preset, 'custom'>] };
     }
     defaults.quality = tierOf(defaults.graphics);
-    for (const key of ['sound', 'guides', 'haptics', 'showFps'] as const) {
+    for (const key of ['sound', 'guides', 'haptics', 'showFps', 'music'] as const) {
       if (typeof saved[key] === 'boolean') defaults[key] = saved[key];
     }
     // Aiming and contact reset to a playable starting point on a fresh launch.

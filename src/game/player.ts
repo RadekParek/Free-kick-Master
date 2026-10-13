@@ -351,9 +351,11 @@ export class Player {
     for (const rig of this.rigs) rig.wallPose(jump, time);
     this.shadow.scale.setScalar(1 - jump * 0.3);
   }
+  /** Body yaw in the goal; the arena turns it toward the shot's angle. Facing the spot is PI. */
+  yaw = Math.PI;
   keeperPose(k: KeeperState, time: number) {
     this.group.position.x = k.x;
-    this.group.rotation.y = Math.PI;
+    this.group.rotation.y = this.yaw;
     for (const rig of this.rigs) rig.keeperPose(k, time);
   }
 }

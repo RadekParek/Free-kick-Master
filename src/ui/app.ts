@@ -5,6 +5,7 @@ import { PLAYERS, PHOTO_LICENSE, getPlayer, type TakerProfile } from '../players
 import { playerCard, showcaseArt, takerHud } from './player-card';
 import { Arena, type Phase } from '../game/arena';
 import { GameAudio } from '../game/audio';
+import { MusicPlayer } from '../game/music';
 import { inPenaltyBox, clamp, constrainPosition, distanceBounds, distanceToGoal, recommendedPower, strikeName, type Position } from '../game/physics';
 import { DIFFICULTIES, KEEPER_PROFILES, type Difficulty } from '../game/keeper';
 import { DEFAULT_SETTINGS, GRAPHICS_PRESETS, emptySession, loadSettings, recordShot, saveSettings, tierOf, type GraphicsOptions, type Preset, type RenderScale, type Settings, type ShotResult, type ShadowSize } from '../state';
@@ -43,6 +44,7 @@ export class GameApp {
   private session = emptySession();
   private arena: Arena | null = null;
   private audio = new GameAudio();
+  private music = new MusicPlayer();
   private currentPhase: Phase = 'ready';
   private view: View = 'menu';
   private settingsOrigin: SettingsOrigin | null = null;
@@ -59,6 +61,8 @@ export class GameApp {
     this.bindUI();
     this.syncUI();
     this.audio.enabled = this.settings.sound;
+    this.music.setEnabled(this.settings.music);
+    this.music.onStatus = title => { if (title === null) this.toast('Music: add the mp3 files to public/music/ (see README.txt).'); };
     await document.fonts.ready;
     try {
       this.arena = new Arena($('#arena'), this.settings, {
@@ -196,7 +200,7 @@ export class GameApp {
                 <label class="setting-row"><span><strong>Shadows</strong><small>Shadow map size. Off removes dynamic shadows.</small></span><select id="gfx-shadows" aria-label="Shadow map size"><option value="0">Off</option><option value="512">512</option><option value="1024">1024</option><option value="2048">2048</option></select></label>
               </div>
               <label class="setting-row"><span><strong>Stadium atmosphere</strong><small>A new light on the beautiful game</small></span><select id="setting-atmosphere" aria-label="Stadium atmosphere"><option value="night">Floodlit night</option><option value="sunset">Golden hour</option><option value="day">Clear day</option></select></label>
-              ${[['guides', 'Trajectory guide', 'Preview the actual spin, power, and player attributes.'], ['showFps', 'Performance monitor', 'Live frame rate, draw calls, and native render resolution.'], ['sound', 'Stadium sound', 'Crowd ambience, ball strikes, and the sound of the net.'], ['haptics', 'Haptic feedback', 'Feel each strike on supported Android devices.']].map(([key, title, detail]) => `<label class="setting-row"><span><strong>${title}</strong><small>${detail}</small></span><input type="checkbox" id="setting-${key}"/><span class="toggle" aria-hidden="true"></span></label>`).join('')}
+              ${[['music', 'Background music', 'Six tracks in playlist order. Full volume in the menu, 65% in play and practice.'], ['guides', 'Trajectory guide', 'Preview the actual spin, power, and player attributes.'], ['showFps', 'Performance monitor', 'Live frame rate, draw calls, and native render resolution.'], ['sound', 'Stadium sound', 'Crowd ambience, ball strikes, and the sound of the net.'], ['haptics', 'Haptic feedback', 'Feel each strike on supported Android devices.']].map(([key, title, detail]) => `<label class="setting-row"><span><strong>${title}</strong><small>${detail}</small></span><input type="checkbox" id="setting-${key}"/><span class="toggle" aria-hidden="true"></span></label>`).join('')}
             </div>
             <p class="settings-note">High: 2048 px shadows and full athlete detail. Balanced: 1024 px shadows. Performance: no dynamic shadows and athletes switch to low detail sooner. Distant geometry is culled and athletes use level-of-detail in every mode.</p>
             <button id="photo-credits" class="text-link">Player photo credits &amp; licenses ${icon('ArrowUpRight')}</button>
@@ -236,10 +240,11 @@ export class GameApp {
     $('#settings-help').addEventListener('click', () => this.showHelp());
     $('#photo-credits').addEventListener('click', () => this.showPhotoCredits());
     $$('[data-settings-tab]').forEach(button => button.addEventListener('click', () => this.settingsTab(button.dataset.settingsTab!)));
-    for (const key of ['sound', 'guides', 'haptics', 'showFps'] as const) {
+    for (const key of ['sound', 'guides', 'haptics', 'showFps', 'music'] as const) {
       $(`#setting-${key}`).addEventListener('change', event => {
         this.settings[key] = (event.target as HTMLInputElement).checked;
         if (key === 'sound') this.audio.setEnabled(this.settings.sound);
+        if (key === 'music') this.music.setEnabled(this.settings.music);
         this.applySettings();
       });
     }
@@ -345,7 +350,7 @@ export class GameApp {
     });
     document.addEventListener('visibilitychange', () => this.setVisible(!document.hidden));
     window.addEventListener('blur', () => { this.powerPointer = null; this.arena?.cancelCharge(); });
-    document.addEventListener('pointerdown', () => this.audio.unlock(), { once: true });
+    document.addEventListener('pointerdown', () => { this.audio.unlock(); this.music.unlock(); }, { once: true });
   }
 
   setVisible(visible: boolean) {
@@ -482,7 +487,7 @@ export class GameApp {
     $<HTMLInputElement>('#gfx-bloom').checked = g.bloom;
     $<HTMLSelectElement>('#gfx-shadows').value = String(g.shadows);
     $<HTMLSelectElement>('#setting-atmosphere').value = s.atmosphere;
-    for (const key of ['sound', 'guides', 'haptics', 'showFps'] as const) $<HTMLInputElement>(`#setting-${key}`).checked = s[key];
+    for (const key of ['sound', 'guides', 'haptics', 'showFps', 'music'] as const) $<HTMLInputElement>(`#setting-${key}`).checked = s[key];
     const distance = distanceToGoal(s.position);
     $('#distance-value').innerHTML = `${distance.toFixed(1)} <span>m</span>`;
     $('#stage-distance').innerHTML = `${distance.toFixed(1)}<span>m</span>`;
@@ -692,6 +697,7 @@ export class GameApp {
     this.view = view;
     $('#app').dataset.view = view;
     $('#menu-view').hidden = view !== 'menu';
+    this.music.setContext(view === 'game' ? 'play' : 'menu');
     $('#game-view').hidden = view !== 'game';
     this.syncPause();
     drawIcons();

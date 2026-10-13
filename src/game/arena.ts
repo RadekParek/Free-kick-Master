@@ -9,7 +9,7 @@ import { inPenaltyBox } from './physics';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
-import { cloneKeeper, createKeeper, KEEPER_Z, type KeeperState } from './keeper';
+import { cloneKeeper, createKeeper, KEEPER_Z, keeperYaw, type KeeperState } from './keeper';
 import { Player, makeFootball } from './player';
 import { Stadium } from './stadium';
 import { PostStack, type PostOptions } from './post';
@@ -234,6 +234,7 @@ export class Arena {
   }
 
   reset() {
+    this.keeperModel.yaw = keeperYaw(this.settings.position);
     this.power = 0;
     this.chargeTime = 0;
     this.accumulator = 0;
@@ -491,6 +492,7 @@ export class Arena {
     const impact = new THREE.Vector3(event.point.x, event.point.y, -1.6);
     if (event.outcome === 'goal') this.stadium.ripple(impact, this.time);
     if (event.outcome === 'goal' || event.outcome === 'post') this.stadium.celebrate(impact, this.time, event.outcome === 'goal');
+    if (event.continues) return;
     this.resolve(event.outcome, event.point);
   }
 

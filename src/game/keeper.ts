@@ -32,6 +32,13 @@ export function createKeeper(ballX: number): KeeperState {
   const x = ballX <= 0 ? 0.72 : -0.72;
   return { x, targetX: x, targetY: 1.2, dive: 0, direction: 1, glove: { x, y: 1.2, z: KEEPER_Z }, reacted: false };
 }
+/** Body yaw for the keeper: he turns part of the way toward the shot's angle, so the stance follows the spot. */
+export function keeperYaw(spot: { x: number; z: number }): number {
+  const full = Math.atan2(spot.x, -(spot.z - KEEPER_Z)); // facing the spot; PI is straight out
+  let delta = full - Math.PI;
+  delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+  return Math.PI + Math.max(-0.6, Math.min(0.6, delta * 0.8));
+}
 export function cloneKeeper(k: KeeperState): KeeperState { return { ...k, glove: { ...k.glove } }; }
 
 export function updateKeeper(k: KeeperState, ball: BallState, difficulty: Difficulty, dt: number): void {

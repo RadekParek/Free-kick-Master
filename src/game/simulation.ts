@@ -1,10 +1,11 @@
 import {
   BALL_RADIUS, FIXED_DT, classifyGoalCrossing, crossingAtZ, hitsWall,
-  integrateBall, intersectsFrame, type BallState, type Outcome, type Vec3, type WallPlayer,
+  GOAL_WIDTH, integrateBall, intersectsFrame, type BallState, type Outcome, type Vec3, type WallPlayer,
 } from './physics';
 import { KEEPER_Z, keeperSaves, updateKeeper, type Difficulty, type KeeperState } from './keeper';
 
-export interface ShotEvent { outcome: Outcome; point: Vec3 }
+/** `continues` marks a post hit the ball rebounds from, so the shot is still live. */
+export interface ShotEvent { outcome: Outcome; point: Vec3; continues?: boolean }
 
 /** The exact same fixed-step rules run in the renderer and in the headless tests. */
 export function advanceShot(ball: BallState, keeper: KeeperState, wall: WallPlayer[], difficulty: Difficulty): ShotEvent | null {
@@ -26,6 +27,14 @@ export function advanceShot(ball: BallState, keeper: KeeperState, wall: WallPlay
   }
   const frame = intersectsFrame(previous, ball.position);
   if (frame) {
+    // A fast shot that strikes the inside of a post at a glancing angle can rebound back across the line.
+    const insideFace = frame === 'post' && Math.abs(ball.position.x) < GOAL_WIDTH / 2 && Math.sign(ball.position.x) * ball.velocity.x > 0;
+    if (insideFace && ball.velocity.z < 0 && Math.abs(ball.velocity.z) > 8 && Math.abs(ball.velocity.x) > 0.25 * Math.abs(ball.velocity.z)) {
+      ball.velocity.x *= -0.5;
+      ball.velocity.z = -Math.abs(ball.velocity.z) * 0.55;
+      ball.velocity.y *= 0.7;
+      return { outcome: 'post', point: { ...ball.position }, continues: true };
+    }
     ball.velocity.z = Math.abs(ball.velocity.z) * 0.58;
     ball.velocity.x *= frame === 'post' ? -0.4 : 0.7;
     ball.velocity.y *= frame === 'bar' ? -0.5 : 0.7;
