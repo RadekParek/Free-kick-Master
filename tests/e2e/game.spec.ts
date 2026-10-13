@@ -23,7 +23,12 @@ test('loads actual WebGL, adjusts pitch, contact, difficulty and remembers prefe
   page.on('console', message => { if (message.type() === 'error' || message.type() === 'warning') errors.push(message.text()); });
   await openGame(page);
   await expect(page.locator('#arena canvas')).toBeVisible();
+  const arenaBounds = await page.locator('#arena').boundingBox();
+  const viewport = page.viewportSize()!;
+  expect(arenaBounds).toMatchObject({ x: 0, y: 0, width: viewport.width, height: viewport.height });
+  await expect(page.locator('#setup-drawer')).toBeHidden();
   await expect(page.locator('#scene-loading')).toHaveCount(0);
+  await page.locator('#settings-button').click();
   await page.locator('[data-spot="right"]').click();
   await expect(page.locator('#distance-value')).toHaveText('26.0 m');
   const map = page.locator('#pitch-map');
@@ -35,6 +40,7 @@ test('loads actual WebGL, adjusts pitch, contact, difficulty and remembers prefe
   await expect(page.locator('#difficulty-name')).toHaveText('Legend');
   await page.locator('[data-foot="left"]').click();
   await expect(page.locator('#stage-foot')).toHaveText('LEFT FOOT');
+  await page.locator('#resume-button').click();
   await page.locator('[data-strike="knuckle"]').click();
   await expect(page.locator('#strike-name')).toHaveText('Knuckleball');
   await page.locator('#contact-pad').focus();
@@ -49,19 +55,26 @@ test('loads actual WebGL, adjusts pitch, contact, difficulty and remembers prefe
 
 test('scores a physical goal, records it once, replays, and prepares the next kick', async ({ page }) => {
   await openGame(page);
+  await page.locator('#settings-button').click();
   await page.locator('[data-difficulty="rookie"]').click();
   for (let i = 0; i < 4; i++) await page.locator('#wall-minus').click();
   await expect(page.locator('#wall-count')).toHaveText('0');
+  await page.locator('#resume-button').click();
   await page.locator('[data-strike="knuckle"]').click();
-  for (let i = 0; i < 41; i++) await page.keyboard.press('ArrowLeft');
-  await page.keyboard.press('ArrowUp');
-  await page.keyboard.press('ArrowUp');
+  // Slight topspin prevents wake activation; a low launch stays scoreable across
+  // real input/frame scheduling jitter on software WebGL workers.
+  await page.locator('#contact-pad').focus();
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowUp');
+  await page.locator('#shoot-button').focus();
+  for (let i = 0; i < 16; i++) await page.keyboard.press('Shift+ArrowLeft');
+  for (let i = 0; i < 3; i++) await page.keyboard.press('Shift+ArrowDown');
   await shoot(page, 62);
   await expect(page.locator('#result-title')).toHaveText(/GOAL|TOP BINS/);
   await expect(page.locator('#stat-attempts')).toHaveText('1');
   await expect(page.locator('#stat-goals')).toHaveText('1');
   // Cosmetic settings must not erase a completed shot or its replay.
   await page.locator('#settings-button').click();
+  await page.locator('[data-settings-tab="graphics"]').click();
   await page.locator('#setting-guides').uncheck();
   await page.locator('#resume-button').click();
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'result');
@@ -82,12 +95,13 @@ test('cancels charge safely when paused and does not create a phantom attempt', 
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'charging');
   await page.locator('#settings-button').click();
   await page.keyboard.up('Space');
-  await expect(page.locator('#modal')).toBeVisible();
+  await expect(page.locator('#setup-drawer')).toBeVisible();
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'ready');
+  await page.locator('[data-settings-tab="graphics"]').click();
   await page.locator('#setting-guides').uncheck();
   await page.locator('#setting-quality').selectOption('balanced');
   await page.locator('#resume-button').click();
-  await expect(page.locator('#modal')).not.toBeVisible();
+  await expect(page.locator('#setup-drawer')).not.toBeVisible();
   await expect(page.locator('#stat-attempts')).toHaveText('0');
   await page.locator('#help-button').click();
   await expect(page.locator('#modal-title')).toHaveText('Own the dead ball.');
@@ -97,8 +111,10 @@ test('cancels charge safely when paused and does not create a phantom attempt', 
 
 test('challenge setup is real, locked to the challenge, and free practice restores the setup', async ({ page }) => {
   await openGame(page);
+  await page.locator('#settings-button').click();
   await page.locator('[data-spot="right"]').click();
   await page.locator('[data-difficulty="world-class"]').click();
+  await page.locator('#resume-button').click();
   await page.locator('#challenges-tab').click();
   await expect(page.locator('.challenge-card')).toHaveCount(3);
   await page.locator('[data-start-challenge="long-range"]').click();
@@ -118,7 +134,7 @@ test('touch viewport has no horizontal overflow and supports a touch shoot gestu
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
   const page = await context.newPage();
   await openGame(page);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight)).toBe(true);
   await page.screenshot({ path: '.artifacts/phone-portrait.png', fullPage: true });
   const rect = await page.locator('#shoot-button').boundingBox();
   expect(rect).not.toBeNull();
@@ -129,7 +145,7 @@ test('touch viewport has no horizontal overflow and supports a touch shoot gestu
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'result');
   await expect(page.locator('#stat-attempts')).toHaveText('1');
   await page.setViewportSize({ width: 844, height: 390 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight)).toBe(true);
   const shootRect = await page.locator('#shoot-button').boundingBox();
   expect(shootRect!.y + shootRect!.height).toBeLessThanOrEqual(391);
   await page.screenshot({ path: '.artifacts/phone-landscape.png', fullPage: true });

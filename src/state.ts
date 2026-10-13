@@ -1,8 +1,14 @@
 import { constrainPosition, type Aim, type Contact, type Foot, type Outcome, type Position } from './game/physics';
+import { getPlayer, isPlayerId } from './players';
 import { DIFFICULTIES, type Difficulty } from './game/keeper';
 
 export type Quality = 'high' | 'balanced' | 'low';
+export type Atmosphere = 'night' | 'sunset' | 'day';
 export interface Settings {
+  playerId: string;
+  atmosphere: Atmosphere;
+  adaptiveResolution: boolean;
+  showFps: boolean;
   position: Position;
   aim: Aim;
   contact: Contact;
@@ -30,6 +36,10 @@ export interface Session {
   history: ShotResult[];
 }
 export const DEFAULT_SETTINGS: Settings = {
+  playerId: 'ronaldo',
+  atmosphere: 'night',
+  adaptiveResolution: true,
+  showFps: false,
   position: { x: -6, z: 24 },
   aim: { x: 1.9, y: 1.9 },
   contact: { x: -0.43, y: 0.02 },
@@ -52,11 +62,14 @@ export function loadSettings(): Settings {
     if (!saved || typeof saved !== 'object') return defaults;
     const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
     if (saved.position && finite(saved.position.x) && finite(saved.position.z)) defaults.position = constrainPosition(saved.position);
+    if (isPlayerId(saved.playerId)) defaults.playerId = saved.playerId;
+    if (['night', 'sunset', 'day'].includes(saved.atmosphere)) defaults.atmosphere = saved.atmosphere;
+    defaults.foot = getPlayer(defaults.playerId).foot;
     if (saved.foot === 'right' || saved.foot === 'left') defaults.foot = saved.foot;
     if (DIFFICULTIES.includes(saved.difficulty)) defaults.difficulty = saved.difficulty;
     if (Number.isInteger(saved.wall) && saved.wall >= 0 && saved.wall <= 5) defaults.wall = saved.wall;
     if (['high', 'balanced', 'low'].includes(saved.quality)) defaults.quality = saved.quality;
-    for (const key of ['sound', 'guides', 'haptics'] as const) {
+    for (const key of ['sound', 'guides', 'haptics', 'adaptiveResolution', 'showFps'] as const) {
       if (typeof saved[key] === 'boolean') defaults[key] = saved[key];
     }
     // Aiming and contact reset to a playable starting point on a fresh launch.

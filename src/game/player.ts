@@ -1,38 +1,36 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { KeeperState } from './keeper';
 import type { Foot } from './physics';
+import type { TakerProfile } from '../players';
 
 export type PlayerRole = 'taker' | 'wall' | 'keeper';
 const skinColors = ['#b77952', '#704936', '#ce9b73', '#906344', '#dfb18b'];
-const sharedSphere = new THREE.SphereGeometry(1, 12, 10);
+const sharedSphere = new THREE.SphereGeometry(1, 20, 16);
 const shadowCanvas = document.createElement('canvas');
 shadowCanvas.width = shadowCanvas.height = 64;
 const shadowCtx = shadowCanvas.getContext('2d')!;
 const shadowGradient = shadowCtx.createRadialGradient(32, 32, 3, 32, 32, 32);
-shadowGradient.addColorStop(0, 'rgba(5,19,10,0.4)');
-shadowGradient.addColorStop(1, 'rgba(5,19,10,0)');
+shadowGradient.addColorStop(0, 'rgba(3,9,12,0.5)');
+shadowGradient.addColorStop(1, 'rgba(3,9,12,0)');
 shadowCtx.fillStyle = shadowGradient;
 shadowCtx.fillRect(0, 0, 64, 64);
 const shadowTexture = new THREE.CanvasTexture(shadowCanvas);
-
-function material(color: string) { return new THREE.MeshStandardMaterial({ color, roughness: 0.88 }); }
-function numberTexture(number: number, role: PlayerRole) {
+const material = (color: string, roughness = 0.8) => new THREE.MeshStandardMaterial({ color, roughness });
+function numberTexture(number: number, name: string, color: string) {
   const canvas = document.createElement('canvas');
-  canvas.width = 128;
-  canvas.height = 128;
+  canvas.width = 256; canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = role === 'taker' ? '#182e23' : '#e7eadb';
-  ctx.font = 'bold 18px "Barlow Condensed", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(role === 'taker' ? 'MASTER' : role === 'keeper' ? 'KEEPER' : 'UNITED', 64, 23);
-  ctx.font = '700 80px "Barlow Condensed", sans-serif';
-  ctx.fillText(String(number), 64, 98);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
+  ctx.fillStyle = color; ctx.textAlign = 'center';
+  ctx.font = '600 28px "Barlow Condensed", sans-serif';
+  ctx.fillText(name.toUpperCase(), 128, 42);
+  ctx.font = '600 160px "Barlow Condensed", sans-serif';
+  ctx.fillText(String(number), 128, 205);
+  const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-/** Original articulated player meshes. No licensed athletes, kits, scans, or animations. */
+/** Original articulated athletes: smooth anatomy and national-colour training kits, not scans. */
 export class Player {
   readonly group = new THREE.Group();
   readonly body = new THREE.Group();
@@ -44,68 +42,107 @@ export class Player {
   private readonly leftArm = new THREE.Group();
   private readonly rightArm = new THREE.Group();
   private readonly torso: THREE.Mesh;
-  private role: PlayerRole;
+  private readonly beard: THREE.Mesh;
+  private readonly numberPlate: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
+  private readonly skin: THREE.MeshStandardMaterial;
+  private readonly jersey: THREE.MeshStandardMaterial;
+  private readonly shorts: THREE.MeshStandardMaterial;
+  private readonly trim: THREE.MeshStandardMaterial;
+  private readonly hair: THREE.MeshStandardMaterial;
 
-  constructor(role: PlayerRole, number = 10, variation = 0) {
-    this.role = role;
+  constructor(private role: PlayerRole, number = 10, variation = 0) {
     this.group.add(this.body);
-    const skin = material(skinColors[variation % skinColors.length]);
-    const jersey = material(role === 'taker' ? '#b8ef79' : role === 'keeper' ? '#ffb541' : '#243746');
-    const shorts = material(role === 'taker' ? '#21342d' : role === 'keeper' ? '#ec9a32' : '#273747');
-    const sock = material(role === 'taker' ? '#e3e7d2' : role === 'keeper' ? '#eab253' : '#2b3e49');
-    const boot = material(role === 'taker' ? '#eff2e4' : role === 'keeper' ? '#273a35' : '#ef9a68');
-    const hair = material(variation % 2 ? '#2a201a' : '#211e18');
-    const glove = material('#e6edcf');
+    const skin = this.skin = material(skinColors[variation % skinColors.length], 0.66);
+    const jersey = this.jersey = material(role === 'taker' ? '#b72b39' : role === 'keeper' ? '#ffbb3b' : '#ecedf0', 0.86);
+    const shorts = this.shorts = material(role === 'taker' ? '#173c30' : role === 'keeper' ? '#242634' : '#1c2c42');
+    const trim = this.trim = material(role === 'keeper' ? '#292a37' : '#d3bf84');
+    const sock = material(role === 'keeper' ? '#ffc149' : '#ecede5');
+    const boot = material(role === 'taker' ? '#e4f2dc' : '#ee7253', 0.38);
+    const sole = material('#18242e', 0.48);
+    const hair = this.hair = material(variation % 2 ? '#2a201a' : '#211e18', 0.95);
+    const glove = material('#e4eff0', 0.65);
+    const faceDark = material('#302524');
     const mesh = (geometry: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D, x: number, y: number, z: number) => {
-      const m = new THREE.Mesh(geometry, mat);
-      m.position.set(x, y, z);
-      m.castShadow = true;
-      parent.add(m);
-      return m;
+      const m = new THREE.Mesh(geometry, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m;
     };
-    this.torso = mesh(new THREE.CylinderGeometry(0.225, 0.175, 0.52, 10), jersey, this.body, 0, 1.18, 0);
-    this.torso.scale.set(1.23, 1, 0.75);
-    const hips = mesh(new THREE.CylinderGeometry(0.19, 0.195, 0.2, 12), shorts, this.body, 0, 0.87, 0);
-    hips.rotation.z = 0.015;
-    hips.scale.z = 0.72;
-    mesh(new THREE.CylinderGeometry(0.071, 0.09, 0.12, 8), skin, this.body, 0, 1.5, 0);
-    const head = mesh(sharedSphere, skin, this.body, 0, 1.65, -0.01);
-    head.scale.set(0.137, 0.177, 0.137);
-    const scalp = mesh(new THREE.SphereGeometry(0.141, 12, 8, 0, Math.PI * 2, 0, 1.6), hair, this.body, 0, 1.68, 0.002);
-    scalp.scale.set(1, 0.98, 1);
-    const nose = mesh(new THREE.BoxGeometry(0.04, 0.055, 0.06), skin, this.body, 0, 1.645, -0.133);
-    nose.rotation.x = -0.1;
-    for (const side of [-1, 1]) {
+    const sphere = (mat: THREE.Material, parent: THREE.Object3D, x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
+      const m = mesh(sharedSphere.clone(), mat, parent, x, y, z); m.scale.set(sx, sy, sz); return m;
+    };
+    const chest = new THREE.LatheGeometry([
+      new THREE.Vector2(.163,-.26), new THREE.Vector2(.18,-.225), new THREE.Vector2(.179,-.12),
+      new THREE.Vector2(.20,.035), new THREE.Vector2(.235,.17), new THREE.Vector2(.225,.22), new THREE.Vector2(.115,.265),
+    ], 24);
+    this.torso = mesh(chest, jersey, this.body, 0, 1.18, 0);
+    this.torso.scale.set(1.1, 1, .73);
+    const hips = mesh(new THREE.CylinderGeometry(.181, .189, .19, 20), shorts, this.body, 0, .87, 0); hips.scale.z = .77;
+    mesh(new THREE.CylinderGeometry(.069,.079,.13,16), skin, this.body, 0,1.49,0);
+    const collar = mesh(new THREE.TorusGeometry(.086,.013,8,24), trim, this.body, 0,1.449,0); collar.rotation.x = Math.PI/2;
+    sphere(skin,this.body,0,1.655,-.006,.131,.178,.137);
+    const scalp = mesh(new THREE.SphereGeometry(.136,24,16,0,Math.PI*2,0,1.47),hair,this.body,0,1.685,.012); scalp.scale.set(1, .91, 1.01);
+    sphere(hair,this.body,0,1.787,.002,.119,.065,.126);
+    sphere(skin,this.body,0,1.642,-.132,.027,.041,.035);
+    sphere(faceDark,this.body,0,1.584,-.117,.045,.008,.015);
+    this.beard = sphere(hair,this.body,0,1.565,-.078,.112,.089,.073); this.beard.visible = false;
+    for (const side of [-1,1]) {
+      sphere(skin,this.body,side*.132,1.658,-.004,.027,.047,.030);
+      sphere(faceDark,this.body,side*.049,1.684,-.126,.018,.009,.007);
+      sphere(hair,this.body,side*.049,1.706,-.124,.023,.006,.009);
       const leg = side === -1 ? this.leftLeg : this.rightLeg;
       const shin = side === -1 ? this.leftShin : this.rightShin;
-      leg.position.set(side * 0.115, 0.84, 0);
-      this.body.add(leg);
-      mesh(new THREE.CylinderGeometry(0.106, 0.087, 0.26, 8), shorts, leg, 0, -0.12, 0);
-      mesh(new THREE.CylinderGeometry(0.08, 0.061, 0.23, 8), skin, leg, 0, -0.285, 0);
-      shin.position.y = -0.4;
-      leg.add(shin);
-      mesh(new THREE.CylinderGeometry(0.067, 0.043, 0.3, 8), sock, shin, 0, -0.16, 0);
-      const shoe = mesh(new THREE.CapsuleGeometry(0.064, 0.145, 3, 8), boot, shin, 0, -0.36, -0.065);
-      shoe.rotation.x = Math.PI / 2;
-      shoe.scale.z = 0.65;
-      const arm = side === -1 ? this.leftArm : this.rightArm;
-      arm.position.set(side * 0.255, 1.39, 0);
-      this.body.add(arm);
-      mesh(new THREE.CylinderGeometry(0.094, 0.078, 0.2, 8), jersey, arm, 0, -0.055, 0);
-      mesh(new THREE.CapsuleGeometry(0.06, 0.27, 3, 6), role === 'keeper' ? jersey : skin, arm, 0, -0.29, -0.02);
-      const hand = mesh(sharedSphere, role === 'keeper' ? glove : skin, arm, 0, -0.51, -0.035);
-      hand.scale.set(role === 'keeper' ? 0.087 : 0.052, role === 'keeper' ? 0.112 : 0.071, 0.055);
+      leg.position.set(side*.108,.84,0); this.body.add(leg);
+      mesh(new THREE.CylinderGeometry(.100,.083,.24,16),shorts,leg,0,-.11,0);
+      mesh(new THREE.CapsuleGeometry(.075,.15,5,14),skin,leg,0,-.29,0);
+      shin.position.y=-.4; leg.add(shin);
+      sphere(skin,shin,0,-.005,-.007,.064,.067,.065);
+      mesh(new THREE.CylinderGeometry(.065,.042,.3,16),sock,shin,0,-.16,0);
+      const band=mesh(new THREE.CylinderGeometry(.066,.065,.022,16),trim,shin,0,-.037,0);
+      band.receiveShadow=true;
+      const shoe=mesh(new THREE.CapsuleGeometry(.060,.15,5,16),boot,shin,0,-.36,-.067);
+      shoe.rotation.x=Math.PI/2; shoe.scale.z=.68;
+      const outsole=sphere(sole,shin,0,-.393,-.065,.063,.018,.135);
+      outsole.receiveShadow=true;
+      for(let i=0;i<3;i++) mesh(new THREE.BoxGeometry(.058,.006,.009),sock,shin,0,-.322,-.063-i*.018);
+      const arm=side===-1?this.leftArm:this.rightArm;
+      arm.position.set(side*.238,1.391,0); this.body.add(arm);
+      const sleeve=mesh(new THREE.CapsuleGeometry(.083,.085,5,14),jersey,arm,0,-.055,0); sleeve.scale.z=.9;
+      mesh(new THREE.CylinderGeometry(.079,.076,.019,16),trim,arm,0,-.147,0);
+      mesh(new THREE.CapsuleGeometry(.052,.245,5,14),role==='keeper'?jersey:skin,arm,0,-.292,-.025);
+      sphere(role==='keeper'?glove:skin,arm,0,-.50,-.046,role==='keeper'?.084:.046,role==='keeper'?.106:.066,.043);
+      sphere(role==='keeper'?glove:skin,arm,side*.04,-.48,-.065,.025,.040,.025);
     }
-    const backNumber = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshStandardMaterial({ map: numberTexture(number, role), transparent: true, depthWrite: false }));
-    backNumber.position.set(0, 1.21, 0.166);
-    this.body.add(backNumber);
-    // Small original front crest and a contrasting collar.
-    mesh(new THREE.BoxGeometry(0.046, 0.063, 0.015), material(role === 'taker' ? '#233b2b' : '#ccdf9c'), this.body, -0.09, 1.31, -0.168);
-    this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.35, 1), new THREE.MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false }));
-    this.shadow.rotation.x = -Math.PI / 2;
-    this.shadow.position.y = 0.025;
-    this.group.add(this.shadow);
+    this.numberPlate = new THREE.Mesh(new THREE.PlaneGeometry(.30,.33),new THREE.MeshStandardMaterial({map:numberTexture(number,role==='taker'?'MASTER':role==='keeper'?'KEEPER':'UNITED',role==='wall'?'#15253a':'#f8f1db'),transparent:true,depthWrite:false,roughness:.9}));
+    this.numberPlate.position.set(0,1.215,.172); this.body.add(this.numberPlate);
+    const crest=mesh(new THREE.BoxGeometry(.047,.058,.009),trim,this.body,-.09,1.325,-.164); crest.rotation.z=.07;
+    this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.35,1),new THREE.MeshBasicMaterial({map:shadowTexture,transparent:true,depthWrite:false}));
+    this.shadow.rotation.x=-Math.PI/2; this.shadow.position.y=.025; this.group.add(this.shadow);
+    // Batch rigid pieces per articulated bone/material, retaining the animation pivots.
+    this.body.traverse(object => {
+      if (!(object instanceof THREE.Group)) return;
+      const batches = new Map<THREE.Material,THREE.Mesh[]>();
+      for(const child of [...object.children]) {
+        if(!(child instanceof THREE.Mesh) || child===this.torso || child===this.numberPlate || child===this.beard || Array.isArray(child.material)) continue;
+        const items=batches.get(child.material)||[]; items.push(child); batches.set(child.material,items);
+      }
+      for(const [mat,items] of batches) {
+        if(items.length<2) continue;
+        const geometries=items.map(item=>{item.updateMatrix();return item.geometry.clone().applyMatrix4(item.matrix);});
+        const merged=new THREE.Mesh(mergeGeometries(geometries),mat); merged.castShadow=true;
+        object.add(merged);
+        for(const item of items){object.remove(item);item.geometry.dispose();}
+        geometries.forEach(geometry=>geometry.dispose());
+      }
+    });
     this.idle(0);
+  }
+
+  setProfile(profile: TakerProfile) {
+    const a=profile.appearance;
+    this.skin.color.set(a.skin); this.jersey.color.set(a.shirt); this.shorts.color.set(a.shorts);
+    this.trim.color.set(a.trim); this.hair.color.set(a.hair); this.beard.visible=a.beard;
+    this.body.scale.set(1,a.height/1.83,1);
+    this.numberPlate.material.map?.dispose();
+    this.numberPlate.material.map=numberTexture(profile.number,profile.shortName,profile.id==='messi'?'#182b3d':'#f5eddb');
+    this.numberPlate.material.needsUpdate=true;
   }
 
   idle(time: number) {
@@ -175,10 +212,11 @@ export class Player {
     this.group.rotation.y = Math.PI;
     this.idle(time);
     if (k.dive > 0) {
-      this.body.position.y = Math.max(-0.3, (k.glove.y - 1.2) * 0.45) + Math.sin(k.dive * Math.PI) * 0.12;
-      this.body.rotation.z = k.direction * k.dive * 0.94;
-      this.leftArm.rotation.z = -1.5 - k.direction * 0.5;
-      this.rightArm.rotation.z = 1.5 - k.direction * 0.5;
+      const angle = k.direction * k.dive * 0.94;
+      this.body.rotation.z = angle;
+      this.body.position.set(Math.sin(angle), 0.9 + (k.glove.y - 1.1) * 0.35 - Math.cos(angle), 0);
+      this.leftArm.rotation.z = -k.direction * 2.3;
+      this.rightArm.rotation.z = -k.direction * 2.15;
       this.leftLeg.rotation.z = -0.22;
       this.rightLeg.rotation.z = 0.26;
       this.leftLeg.rotation.x = k.dive * 0.2;
@@ -219,14 +257,14 @@ export function makeFootball(): THREE.Mesh {
         if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
       }
       ctx.closePath();
-      ctx.fillStyle = (row + col * 2) % 3 === 0 ? '#20382e' : (row + col) % 4 === 0 ? '#c1e09a' : '#f0f0df';
+      ctx.fillStyle = (row + col * 2) % 3 === 0 ? '#101f31' : (row + col) % 4 === 0 ? '#90bbdc' : '#f0f0df';
       ctx.fill();
       ctx.stroke();
     }
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 32, 24), new THREE.MeshStandardMaterial({ map: texture, roughness: 0.5 }));
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 32, 24), new THREE.MeshStandardMaterial({ map: texture, roughness: 0.4 }));
   ball.castShadow = true;
   return ball;
 }

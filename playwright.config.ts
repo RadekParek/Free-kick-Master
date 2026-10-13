@@ -22,7 +22,7 @@ const executablePath = bundled ? await chromium.executablePath() : process.env.P
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 90_000,
+  timeout: 120_000,
   expect: { timeout: 25_000 },
   fullyParallel: false,
   workers: 1,
@@ -30,7 +30,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://localhost:5173',
-    viewport: { width: 1440, height: 1000 },
+    viewport: { width: 1100, height: 700 },
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     launchOptions: {

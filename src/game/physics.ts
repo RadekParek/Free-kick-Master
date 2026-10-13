@@ -1,4 +1,5 @@
 /** Original, deterministic set-piece physics. All distances are metres, time is seconds. */
+import type { TakerAttributes } from '../players';
 export interface Vec3 { x: number; y: number; z: number }
 export interface Position { x: number; z: number }
 export interface Contact { x: number; y: number }
@@ -10,6 +11,7 @@ export interface ShotSetup {
   contact: Contact;
   power: number;
   foot: Foot;
+  attributes?: TakerAttributes;
 }
 export interface BallState {
   position: Vec3;
@@ -17,6 +19,7 @@ export interface BallState {
   sideSpin: number;
   topSpin: number;
   knuckle: boolean;
+  knuckleStrength: number;
   time: number;
   bounces: number;
 }
@@ -28,12 +31,14 @@ export const GOAL_HEIGHT = 2.44;
 export const FIXED_DT = 1 / 120;
 export const GRAVITY = 9.81;
 const DRAG = 0.16;
-const MAGNUS = 0.005;
+export const SIDE_MAGNUS = 0.0068; // 36% stronger side force than v1.
+const TOP_MAGNUS = 0.005;
 export const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export const distanceToGoal = (p: Position) => Math.hypot(p.x, p.z);
 export const recommendedPower = (p: Position) => clamp(0.48 + distanceToGoal(p) * 0.006, 0.59, 0.79);
-export const shotSpeed = (power: number) => 16 + clamp(power, 0, 1) * 21;
+export const shotSpeed = (power: number, attributes?: TakerAttributes) =>
+  (16 + clamp(power, 0, 1) * 21) * (attributes ? 0.9 + (attributes.power - 80) * 0.012 : 1);
 
 export function constrainPosition(p: Position): Position {
   const x = clamp(Number.isFinite(p.x) ? p.x : 0, -30, 30);
@@ -76,15 +81,18 @@ export function launchBall(setup: ShotSetup): BallState {
   const dx = clamp(setup.aim.x, -10, 10) - p.x;
   const dz = -p.z;
   const distance = Math.hypot(dx, dz);
-  const speed = shotSpeed(setup.power);
-  const angle = referenceElevation(distance, clamp(setup.aim.y, 0.15, 5.5), shotSpeed(recommendedPower(p))) - cy * 0.07;
+  const speed = shotSpeed(setup.power, setup.attributes);
+  const controlPenalty = setup.attributes ? Math.max(0, setup.power - recommendedPower(p) - 0.1) ** 2 * (100 - setup.attributes.control) / 100 * 0.65 : 0;
+  const angle = referenceElevation(distance, clamp(setup.aim.y, 0.15, 5.5), shotSpeed(recommendedPower(p), setup.attributes)) - cy * 0.07 + controlPenalty;
+  const curveScale = setup.attributes ? 0.78 + (setup.attributes.curve - 80) * 0.028 : 1;
   const horizontal = speed * Math.cos(angle);
   return {
     position: { x: p.x, y: BALL_RADIUS, z: p.z },
     velocity: { x: dx / distance * horizontal, y: speed * Math.sin(angle), z: dz / distance * horizontal },
-    sideSpin: -cx * 36,
+    sideSpin: -cx * 36 * curveScale,
     topSpin: cy * 22,
     knuckle: Math.hypot(cx, cy) < 0.17 && setup.power > 0.64,
+    knuckleStrength: (setup.attributes ? 0.6 + (setup.attributes.knuckle - 60) * 0.017 : 1) * (0.75 + clamp((setup.power - 0.64) / 0.36, 0, 1) * 0.25),
     time: 0,
     bounces: 0,
   };
@@ -98,14 +106,20 @@ export function integrateBall(ball: BallState, dt = FIXED_DT): void {
   const v = ball.velocity;
   const horizontalSpeed = Math.hypot(v.x, v.z);
   const decay = Math.exp(-ball.time * 0.13);
-  let ax = -DRAG * v.x + MAGNUS * ball.sideSpin * -v.z * decay;
-  let az = -DRAG * v.z + MAGNUS * ball.sideSpin * v.x * decay;
-  let ay = -GRAVITY - DRAG * v.y - MAGNUS * ball.topSpin * horizontalSpeed * decay;
+  let ax = -DRAG * v.x + SIDE_MAGNUS * ball.sideSpin * -v.z * decay;
+  let az = -DRAG * v.z + SIDE_MAGNUS * ball.sideSpin * v.x * decay;
+  let ay = -GRAVITY - DRAG * v.y - TOP_MAGNUS * ball.topSpin * horizontalSpeed * decay;
   if (ball.knuckle) {
-    // Repeatable unsteady wake, never a random goal/save roll.
-    ax += Math.sin(ball.time * 18.4) * 2.3 + Math.sin(ball.time * 31.7) * 1.1;
-    ay += Math.sin(ball.time * 22.3) * 1.2;
-    az += Math.cos(ball.time * 15.7) * 0.35;
+    // Low-frequency wake transitions cause visible lateral direction changes.
+    // Unlike tiny high-frequency jitter, this produces measurable late movement.
+    // Still deterministic; the ball is never steered toward the goal or away from a keeper.
+    const t = ball.time;
+    const wake = Math.min(1, t / 0.2) * ball.knuckleStrength;
+    const sideForce = (Math.cos(t * 8.8) * 19 + Math.sin(t * 15.4) * 6) * wake;
+    const speed = Math.max(1, horizontalSpeed);
+    ax += -v.z / speed * sideForce;
+    az += v.x / speed * sideForce;
+    ay += (Math.sin(t * 9.7 + 0.6) * 7.5 - 1.2) * wake;
   }
   v.x += ax * dt;
   v.y += ay * dt;

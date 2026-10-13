@@ -1,4 +1,4 @@
-import { BALL_RADIUS, clamp, type BallState, type Vec3 } from './physics';
+import { BALL_RADIUS, SIDE_MAGNUS, clamp, type BallState, type Vec3 } from './physics';
 
 export const DIFFICULTIES = ['rookie', 'amateur', 'pro', 'world-class', 'legend'] as const;
 export type Difficulty = typeof DIFFICULTIES[number];
@@ -40,7 +40,7 @@ export function updateKeeper(k: KeeperState, ball: BallState, difficulty: Diffic
   k.reacted = true;
   const remaining = clamp((KEEPER_Z - ball.position.z) / ball.velocity.z, 0, 2.5);
   // Reads current flight after its reaction delay, rather than knowing the future path.
-  const predictedX = ball.position.x + ball.velocity.x * remaining + 0.5 * 0.005 * ball.sideSpin * -ball.velocity.z * remaining ** 2 * p.anticipation;
+  const predictedX = ball.position.x + ball.velocity.x * remaining + 0.5 * SIDE_MAGNUS * ball.sideSpin * -ball.velocity.z * remaining ** 2 * p.anticipation;
   const predictedY = ball.position.y + ball.velocity.y * remaining - 4.905 * remaining ** 2;
   k.targetX = clamp(predictedX, -3.45, 3.45);
   k.targetY = clamp(predictedY, 0.3, p.maxHeight);

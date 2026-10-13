@@ -29,6 +29,7 @@ test('completes all five challenge shots, shows results, restores practice, and 
   await page.locator('#back-training').click();
   await expect(page.locator('#mode-pill')).toContainText('FREE PRACTICE');
   await expect(page.locator('#distance-slider')).toBeEnabled();
+  await page.locator('#settings-button').click();
   await page.locator('#reset-session').click();
   await page.locator('#confirm-reset').click();
   await expect(page.locator('#stat-attempts')).toHaveText('0');

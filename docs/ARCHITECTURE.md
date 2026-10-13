@@ -4,17 +4,21 @@
 src/
   main.ts                Browser entry and native lifecycle bridge
   state.ts               Validated local preferences, session statistics
+  players.ts             Four curated player identities, original attributes, photo provenance
   game/
     physics.ts           Deterministic SI-unit ball flight, aiming, walls, geometry tests
     keeper.ts            Five profiles, delayed anticipation, physical reach volumes
     simulation.ts        Shared live/test collision + outcome stepper
-    stadium.ts           Original procedural pitch, goal/net, instanced stands/crowd
+    stadium.ts           Pitch, net, three atmospheres, batched stands and baked crowd
     player.ts            Articulated original player meshes and run/dive animation
     arena.ts             Three.js rendering, state machine, pointer aim, replay
     audio.ts             User-gesture-unlocked synthesized local audio
   ui/
     app.ts               Accessible DOM controls, settings/help/challenges, statistics
-    styles.css           Responsive desktop, portrait, compact Android landscape
+    styles.css           Full-viewport HUD, drawer, portrait and compact landscape layouts
+    player-card.ts        Original collectible-style card and compact HUD markup
+public/players/          Licensed offline WebP portraits and attribution
+public/textures/         Generated anonymous crowd texture
 android/                 Native offline Capacitor host and Gradle wrapper
 ```
 
@@ -28,20 +32,30 @@ A shot setup is captured at release. Setup controls are disabled through chargin
 
 ## Time and determinism
 
-Physics advances at 120 Hz. Render frames add to an accumulator; the maximum render delta is 50 ms to avoid a spiral of death after a stall. Replay snapshots are captured every other physics step (60 Hz) and never re-run the keeper's decisions. Strongly underpowered attempts terminate after 5 simulated seconds.
+Physics advances at 120 Hz. Render frames add to an accumulator; the maximum render delta is 100 ms to avoid a spiral of death after a stall. Replay snapshots are captured every other physics step (60 Hz) and never re-run the keeper's decisions. Strongly underpowered attempts terminate after 5 simulated seconds.
 
 All gameplay physics and goal/save decisions are deterministic. Randomness is confined to procedural visuals and synthesized noise audio. The turf/crowd generators use fixed seeds.
 
 ## Mobile/performance
 
-A single WebGL renderer is resized with `ResizeObserver`. Quality limits DPR (1.75 / 1.25 / 1.0); High uses 2048 px shadow maps, Balanced uses 1024 px, and Performance turns off shadow maps. Seats and crowd use instancing. Goal-net deformation only runs briefly after a goal. Assets are generated locally or bundled, with no model/texture requests. Android haptics are called only on the native platform and gracefully tolerate unsupported devices.
+A single WebGL renderer is resized with `ResizeObserver`. Base DPR caps are 1.5 / 1.25 / 1.0. High uses 2048 px shadow maps, Balanced uses 1024 px, and Performance disables dynamic shadows. Material programs are invalidated when shadow quality changes.
+
+- Static stadium geometry is merged per shared material/shadow state. Rigid player parts are batched per articulated bone/material.
+- Distant crowds use a generated texture on upright row strips merged into one mesh. Procedural instanced spectators remain an asset-load fallback, not a second visible crowd.
+- The trajectory guide and shot trace reuse bounded typed-array GPU buffers. Defensive-wall positions are cached rather than allocated on every physics tick.
+- Idle ready/settled-result scenes render at 30 Hz; active shots render at the display rate. Idle shadow refresh is throttled. Dialogs and backgrounding pause rendering/simulation.
+- Optional adaptive resolution samples actual rendering throughput. Three slow sampling windows lower the scale in 10% steps to a minimum of 65%; eight fast windows recover 5% at a time. It does not change the shot equations. The on-screen monitor reports measured FPS/draw calls/scale, not a fabricated target rate.
+- The shot-local camera and taker positioning handle wide angles and portrait phones without cropping the entire kicker out of view.
+- Goal-net deformation runs only briefly after a goal. All fonts, portraits, crowd imagery, scripts, and audio generation are local/offline assets. Android haptics tolerate unsupported hardware.
+
+Software-WebGL test-worker throughput is not representative of an Android GPU. Hardware performance and thermal behaviour remain unverified; no 60 FPS guarantee is claimed.
 
 ## Data
 
-Only preferences, personal-best streak, and per-challenge personal bests are stored in localStorage. Malformed/missing storage is ignored. Session attempts are in memory. There is no database, telemetry, remote API, account, or payment flow.
+Only preferences (including player, atmosphere and adaptive resolution), personal-best streak, and per-challenge personal bests are stored in localStorage. Malformed/missing storage is ignored. Session attempts are in memory. There is no database, telemetry, remote API, account, or payment flow.
 
 ## Testing
 
 - Unit tests exercise the exact shared physics/keeper stepper: power/spin sensitivity, deterministic knuckle flight, preview agreement, geometry and swept collisions, valid placement, difficulty ordering, scoreable/saveable scenarios, and finite resolution across extreme positions.
-- Chromium tests use a real WebGL canvas, interact through the actual DOM, score/replay/reset a shot, test pause cancellation and challenge setup, and exercise a real CDP touch gesture plus portrait/landscape bounds. A complete five-attempt challenge test verifies its completion dialog and return to practice.
+- Chromium tests use a real WebGL canvas, interact through the actual DOM, score/replay/reset a shot, test pause cancellation and challenge setup, and exercise a real CDP touch gesture plus exact viewport-filling canvas and portrait/landscape bounds. Player tests check local photo loading, filtering, selection, persistence, preferred foot, pause/resume, and in-game attribution. Visual-options tests cover atmosphere, quality, guides, adaptive resolution, and FPS monitoring. A complete five-attempt challenge test verifies its completion dialog and return to practice.
 - APK compilation and Android lint run in `.github/workflows/android.yml`. Physical-device graphics/performance validation remains a separate required release step.

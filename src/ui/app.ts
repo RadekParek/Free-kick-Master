@@ -1,6 +1,8 @@
 import { createIcons, ArrowDownLeft, ArrowRight, ArrowUpRight, AudioLines, Check, ChevronDown, Crosshair, Flag, Flame, Focus, Goal, HelpCircle, Maximize, Minus, MousePointer2, Move, Play, Plus, RotateCcw, Settings2, Shield, Smartphone, Sparkles, Target, Trophy, Volume2, VolumeX, X, Zap } from 'lucide';
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
+import { PLAYERS, PHOTO_LICENSE, getPlayer } from '../players';
+import { playerCard, takerHud } from './player-card';
 import { Arena, type Phase } from '../game/arena';
 import { GameAudio } from '../game/audio';
 import { clamp, constrainPosition, distanceBounds, distanceToGoal, recommendedPower, strikeName, type Position } from '../game/physics';
@@ -60,10 +62,17 @@ export class GameApp {
         aim: aim => { this.settings.aim = aim; this.updateAimReadout(); },
         target: (x, y, visible) => {
           const reticle = $('#aim-reticle');
-          reticle.style.transform = `translate(${x}px, ${y}px)`;
+          const transform = `translate(${Math.round(x * 10) / 10}px, ${Math.round(y * 10) / 10}px)`;
+          if (reticle.style.transform !== transform) reticle.style.transform = transform;
           reticle.hidden = !visible;
         },
         error: message => this.showGraphicsError(message),
+        performance: stats => {
+          const monitor = $('#performance');
+          monitor.textContent = `${stats.fps} FPS · ${stats.calls} DRAWS · ${stats.scale}%`;
+          monitor.dataset.drawCalls = String(stats.calls);
+          monitor.dataset.triangles = String(stats.triangles);
+        },
       });
       $('#scene-loading').classList.add('loaded');
       $('#app').classList.add('is-ready');
@@ -76,74 +85,53 @@ export class GameApp {
   }
 
   private layout() {
-    return `
-    <div class="app-shell">
-      <header class="topbar">
-        <button class="brand" id="brand-home" aria-label="Free Kick Master — training ground">${logo}<span>FREEKICK<span class="brand-bottom">MASTER<span class="brand-dot">™</span></span></span></button>
-        <nav class="mode-nav" aria-label="Game mode">
-          <button class="nav-button active" id="training-tab" aria-pressed="true">${icon('Goal')}<span>Training ground</span></button>
-          <button class="nav-button" id="challenges-tab" aria-pressed="false">${icon('Trophy')}<span>Challenges</span><span class="nav-count">03</span></button>
-        </nav>
-        <div class="header-actions">
-          <button class="icon-button sound-button" id="sound-button" title="Toggle sound" aria-label="Mute sound">${icon('Volume2')}</button>
-          <span class="header-divider"></span>
-          <button class="help-button" id="help-button">${icon('HelpCircle')}<span>How to play</span></button>
-          <button class="icon-button settings-button" id="settings-button" aria-label="Settings">${icon('Settings2')}</button>
-        </div>
-      </header>
-
-      <main class="main-content">
-        <section class="page-heading">
-          <div><div class="eyebrow"><span class="status-dot"></span> THE ART OF THE DEAD BALL</div><h1>MAKE IT <em>UNSAVEABLE.</em></h1><p>Your ball. Your angle. Your moment.</p></div>
-          <div class="training-signature"><span class="signature-icon">${icon('Target')}</span><div><span>NO PRESSURE. JUST PRACTICE.</span><strong>Great goals start here.</strong></div></div>
+    return `<main class="app-shell game-shell">
+      <section class="arena-card" aria-label="Fullscreen 3D free-kick arena">
+        <div id="arena" class="arena-canvas"></div><div class="arena-vignette"></div>
+        <header class="hud-header">
+          <button class="brand" id="brand-home" aria-label="Free Kick Master — training ground">${logo}<span>FREEKICK <b>MASTER</b></span></button>
+          <nav class="mode-nav" aria-label="Game mode"><button class="nav-button active" id="training-tab" aria-pressed="true">PRACTICE</button><button class="nav-button" id="challenges-tab" aria-pressed="false">CHALLENGES</button></nav>
+          <div class="header-actions"><button class="icon-button" id="sound-button" aria-label="Mute sound" title="Toggle sound">${icon('Volume2')}</button><button class="icon-button" id="help-button" aria-label="How to play" title="How to play">${icon('HelpCircle')}</button><button class="icon-button" id="fullscreen-button" aria-label="Enter fullscreen" title="Fullscreen">${icon('Maximize')}</button><button class="settings-button" id="settings-button" aria-label="Settings">${icon('Settings2')}<span>SETTINGS</span></button></div>
+        </header>
+        <section class="hud-session" aria-label="Session score">
+          <div class="session-live"><span class="status-dot"></span> TRAINING ARENA <span class="session-number">/ 26</span></div>
+          <div class="score-line"><div><span>GOALS</span><strong id="stat-goals">0</strong></div><i></i><div><strong id="stat-attempts">0</strong><span>ATTEMPTS</span></div></div>
+          <div class="session-meta"><span id="mode-pill"><span class="status-dot"></span> FREE PRACTICE</span><span id="streak-label">${icon('Flame')} <b>0</b></span></div>
         </section>
-
-        <div class="workspace">
-          <div class="play-column">
-            <section class="arena-card" aria-label="3D training arena">
-              <div id="arena" class="arena-canvas"></div>
-              <div class="arena-vignette"></div>
-              <div class="stage-top">
-                <div class="venue"><span class="venue-title">${icon('Flag')} THE FLOODLIGHT ARENA</span><span class="venue-subtitle">GOLDEN HOUR <b>·</b> PERFECT CONDITIONS</span></div>
-                <span class="practice-pill" id="mode-pill"><span class="status-dot"></span> FREE PRACTICE</span>
-              </div>
-              <div class="aim-reticle" id="aim-reticle" hidden><span class="reticle-ring"></span><span class="reticle-center"></span><span class="reticle-label">AIM</span></div>
+        <div class="pitch-info"><button id="position-button" class="position-button" aria-label="Change kick position and distance">${icon('Crosshair')}<strong id="stage-distance">24.7<span>m</span></strong><span>DISTANCE TO GOAL</span>${icon('ChevronDown')}</button><button id="keeper-button" class="keeper-badge" aria-label="Change goalkeeper difficulty">${icon('Shield')}<span id="keeper-hud">PRO · 4-MAN WALL</span></button></div>
+                      <div class="aim-reticle" id="aim-reticle" hidden><span class="reticle-ring"></span><span class="reticle-center"></span><span class="reticle-label">AIM</span></div>
               <div class="scene-message" id="scene-message" hidden><span id="scene-message-label">SET YOUR POWER</span><strong id="scene-message-title">Make it count.</strong></div>
               <div class="shot-result" id="shot-result" aria-live="polite" hidden><span class="result-eyebrow" id="result-eyebrow">WHAT A HIT.</span><h2 id="result-title">GOAL!</h2><p id="result-description">Right where you wanted it.</p><div class="result-meta"><span id="result-distance"></span><span></span><span id="result-speed"></span></div></div>
               <div class="replay-label" id="replay-label" hidden><span></span> INSTANT REPLAY <b>0.55×</b></div>
-              <div class="stage-bottom">
-                <div class="spot-badge">${icon('Crosshair')}<strong id="stage-distance">24.7<span>m</span></strong><span class="spot-badge-divider"></span><span id="stage-foot">RIGHT FOOT</span></div>
-                <div class="drag-hint" id="drag-hint">${icon('Move')}<span>Drag to aim</span></div>
-                <div class="camera-actions"><button id="camera-button" title="Switch camera view (V)" aria-label="Switch to broadcast camera">${icon('Focus')}</button><button id="fullscreen-button" title="Fullscreen" aria-label="Enter fullscreen">${icon('Maximize')}</button></div>
-              </div>
-              <div class="scene-loading" id="scene-loading"><div class="loading-ball">${logo}</div><span>PREPARING YOUR PITCH</span><div class="loading-line"></div></div>
-            </section>
 
-            <div class="control-deck">
-              <section class="contact-section">
-                <div class="control-heading"><h2><span class="step-number">01</span> SHAPE YOUR SHOT</h2><span class="tiny-label">BALL CONTACT</span></div>
-                <div class="contact-row">
-                  <div class="contact-pad" id="contact-pad" role="slider" tabindex="0" aria-label="Ball contact point. Arrow keys change spin and lift." aria-valuemin="-100" aria-valuemax="100" aria-valuenow="-43" aria-valuetext="Inside-foot curl">
+        <div class="camera-rail"><button id="camera-button" aria-label="Switch to broadcast camera" title="Switch camera (V)">${icon('Focus')}</button><span id="atmosphere-label">FLOODLIT NIGHT</span><span id="performance" hidden></span></div>
+        <div class="hud-bottom">
+          <button class="taker-hud" id="taker-button" aria-label="Choose free-kick taker">${takerHud(getPlayer(this.settings.playerId))}</button>
+          <section class="contact-section" aria-label="Shape your shot">
+                              <div class="contact-pad" id="contact-pad" role="slider" tabindex="0" aria-label="Ball contact point. Arrow keys change spin and lift." aria-valuemin="-100" aria-valuemax="100" aria-valuenow="-43" aria-valuetext="Inside-foot curl">
                     <svg class="contact-ball" viewBox="0 0 120 120" aria-hidden="true"><defs><radialGradient id="ball-light" cx="34%" cy="25%" r="80%"><stop offset="0" stop-color="#fbfbef"/><stop offset=".65" stop-color="#d6dece"/><stop offset="1" stop-color="#8e9d88"/></radialGradient><clipPath id="ball-clip"><circle cx="60" cy="60" r="49"/></clipPath></defs><circle cx="60" cy="60" r="54" fill="none" stroke="#536143" stroke-dasharray="2 5"/><circle cx="60" cy="60" r="49" fill="url(#ball-light)"/><g clip-path="url(#ball-clip)" fill="#30453b" stroke="#53634e" stroke-width="1.3"><path d="m60 39 20 15-8 24H48l-8-24Z"/><path d="m27 17 6 19-19 15-17-9 7-24Z"/><path d="m91 17-4 19 19 15 17-9-7-24Z"/><path d="m17 87 20-3 11 22-14 16-20-8Z"/><path d="m103 87-20-3-11 22 14 16 20-8Z"/></g><g stroke="#899780" stroke-width="1" fill="none"><path d="m60 39 0-23m20 38 7-18M40 54l-7-18m15 42-11 6m35-6 11 6M33 36l27-20 27 20M14 51l3 36m89-36-3 36m-55 19h24"/></g><path d="M60 5v110M5 60h110" stroke="#192b1d" opacity=".3" stroke-dasharray="2 3"/></svg>
                     <span class="contact-marker" id="contact-marker"></span>
                   </div>
-                  <div class="contact-copy"><h3 id="strike-name">Inside-foot curl</h3><p>Move the point.<br>Find your finesse.</p><div class="foot-toggle" aria-label="Kicking foot"><button data-foot="right" class="selected" aria-pressed="true">R <span>Right foot</span></button><button data-foot="left" aria-pressed="false">L <span>Left foot</span></button></div></div>
-                </div>
-                <div class="strike-presets" aria-label="Shot technique presets"><button data-strike="curl" class="selected" aria-pressed="true">${icon('ArrowDownLeft')}<span>Curl</span></button><button data-strike="knuckle" aria-pressed="false">${icon('Sparkles')}<span>Knuckleball</span></button><button data-strike="driven" aria-pressed="false">${icon('ArrowRight')}<span>Driven</span></button></div>
-              </section>
-              <section class="power-section">
-                <div class="control-heading"><h2><span class="step-number">02</span> FIND YOUR POWER</h2><span class="key-hint"><kbd>SPACE</kbd> to shoot</span></div>
-                <div class="power-readout"><strong><span id="power-value">0</span><small>%</small></strong><span id="power-tip">SUGGESTED <b id="recommended-power">63%</b>${icon('ArrowDownLeft')}</span></div>
+
+            <div class="contact-copy"><span class="hud-eyebrow">BALL CONTACT</span><h3 id="strike-name">Inside-foot curl</h3><span class="contact-instruction">Move the point. Shape the flight.</span><div class="strike-presets" aria-label="Shot technique presets"><button data-strike="curl" aria-pressed="true">CURL</button><button data-strike="knuckle" aria-pressed="false">KNUCKLE</button><button data-strike="driven" aria-pressed="false">DRIVEN</button></div></div>
+          </section>
+          <section class="power-section" aria-label="Shot power"><div class="power-heading"><span class="hud-eyebrow">SHOT POWER</span><span id="stage-foot">RIGHT FOOT</span></div>
+                            <div class="power-readout"><strong><span id="power-value">0</span><small>%</small></strong><span id="power-tip">SUGGESTED <b id="recommended-power">63%</b>${icon('ArrowDownLeft')}</span></div>
                 <div class="power-meter" id="power-meter" role="progressbar" aria-label="Shot power" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="power-fill" id="power-fill"></div><div class="power-sweetspot" id="power-sweetspot"></div><span class="meter-tick t1"></span><span class="meter-tick t2"></span><span class="meter-tick t3"></span></div>
                 <div class="meter-caption"><span>PLACEMENT</span><span>POWER</span></div>
                 <div class="shot-actions"><button class="shoot-button" id="shoot-button" disabled><span class="shoot-icon">${icon('ArrowUpRight')}</span><span class="shoot-copy"><strong id="shoot-label">HOLD TO SHOOT</strong><small id="shoot-caption">Release to strike</small></span><span class="shoot-arrow">${icon('ArrowRight')}</span></button><button class="replay-button" id="replay-button" disabled aria-label="Replay last shot (R)" title="Replay last shot (R)">${icon('RotateCcw')}</button></div>
-              </section>
-            </div>
-            <div class="practice-note"><span>${icon('Sparkles')}<span id="coach-tip">A little curve goes a long way. Aim outside the wall and bend it in.</span></span><span class="aim-readout" id="aim-readout">AIM 1.9 / 1.9</span></div>
-          </div>
 
-          <aside class="setup-column" aria-label="Training setup">
-            <section class="panel position-panel">
+          </section>
+        </div>
+        <div class="hud-footer"><div id="drag-hint">${icon('Move')} DRAG TO AIM <span>OR USE ARROW KEYS</span></div><span id="aim-readout">AIM 1.9 / 1.9</span><span class="footer-controls"><kbd>SPACE</kbd> HOLD & RELEASE <i>·</i> <kbd>R</kbd> REPLAY</span><span class="edition-mark">THE SET-PIECE EDITION <b>2.0</b></span></div>
+        <div class="scene-loading" id="scene-loading"><div class="loading-ball">${logo}</div><strong>THE PITCH IS YOURS.</strong><span>PREPARING YOUR ARENA</span><div class="loading-line"></div></div>
+      </section>
+      <dialog id="setup-drawer" class="setup-drawer" aria-labelledby="setup-title">
+        <div class="drawer-header"><span class="modal-eyebrow">YOUR GAME. YOUR RULES.</span><h2 id="setup-title">Training setup</h2><button id="close-settings" class="icon-button" aria-label="Close settings">${icon('X')}</button></div>
+        <div class="drawer-tabs" role="tablist" aria-label="Settings section"><button role="tab" data-settings-tab="training" aria-selected="true" aria-controls="training-settings">PITCH & KEEPER</button><button role="tab" data-settings-tab="graphics" aria-selected="false" aria-controls="graphics-settings">VISUALS & SOUND</button></div>
+        <div class="drawer-scroll">
+          <div id="training-settings" role="tabpanel" class="setup-column">
+                        <section class="panel position-panel">
               <div class="panel-heading"><h2>${icon('MousePointer2')} Set your spot</h2><span class="panel-kicker">THE SETUP</span></div>
               <p class="panel-description">Every angle. A different challenge.</p>
               <div class="pitch-map" id="pitch-map" role="slider" tabindex="0" aria-label="Free-kick position. Click to place, or use arrow keys." aria-valuemin="10" aria-valuemax="55" aria-valuenow="25" aria-valuetext="24.7 metres, left of centre">
@@ -164,19 +152,25 @@ export class GameApp {
               <div class="wall-row"><span>${icon('Shield')} Defensive wall</span><div class="stepper"><button id="wall-minus" aria-label="Remove a defender">${icon('Minus')}</button><span id="wall-count">4</span><button id="wall-plus" aria-label="Add a defender">${icon('Plus')}</button></div></div>
             </section>
 
-            <section class="panel session-panel">
-              <div class="panel-heading"><h2>${icon('Trophy')} This session</h2><button class="text-icon-button" id="reset-session" aria-label="Reset session statistics" title="Reset session">${icon('RotateCcw')}</button></div>
-              <div class="session-stats"><div><strong id="stat-goals">0</strong><span>GOALS</span></div><div><strong id="stat-attempts">0</strong><span>ATTEMPTS</span></div><div><strong id="stat-rate">—<small>%</small></strong><span>ACCURACY</span></div></div>
-              <div class="session-bottom"><div class="shot-history" id="shot-history" aria-label="Recent shots">${'<i></i>'.repeat(10)}</div><span id="streak-label">${icon('Flame')}<b>0</b> streak</span></div>
-            </section>
-          </aside>
-        </div>
 
-        <footer class="footer"><span class="footer-motto"><span class="footer-symbol">${logo}</span> ONE MORE. THEN ONE MORE.</span><span class="footer-version">BUILT FOR THE BEAUTIFUL GAME <span>·</span> v1.0</span><button id="android-button">${icon('Smartphone')} PLAY ON ANDROID ${icon('ArrowUpRight')}</button></footer>
-      </main>
+            <section class="panel foot-panel"><div class="panel-heading"><h2>Training foot</h2><span class="panel-kicker">SWITCH IT UP</span></div><div class="foot-toggle"><button data-foot="right" aria-pressed="true">R <span>Right foot</span></button><button data-foot="left" aria-pressed="false">L <span>Left foot</span></button></div></section>
+            <section class="panel session-panel"><div class="panel-heading"><h2>Session record</h2><button id="reset-session" class="icon-button" aria-label="Reset session statistics">${icon('RotateCcw')}</button></div><div class="session-bottom"><div id="shot-history" class="shot-history">${'<i></i>'.repeat(10)}</div><strong id="stat-rate">—<small>%</small></strong></div></section>
+          </div>
+          <div id="graphics-settings" role="tabpanel" hidden>
+            <div class="settings-list">
+              <label class="setting-row quality-setting"><span><strong>Graphics quality</strong><small>Shadow detail, grass density, and pixel resolution</small></span><select id="setting-quality" aria-label="Graphics quality"><option value="high">High</option><option value="balanced">Balanced</option><option value="low">Performance</option></select></label>
+              <label class="setting-row quality-setting"><span><strong>Stadium atmosphere</strong><small>A new light on the beautiful game</small></span><select id="setting-atmosphere" aria-label="Stadium atmosphere"><option value="night">Floodlit night</option><option value="sunset">Golden hour</option><option value="day">Clear day</option></select></label>
+              ${[['adaptiveResolution', 'Adaptive resolution', 'Temporarily lowers pixel resolution when rendering is slow.'], ['guides', 'Trajectory guide', 'Preview the actual spin, power, and player attributes.'], ['showFps', 'Performance monitor', 'Live frame rate, draw calls, and render resolution.'], ['sound', 'Stadium sound', 'Crowd ambience, ball strikes, and the sound of the net.'], ['haptics', 'Haptic feedback', 'Feel each strike on supported Android devices.']].map(([key, title, detail]) => `<label class="setting-row"><span><strong>${title}</strong><small>${detail}</small></span><input type="checkbox" id="setting-${key}"/><span class="toggle" aria-hidden="true"></span></label>`).join('')}
+            </div>
+            <p class="settings-note">High: 2048 px shadows. Balanced: 1024 px shadows. Performance: no dynamic shadows. Stadium geometry is batched and shot trails reuse GPU buffers in every mode.</p>
+            <button id="photo-credits" class="text-link">Player photo credits & licenses ${icon('ArrowUpRight')}</button>
+          </div>
+        </div>
+        <div class="drawer-footer"><div><button id="settings-help" class="text-link">${icon('HelpCircle')} HOW TO PLAY</button><button id="android-button" class="text-link">${icon('Smartphone')} ANDROID APK</button></div><button class="primary-button full-width" id="resume-button">BACK TO THE PITCH ${icon('Play')}</button></div>
+      </dialog>
       <dialog class="modal" id="modal" aria-labelledby="modal-title"><div class="modal-inner" id="modal-content"></div></dialog>
       <div class="toast" id="toast" role="status" hidden></div>
-    </div>`;
+    </main>`;
   }
 
   private bindUI() {
@@ -185,6 +179,33 @@ export class GameApp {
     $('#challenges-tab').addEventListener('click', () => this.showChallenges());
     $('#help-button').addEventListener('click', () => this.showHelp());
     $('#settings-button').addEventListener('click', () => this.showSettings());
+    $('#position-button').addEventListener('click', () => this.showSettings());
+    $('#keeper-button').addEventListener('click', () => this.showSettings());
+    $('#taker-button').addEventListener('click', () => this.showPlayers());
+    $('#close-settings').addEventListener('click', () => this.closeDrawer());
+    $('#resume-button').addEventListener('click', () => this.closeDrawer());
+    $('#settings-help').addEventListener('click', () => this.showHelp());
+    $('#photo-credits').addEventListener('click', () => this.showPhotoCredits());
+    $$('[data-settings-tab]').forEach(button => button.addEventListener('click', () => this.settingsTab(button.dataset.settingsTab!)));
+    for (const key of ['sound', 'guides', 'haptics', 'adaptiveResolution', 'showFps'] as const) {
+      $(`#setting-${key}`).addEventListener('change', event => {
+        this.settings[key] = (event.target as HTMLInputElement).checked;
+        if (key === 'sound') this.audio.setEnabled(this.settings.sound);
+        this.applySettings();
+      });
+    }
+    $('#setting-quality').addEventListener('change', event => {
+      this.settings.quality = (event.target as HTMLSelectElement).value as Settings['quality'];
+      this.applySettings();
+    });
+    $('#setting-atmosphere').addEventListener('change', event => {
+      this.settings.atmosphere = (event.target as HTMLSelectElement).value as Settings['atmosphere'];
+      this.applySettings();
+    });
+    const drawer = $<HTMLDialogElement>('#setup-drawer');
+    drawer.addEventListener('click', event => { if (event.target === drawer) this.closeDrawer(); });
+    drawer.addEventListener('cancel', event => { event.preventDefault(); this.closeDrawer(); });
+    drawer.addEventListener('close', () => this.resumeIfVisible());
     $('#android-button').addEventListener('click', () => this.showAndroid());
     $('#sound-button').addEventListener('click', () => {
       this.settings.sound = !this.settings.sound;
@@ -279,9 +300,9 @@ export class GameApp {
     modal.addEventListener('click', event => { if (event.target === modal) this.closeModal(); });
     modal.addEventListener('cancel', event => { event.preventDefault(); this.closeModal(); });
     modal.addEventListener('close', () => {
-      this.arena?.setPaused(!this.visible || modal.open);
-      if (this.visible && !modal.open) this.audio.resume();
-      this.modalReturnFocus?.focus({ preventScroll: true });
+      this.resumeIfVisible();
+      const focus = this.modalReturnFocus?.getClientRects().length ? this.modalReturnFocus : $('#settings-button');
+      if (!this.overlayOpen()) focus?.focus({ preventScroll: true });
     });
     document.addEventListener('visibilitychange', () => this.setVisible(!document.hidden));
     window.addEventListener('blur', () => { this.powerPointer = null; this.arena?.cancelCharge(); });
@@ -290,19 +311,20 @@ export class GameApp {
 
   setVisible(visible: boolean) {
     this.visible = visible;
-    const paused = !visible || $<HTMLDialogElement>('#modal').open;
+    const paused = !visible || this.overlayOpen();
     this.arena?.setPaused(paused);
     if (paused) this.audio.pause(); else this.audio.resume();
   }
 
   handleBack() {
     if ($<HTMLDialogElement>('#modal').open) this.closeModal();
+    else if ($<HTMLDialogElement>('#setup-drawer').open) this.closeDrawer();
     else this.showSettings();
   }
 
   private bindKeyboard() {
     document.addEventListener('keydown', event => {
-      if ($<HTMLDialogElement>('#modal').open) return;
+      if (this.overlayOpen()) return;
       if ((event.target as HTMLElement).closest('input, select, textarea, [role="slider"]')) return;
       if (event.code === 'Space') {
         event.preventDefault();
@@ -314,6 +336,7 @@ export class GameApp {
         this.arena?.adjustAim(event.code === 'ArrowLeft' ? -amount : event.code === 'ArrowRight' ? amount : 0, event.code === 'ArrowUp' ? amount : event.code === 'ArrowDown' ? -amount : 0);
       } else if (event.code === 'KeyR' && !event.repeat) this.arena?.replay();
       else if (event.code === 'KeyV' && !event.repeat) $('#camera-button').click();
+      else if (event.code === 'KeyT' && !event.repeat) this.showPlayers();
       else if (event.code === 'Escape') this.showSettings();
     });
     document.addEventListener('keyup', event => {
@@ -392,6 +415,16 @@ export class GameApp {
 
   private syncUI() {
     const s = this.settings;
+    if ($('#taker-button').dataset.player !== s.playerId) {
+      $('#taker-button').innerHTML = takerHud(getPlayer(s.playerId));
+      $('#taker-button').dataset.player = s.playerId;
+    }
+    $('#keeper-hud').textContent = `${KEEPER_PROFILES[s.difficulty].label.toUpperCase()} · ${s.wall ? `${s.wall}-MAN WALL` : 'NO WALL'}`;
+    $('#atmosphere-label').textContent = { night: 'FLOODLIT NIGHT', sunset: 'GOLDEN HOUR', day: 'CLEAR DAY' }[s.atmosphere];
+    $('#performance').hidden = !s.showFps;
+    $<HTMLSelectElement>('#setting-quality').value = s.quality;
+    $<HTMLSelectElement>('#setting-atmosphere').value = s.atmosphere;
+    for (const key of ['sound', 'guides', 'haptics', 'adaptiveResolution', 'showFps'] as const) $<HTMLInputElement>(`#setting-${key}`).checked = s[key];
     const distance = distanceToGoal(s.position);
     $('#distance-value').innerHTML = `${distance.toFixed(1)} <span>m</span>`;
     $('#stage-distance').innerHTML = `${distance.toFixed(1)}<span>m</span>`;
@@ -465,6 +498,7 @@ export class GameApp {
 
   private updateDisabled() {
     const locked = !this.canSetup();
+    $<HTMLButtonElement>('#taker-button').disabled = locked;
     $$<HTMLButtonElement>('[data-foot], [data-strike]').forEach(button => button.disabled = locked);
     $$<HTMLButtonElement>('[data-spot], [data-difficulty]').forEach(button => button.disabled = locked || !!this.challenge);
     $<HTMLInputElement>('#distance-slider').disabled = locked || !!this.challenge;
@@ -537,7 +571,6 @@ export class GameApp {
     $('#result-distance').textContent = `${result.distance.toFixed(1)} M`;
     $('#result-speed').textContent = `${Math.round(result.speed)} KM/H`;
     $('#shot-result').classList.toggle('is-goal', result.outcome === 'goal');
-    $('#coach-tip').textContent = copy[2];
     if (this.challenge) {
       const hit = this.challenge.definition.accepts(result);
       this.challenge.attempts++;
@@ -600,6 +633,7 @@ export class GameApp {
   }
 
   private openModal(content: string, className = '') {
+    $<HTMLDialogElement>('#setup-drawer').close();
     const modal = $<HTMLDialogElement>('#modal');
     if (!modal.open) this.modalReturnFocus = document.activeElement as HTMLElement;
     modal.className = `modal ${className}`;
@@ -614,8 +648,7 @@ export class GameApp {
     $<HTMLDialogElement>('#modal').close();
     // The native `close` event is queued. Resume synchronously so an immediate
     // Space press after selecting a challenge is not lost while still paused.
-    this.arena?.setPaused(!this.visible);
-    if (this.visible) this.audio.resume();
+    this.resumeIfVisible();
   }
 
   private showHelp() {
@@ -629,28 +662,82 @@ export class GameApp {
     $('#help-play').addEventListener('click', () => this.closeModal());
   }
 
+  private overlayOpen() { return $<HTMLDialogElement>('#modal').open || $<HTMLDialogElement>('#setup-drawer').open; }
+  private resumeIfVisible() {
+    const paused = !this.visible || this.overlayOpen();
+    this.arena?.setPaused(paused);
+    if (paused) this.audio.pause(); else this.audio.resume();
+  }
+  private settingsTab(tab: string) {
+    $$('[data-settings-tab]').forEach(button => button.setAttribute('aria-selected', String(button.dataset.settingsTab === tab)));
+    $('#training-settings').hidden = tab !== 'training';
+    $('#graphics-settings').hidden = tab !== 'graphics';
+  }
   private showSettings() {
-    this.openModal(`<span class="modal-eyebrow">YOUR GAME, YOUR WAY</span><h2 id="modal-title">The finer details.</h2><p class="modal-intro">The arena is paused. Take your time.</p>
-      <div class="settings-list">
-        <label class="setting-row"><span>${icon('Volume2')}<span><strong>Stadium sound</strong><small>Ball strikes, crowd ambience, and celebrations</small></span></span><input type="checkbox" id="setting-sound" ${this.settings.sound ? 'checked' : ''}/><span class="toggle" aria-hidden="true"></span></label>
-        <label class="setting-row"><span>${icon('Move')}<span><strong>Trajectory guide</strong><small>A preview at the suggested power, then your live power</small></span></span><input type="checkbox" id="setting-guides" ${this.settings.guides ? 'checked' : ''}/><span class="toggle" aria-hidden="true"></span></label>
-        <label class="setting-row"><span>${icon('Smartphone')}<span><strong>Haptic feedback</strong><small>Feel the strike on supported Android devices</small></span></span><input type="checkbox" id="setting-haptics" ${this.settings.haptics ? 'checked' : ''}/><span class="toggle" aria-hidden="true"></span></label>
-        <label class="setting-row quality-setting"><span>${icon('Sparkles')}<span><strong>Graphics quality</strong><small>Lower settings help older devices stay smooth</small></span></span><select id="setting-quality" aria-label="Graphics quality"><option value="high">High</option><option value="balanced">Balanced</option><option value="low">Performance</option></select></label>
-      </div><div class="settings-bottom"><button class="secondary-button" id="settings-help">${icon('HelpCircle')} HOW TO PLAY</button><button class="primary-button" id="resume-button">BACK TO THE PITCH ${icon('Play')}</button></div>`);
-    $<HTMLSelectElement>('#setting-quality').value = this.settings.quality;
-    for (const key of ['sound', 'guides', 'haptics'] as const) {
-      $(`#setting-${key}`).addEventListener('change', event => {
-        this.settings[key] = (event.target as HTMLInputElement).checked;
-        if (key === 'sound') this.audio.setEnabled(this.settings.sound);
-        this.applySettings();
+    this.settingsTab('training');
+    this.syncUI();
+    this.arena?.setPaused(true);
+    this.audio.pause();
+    const drawer = $<HTMLDialogElement>('#setup-drawer');
+    if (!drawer.open) drawer.showModal();
+  }
+  private closeDrawer() {
+    $<HTMLDialogElement>('#setup-drawer').close();
+    this.resumeIfVisible();
+    if (!this.overlayOpen()) $('#settings-button').focus({ preventScroll: true });
+  }
+
+  private showPlayers() {
+    if (!this.canSetup()) return;
+    let selection = this.settings.playerId;
+    const selected = getPlayer(selection);
+    this.openModal(`<div class="roster-heading"><span class="modal-eyebrow">THE DIFFERENCE IS IN THE DETAILS</span><h2 id="modal-title">Choose your <em>specialist.</em></h2><p>Four players. Four ways to find the top corner.</p><span class="roster-count">04 <small>PLAYERS</small></span></div>
+      <div class="roster-toolbar"><label class="player-search-label">${icon('Focus')}<input type="search" id="player-search" placeholder="Search player or nation" aria-label="Search players" autocomplete="off"/></label><div class="roster-filters" aria-label="Filter players by foot"><button data-roster-filter="all" aria-pressed="true">ALL PLAYERS</button><button data-roster-filter="right" aria-pressed="false">RIGHT FOOT</button><button data-roster-filter="left" aria-pressed="false">LEFT FOOT</button></div></div><div id="roster-empty" class="roster-empty" role="status" hidden>No players match. Try another name or nation.</div><div class="player-grid" aria-label="Free-kick takers">${PLAYERS.map(player => playerCard(player, player.id === selection)).join('')}</div>
+      <div class="roster-selection"><div><span class="hud-eyebrow">SELECTED PLAYER</span><h3 id="selected-player-name">${selected.name}</h3><p id="selected-player-description">${selected.description}</p></div><button class="primary-button" id="confirm-player">TAKE THE KICK ${icon('ArrowRight')}</button></div>
+      <div class="roster-footnote"><span>Original training ratings, not official FC ratings. Real 2026 photographs.</span><button class="text-link" id="roster-credits">PHOTO CREDITS & LICENSES ${icon('ArrowUpRight')}</button></div>`, 'players-modal');
+    $$<HTMLButtonElement>('.player-card[data-player]').forEach(button => button.addEventListener('click', () => {
+      selection = button.dataset.player!;
+      $$('.player-card[data-player]').forEach(card => {
+        card.classList.toggle('selected', card.dataset.player === selection);
+        card.setAttribute('aria-pressed', String(card.dataset.player === selection));
       });
-    }
-    $('#setting-quality').addEventListener('change', event => {
-      this.settings.quality = (event.target as HTMLSelectElement).value as Settings['quality'];
+      const player = getPlayer(selection);
+      $('#selected-player-name').textContent = player.name;
+      $('#selected-player-description').textContent = player.description;
+    }));
+    let footFilter = 'all';
+    const filterPlayers = () => {
+      const query = $<HTMLInputElement>('#player-search').value.trim().toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      let count = 0;
+      $$<HTMLButtonElement>('.player-card[data-player]').forEach(card => {
+        const player = getPlayer(card.dataset.player!);
+        const text = `${player.name} ${player.nation} ${player.specialty}`.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        card.hidden = !text.includes(query) || (footFilter !== 'all' && player.foot !== footFilter);
+        if (!card.hidden) count++;
+      });
+      $('#roster-empty').hidden = count > 0;
+      $('.roster-count').innerHTML = `${String(count).padStart(2, '0')} <small>PLAYERS</small>`;
+    };
+    $('#player-search').addEventListener('input', filterPlayers);
+    $$('[data-roster-filter]').forEach(button => button.addEventListener('click', () => {
+      footFilter = button.dataset.rosterFilter!;
+      $$('[data-roster-filter]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+      filterPlayers();
+    }));
+    $('#confirm-player').addEventListener('click', () => {
+      const player = getPlayer(selection);
+      this.settings.playerId = player.id;
+      this.settings.foot = player.foot;
+      this.settings.contact = { x: player.foot === 'right' ? -0.43 : 0.43, y: 0.02 };
       this.applySettings();
+      this.closeModal();
+      this.toast(`${player.name}. ${player.specialty}. Your moment.`);
     });
-    $('#resume-button').addEventListener('click', () => this.closeModal());
-    $('#settings-help').addEventListener('click', () => this.showHelp());
+    $('#roster-credits').addEventListener('click', () => this.showPhotoCredits());
+  }
+
+  private showPhotoCredits() {
+    this.openModal(`<span class="modal-eyebrow">REAL PHOTOGRAPHS. PROPER CREDIT.</span><h2 id="modal-title">Player photography</h2><p class="modal-intro">Photos are bundled locally for offline play. The dates below identify the actual photographs, not a claim of a live photo feed.</p><div class="photo-credit-list">${PLAYERS.map(player => `<article><img src="${player.portrait}" alt="${player.name}" width="64" height="80"/><div><h3>${player.name}</h3><p>${player.photoDate} · ${player.credit}</p><a href="${player.photoSource}" target="_blank" rel="noopener noreferrer">Original photograph ↗</a></div></article>`).join('')}</div><p class="modal-footnote">Photographs by Bryan Berlin / WikiPortraits, licensed <a href="${PHOTO_LICENSE}" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>. Adaptations: portrait crop, soft background masking, resize, and WebP conversion; adapted photos remain CC BY-SA 4.0. Card artwork, training ratings, kits, and 3D avatars are original, not official EA assets. No player, photographer, federation, EA, or FIFA endorsement is implied. Image copyright licenses do not grant athlete publicity or trademark rights for commercial distribution.</p>`, 'credits-modal');
   }
 
   private showAndroid() {

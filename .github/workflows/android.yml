@@ -57,6 +57,21 @@ jobs:
         run: npm run check
       - name: Build and bundle the offline game
         run: npm run android:sync
+      - name: Verify all player media is bundled locally
+        run: |
+          node --input-type=module - <<'NODE'
+          import { readFileSync, readdirSync } from 'node:fs';
+          const bundled = 'android/app/src/main/assets/public';
+          for (const name of readdirSync('public/players')) {
+            if (!readFileSync(`public/players/${name}`).equals(readFileSync(`${bundled}/players/${name}`))) {
+              throw new Error(`Offline player asset differs: ${name}`);
+            }
+          }
+          if (!readFileSync('public/textures/stadium-crowd.webp').equals(readFileSync(`${bundled}/textures/stadium-crowd.webp`))) {
+            throw new Error('Offline crowd texture differs');
+          }
+          console.log('All portraits, photo credits, and crowd texture are bundled byte-for-byte.');
+          NODE
       - name: Set up Gradle caching
         uses: gradle/actions/setup-gradle@v6.4.0
       - name: Build installable debug APK and run Android lint

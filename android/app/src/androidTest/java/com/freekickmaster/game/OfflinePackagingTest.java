@@ -18,6 +18,22 @@ public class OfflinePackagingTest {
     }
 
     @Test
+    public void playerPhotosAndCrowdAreBundled() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        for (String player : new String[] { "ronaldo", "messi", "mbappe", "salah" }) {
+            try (InputStream photo = context.getAssets().open("public/players/" + player + ".webp")) {
+                assertTrue("Offline portrait must not be empty", photo.available() > 10000);
+            }
+        }
+        try (InputStream crowd = context.getAssets().open("public/textures/stadium-crowd.webp")) {
+            assertTrue("Offline crowd texture must not be empty", crowd.available() > 10000);
+        }
+        try (InputStream credits = context.getAssets().open("public/players/LICENSE.md")) {
+            assertTrue("Photo attribution must travel with the APK", credits.available() > 100);
+        }
+    }
+
+    @Test
     public void gameAndConfigAreBundled() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         try (InputStream game = context.getAssets().open("public/index.html")) {

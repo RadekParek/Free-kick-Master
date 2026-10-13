@@ -3,8 +3,9 @@
 ## What is included
 
 - App ID: `com.freekickmaster.game`
+- Version 2.0, versionCode 2; fullscreen HUD / selectable takers edition.
 - Native Capacitor 7 Android host with an accelerated WebGL 2 / Three.js game.
-- Every runtime font/texture-generation routine, scene, sound routine, and JS module is bundled in `assets/public` by `npm run android:sync`.
+- Every runtime font, credited player portrait, crowd texture, texture-generation routine, scene, sound routine, and JS module is bundled in `assets/public` by `npm run android:sync`.
 - Immersive **sensor-landscape** play, display kept awake while the activity is active, Android back-button pause/settings, pause on background, optional native haptics.
 - Original adaptive/legacy icons and splash art. `scripts/generate-icons.py` regenerates PNG assets with Pillow.
 - No remote `server.url`, localhost API dependency, user account, ads, or analytics.
@@ -56,10 +57,12 @@ Use an APK for direct installation; use a signed AAB and the store's then-curren
 
 - Fresh install launches without a development server or network connection.
 - Landscape works in both orientations; transient system bars can be shown with an edge swipe.
-- Touch pitch map and ball contact marker; hold/release power without browser scrolling.
+- Open Settings for the pitch map; change players through the HUD card; verify real photos still display in airplane mode.
+- Touch the ball contact marker; hold/release power without browser scrolling.
 - Leave the app during a charge/run-up/flight; return without an accidental shot or time jump.
 - Test every goalkeeper level, wall count, corner, power range, and a replay.
 - Verify all 5 challenge attempts and the completion screen.
+- Test all three lighting modes and both adaptive-resolution states; check that the performance monitor reports real values.
 - Test **Balanced** / **Performance** graphics on weaker GPUs. Performance disables expensive shadow maps and limits render resolution.
 - Test native haptics and audio after the first user gesture.
 - Back opens Settings (or closes the open dialog); Home backgrounds the app.

@@ -3,12 +3,13 @@ import {
   BALL_RADIUS, FIXED_DT, GOAL_HEIGHT, GOAL_WIDTH, clamp, cloneBall,
   distanceToGoal, getWall, integrateBall, launchBall,
   lerp, previewShot, recommendedPower, shotSpeed, strikeName, wallJump,
-  type Aim, type BallState, type Outcome, type ShotSetup, type Vec3,
+  type Aim, type BallState, type Outcome, type ShotSetup, type Vec3, type WallPlayer,
 } from './physics';
 import { cloneKeeper, createKeeper, KEEPER_Z, type KeeperState } from './keeper';
 import { Player, makeFootball } from './player';
 import { Stadium } from './stadium';
 import { advanceShot } from './simulation';
+import { getPlayer } from '../players';
 import type { Settings, ShotResult } from '../state';
 
 export type Phase = 'ready' | 'charging' | 'runup' | 'flight' | 'result' | 'replay';
@@ -19,6 +20,7 @@ export interface ArenaEvents {
   aim: (aim: Aim) => void;
   target: (x: number, y: number, visible: boolean) => void;
   error: (message: string) => void;
+  performance?: (stats: { fps: number; calls: number; triangles: number; scale: number }) => void;
 }
 interface ReplayFrame { ball: Vec3; keeper: KeeperState; time: number }
 
@@ -45,7 +47,19 @@ export class Arena {
   private guide: THREE.Line;
   private dots: THREE.InstancedMesh;
   private trace: THREE.Line;
-  private tracePoints: number[] = [];
+  private readonly tracePositions = new Float32Array(720);
+  private tracePointCount = 0;
+  private readonly guidePositions = new Float32Array(512 * 3);
+  private readonly guideDistances = new Float32Array(512);
+  private readonly scratchObject = new THREE.Object3D();
+  private readonly projectedAim = new THREE.Vector3();
+  private wall: WallPlayer[] = [];
+  private resolutionScale = 1;
+  private metricsStart = 0;
+  private metricsFrames = 0;
+  private slowWindows = 0;
+  private fastWindows = 0;
+  private shadowTime = -1;
   private time = 0;
   private phaseTime = 0;
   private accumulator = 0;
@@ -73,22 +87,26 @@ export class Arena {
     this.shotSetup = this.setup(recommendedPower(settings.position));
     this.ball = launchBall(this.shotSetup);
     this.keeper = createKeeper(settings.position.x);
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({ antialias: (window.devicePixelRatio || 1) < 1.5, alpha: false, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = settings.quality !== 'low';
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.setClearColor('#b9cfc6');
     this.renderer.domElement.setAttribute('aria-label', 'Interactive 3D free-kick arena. Drag to aim, or use the arrow keys.');
     this.renderer.domElement.setAttribute('role', 'img');
     this.container.appendChild(this.renderer.domElement);
     this.stadium = new Stadium(this.scene);
+    this.stadium.setAtmosphere(settings.atmosphere);
+    this.stadium.setQuality(settings.quality);
     const shadowSize = settings.quality === 'high' ? 2048 : 1024;
     this.stadium.sun.shadow.mapSize.set(shadowSize, shadowSize);
     this.football = makeFootball();
     this.scene.add(this.football);
-    this.taker = new Player('taker', 10, 0);
+    this.taker = new Player('taker', 7, 0);
+    this.taker.setProfile(getPlayer(settings.playerId));
     this.keeperModel = new Player('keeper', 1, 2);
     this.keeperModel.group.position.z = KEEPER_Z;
     this.wallModels = Array.from({ length: 5 }, (_, i) => new Player('wall', [4, 5, 6, 8, 2][i], i + 1));
@@ -99,13 +117,13 @@ export class Arena {
     this.ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.14, 20), new THREE.MeshBasicMaterial({ color: '#183420', transparent: true, opacity: 0.3, depthWrite: false }));
     this.ballShadow.rotation.x = -Math.PI / 2;
     this.scene.add(this.ballShadow);
-    this.guide = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: '#efffd5', transparent: true, opacity: 0.65, dashSize: 0.2, gapSize: 0.19, depthWrite: false }));
+    this.guide = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(this.guidePositions, 3).setUsage(THREE.DynamicDrawUsage)).setAttribute('lineDistance', new THREE.BufferAttribute(this.guideDistances, 1).setUsage(THREE.DynamicDrawUsage)), new THREE.LineDashedMaterial({ color: '#efffd5', transparent: true, opacity: 0.65, dashSize: 0.2, gapSize: 0.19, depthWrite: false }));
     this.guide.frustumCulled = false;
     this.scene.add(this.guide);
     this.dots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.043, 6, 4), new THREE.MeshBasicMaterial({ color: '#d4ffa0' }), 100);
     this.dots.frustumCulled = false;
     this.scene.add(this.dots);
-    this.trace = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#edffd4', transparent: true, opacity: 0.42, depthWrite: false }));
+    this.trace = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(this.tracePositions, 3).setUsage(THREE.DynamicDrawUsage)), new THREE.LineBasicMaterial({ color: '#edffd4', transparent: true, opacity: 0.42, depthWrite: false }));
     this.trace.frustumCulled = false;
     this.scene.add(this.trace);
     this.observer = new ResizeObserver(() => this.resize());
@@ -125,7 +143,7 @@ export class Arena {
   private setup(power: number): ShotSetup {
     return {
       position: { ...this.settings.position }, aim: { ...this.settings.aim },
-      contact: { ...this.settings.contact }, power, foot: this.settings.foot,
+      contact: { ...this.settings.contact }, power, foot: this.settings.foot, attributes: { ...getPlayer(this.settings.playerId).attributes },
     };
   }
 
@@ -139,31 +157,40 @@ export class Arena {
     const old = this.settings;
     const moved = settings.position.x !== old.position.x || settings.position.z !== old.position.z || settings.foot !== old.foot || settings.wall !== old.wall;
     const techniqueChanged = settings.aim.x !== old.aim.x || settings.aim.y !== old.aim.y || settings.contact.x !== old.contact.x || settings.contact.y !== old.contact.y;
-    const gameplayChanged = moved || techniqueChanged || settings.difficulty !== old.difficulty;
+    const playerChanged = settings.playerId !== old.playerId;
+    const gameplayChanged = moved || techniqueChanged || playerChanged || settings.difficulty !== old.difficulty;
     const qualityChanged = settings.quality !== old.quality;
     this.settings = structuredClone(settings);
+    if (playerChanged) this.taker.setProfile(getPlayer(settings.playerId));
+    if (settings.atmosphere !== old.atmosphere) this.stadium.setAtmosphere(settings.atmosphere);
+    if (settings.adaptiveResolution !== old.adaptiveResolution) { this.resolutionScale = 1; this.slowWindows = this.fastWindows = 0; this.resize(); }
     if (qualityChanged) {
+      this.resolutionScale = 1;
+      this.stadium.setQuality(settings.quality);
       this.renderer.shadowMap.enabled = settings.quality !== 'low';
+      this.scene.traverse(object => {
+        if (object instanceof THREE.Mesh) for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.needsUpdate = true;
+      });
       const size = settings.quality === 'high' ? 2048 : 1024;
       this.stadium.sun.shadow.mapSize.set(size, size);
       this.stadium.sun.shadow.map?.dispose();
       this.stadium.sun.shadow.map = null;
       this.resize();
     }
-    if (moved || (this.phase === 'result' && gameplayChanged)) this.reset();
+    if (moved || playerChanged || (this.phase === 'result' && gameplayChanged)) this.reset();
     else if (this.phase === 'ready' || this.phase === 'charging') this.updatePreview(true);
-    this.trace.visible = this.settings.guides && this.tracePoints.length > 3 && (this.phase === 'flight' || this.phase === 'result');
+    this.trace.visible = this.settings.guides && this.tracePointCount > 1 && (this.phase === 'flight' || this.phase === 'result');
   }
 
   private resize() {
     const bounds = this.container.getBoundingClientRect();
     this.width = Math.max(1, bounds.width);
     this.height = Math.max(1, bounds.height);
-    const maxRatio = this.settings.quality === 'high' ? 1.75 : this.settings.quality === 'balanced' ? 1.25 : 1;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxRatio));
+    const maxRatio = this.settings.quality === 'high' ? 1.5 : this.settings.quality === 'balanced' ? 1.25 : 1;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxRatio) * this.resolutionScale);
     this.renderer.setSize(this.width, this.height, false);
     this.camera.aspect = this.width / this.height;
-    this.camera.fov = this.width < 600 ? 47 : 39;
+    this.camera.fov = this.width < this.height ? 50 : this.height < 500 ? 44 : 39;
     this.camera.updateProjectionMatrix();
   }
 
@@ -176,7 +203,9 @@ export class Arena {
     this.football.position.set(this.ball.position.x, BALL_RADIUS, this.ball.position.z);
     this.football.rotation.set(0, 0.3, 0.1);
     this.ring.position.set(this.ball.position.x, 0.022, this.ball.position.z);
-    const wall = getWall(this.settings.position, this.settings.wall);
+    const wall = this.wall = getWall(this.settings.position, this.settings.wall);
+    this.stadium.focusPatch(this.settings.position.x, this.settings.position.z);
+    this.renderer.shadowMap.needsUpdate = true;
     this.wallModels.forEach((model, i) => {
       model.group.visible = i < wall.length;
       if (wall[i]) {
@@ -187,7 +216,7 @@ export class Arena {
     });
     this.positionTaker(0);
     this.keeperModel.keeperPose(this.keeper, this.time);
-    this.tracePoints = [];
+    this.tracePointCount = 0;
     this.setTrace();
     this.setPhase('ready');
     this.updatePreview(true);
@@ -210,7 +239,7 @@ export class Arena {
     this.ring.visible = false;
     this.replayFrames = [];
     this.lastResult = null;
-    this.tracePoints = [];
+    this.tracePointCount = 0;
     this.setTrace();
     this.setPhase('runup');
   }
@@ -291,7 +320,10 @@ export class Arena {
     const p = this.settings.position;
     const side = this.settings.foot === 'right' ? -1 : 1;
     const t = Math.min(1, run / 0.85);
-    this.taker.group.position.set(p.x + side * lerp(1.07, 0.2, t), 0, p.z + lerp(2.15, 0.21, t));
+    const length = distanceToGoal(p);
+    const back = lerp(2.15, 0.21, t);
+    const lateral = side * lerp(1.07, 0.2, t);
+    this.taker.group.position.set(p.x + p.x / length * back + p.z / length * lateral, 0, p.z + p.z / length * back - p.x / length * lateral);
     this.taker.group.rotation.y = Math.atan2(p.x - this.settings.aim.x, p.z);
   }
 
@@ -300,18 +332,23 @@ export class Arena {
     if (!force && Math.abs(power - this.previewPower) < 0.025) return;
     this.previewPower = power;
     const points = previewShot(this.setup(power));
-    const vectors = points.map(p => new THREE.Vector3(p.x, p.y, p.z));
-    this.guide.geometry.dispose();
-    this.guide.geometry = new THREE.BufferGeometry().setFromPoints(vectors);
-    this.guide.computeLineDistances();
-    const object = new THREE.Object3D();
-    const selected = vectors.filter((_, i) => i % 3 === 0);
-    this.dots.count = Math.min(100, selected.length);
-    selected.slice(0, 100).forEach((point, index) => {
-      object.position.copy(point);
-      object.updateMatrix();
-      this.dots.setMatrixAt(index, object.matrix);
-    });
+    const count = Math.min(points.length, 512);
+    let travelled = 0;
+    let dot = 0;
+    const object = this.scratchObject;
+    for (let i = 0; i < count; i++) {
+      const p = points[i];
+      this.guidePositions.set([p.x, p.y, p.z], i * 3);
+      if (i) travelled += Math.hypot(p.x - points[i - 1].x, p.y - points[i - 1].y, p.z - points[i - 1].z);
+      this.guideDistances[i] = travelled;
+      if (i % 3 === 0 && dot < 100) {
+        object.position.set(p.x, p.y, p.z); object.updateMatrix(); this.dots.setMatrixAt(dot++, object.matrix);
+      }
+    }
+    this.guide.geometry.setDrawRange(0, count);
+    this.guide.geometry.attributes.position.needsUpdate = true;
+    this.guide.geometry.attributes.lineDistance.needsUpdate = true;
+    this.dots.count = dot;
     this.dots.instanceMatrix.needsUpdate = true;
     this.guide.visible = this.dots.visible = this.settings.guides && (this.phase === 'ready' || this.phase === 'charging');
     this.ring.visible = true;
@@ -319,9 +356,12 @@ export class Arena {
 
   private tick = (timestamp: number) => {
     this.raf = requestAnimationFrame(this.tick);
-    const dt = this.lastTick ? Math.min((timestamp - this.lastTick) / 1000, 0.05) : 1 / 60;
+    if (this.paused) { this.metricsStart = timestamp; this.metricsFrames = 0; return; }
+    const idle = this.phase === 'ready' || (this.phase === 'result' && this.phaseTime > 3);
+    // Idle breathing/crowd animation at 30 Hz; active shots retain the display frame rate.
+    if (idle && this.lastTick && timestamp - this.lastTick < 1000 / 30 - 1) return;
+    const dt = this.lastTick ? Math.min((timestamp - this.lastTick) / 1000, 0.1) : 1 / 60;
     this.lastTick = timestamp;
-    if (this.paused) return;
     this.time += dt;
     this.phaseTime += dt;
     if (this.phase === 'charging') {
@@ -368,7 +408,7 @@ export class Arena {
     } else if (this.phase === 'replay') this.stepReplay(dt);
     this.football.position.set(this.ball.position.x, this.ball.position.y, this.ball.position.z);
     if (this.phase === 'flight' || this.phase === 'result' || this.phase === 'replay') {
-      this.football.rotation.x -= dt * Math.hypot(this.ball.velocity.x, this.ball.velocity.z) * 2.8;
+      this.football.rotation.x -= dt * (this.ball.knuckle ? 1.3 : Math.hypot(this.ball.velocity.x, this.ball.velocity.z) * 2.8);
       this.football.rotation.y += dt * this.ball.sideSpin;
     }
     this.ballShadow.position.set(this.ball.position.x, 0.022, this.ball.position.z);
@@ -376,13 +416,32 @@ export class Arena {
     (this.ballShadow.material as THREE.MeshBasicMaterial).opacity = Math.max(0.05, 0.32 - this.ball.position.y * 0.055);
     this.stadium.update(this.time);
     this.updateCamera(dt);
-    const aim = new THREE.Vector3(this.settings.aim.x, this.settings.aim.y, 0).project(this.camera);
+    const aim = this.projectedAim.set(this.settings.aim.x, this.settings.aim.y, 0).project(this.camera);
     this.events.target((aim.x + 1) / 2 * this.width, (-aim.y + 1) / 2 * this.height, this.phase === 'ready' || this.phase === 'charging');
+    if (!idle || this.time - this.shadowTime > .12) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.shadowTime = this.time;
+    }
     this.renderer.render(this.scene, this.camera);
+    this.metricsFrames++;
+    if (!this.metricsStart) this.metricsStart = timestamp;
+    if (timestamp - this.metricsStart >= 1200) {
+      const fps = Math.round(this.metricsFrames * 1000 / (timestamp - this.metricsStart));
+      this.events.performance?.({ fps, calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, scale: Math.round(this.resolutionScale * 100) });
+      const target = idle ? 30 : 60;
+      this.slowWindows = fps < target * .72 ? this.slowWindows + 1 : 0;
+      this.fastWindows = fps >= target * .95 ? this.fastWindows + 1 : 0;
+      if (this.settings.adaptiveResolution && this.slowWindows >= 3 && this.resolutionScale > .65) {
+        this.resolutionScale = Math.max(.65, this.resolutionScale - .1); this.slowWindows = 0; this.resize();
+      } else if (this.settings.adaptiveResolution && this.fastWindows >= 8 && this.resolutionScale < 1) {
+        this.resolutionScale = Math.min(1, this.resolutionScale + .05); this.fastWindows = 0; this.resize();
+      }
+      this.metricsStart = timestamp; this.metricsFrames = 0;
+    }
   };
 
   private stepShot() {
-    const event = advanceShot(this.ball, this.keeper, getWall(this.shotSetup.position, this.settings.wall), this.settings.difficulty);
+    const event = advanceShot(this.ball, this.keeper, this.wall, this.settings.difficulty);
     this.recordFrame();
     if (!event) return;
     if (event.outcome === 'goal') this.stadium.ripple(new THREE.Vector3(event.point.x, event.point.y, -1.6), this.time);
@@ -411,23 +470,26 @@ export class Arena {
     this.frameCounter++;
     if (this.frameCounter % 2 !== 0) return;
     if (this.replayFrames.length < 480) this.replayFrames.push({ ball: { ...this.ball.position }, keeper: cloneKeeper(this.keeper), time: this.ball.time });
-    this.tracePoints.push(this.ball.position.x, this.ball.position.y, this.ball.position.z);
-    if (this.tracePoints.length > 720) this.tracePoints.splice(0, 3);
+    if (this.tracePointCount >= 240) this.tracePositions.copyWithin(0, 3);
+    else this.tracePointCount++;
+    const i = (this.tracePointCount - 1) * 3;
+    this.tracePositions[i] = this.ball.position.x;
+    this.tracePositions[i + 1] = this.ball.position.y;
+    this.tracePositions[i + 2] = this.ball.position.z;
     this.setTrace();
   }
 
   private setTrace() {
-    this.trace.geometry.dispose();
-    this.trace.geometry = new THREE.BufferGeometry();
-    this.trace.geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.tracePoints, 3));
-    this.trace.visible = this.tracePoints.length > 3 && this.settings.guides;
+    this.trace.geometry.setDrawRange(0, this.tracePointCount);
+    this.trace.geometry.attributes.position.needsUpdate = true;
+    this.trace.visible = this.tracePointCount > 1 && this.settings.guides;
   }
 
   private resolve(outcome: Outcome, point = this.ball.position) {
     this.lastResult = {
       outcome,
       distance: distanceToGoal(this.shotSetup.position),
-      speed: shotSpeed(this.shotSetup.power) * 3.6,
+      speed: shotSpeed(this.shotSetup.power, this.shotSetup.attributes) * 3.6,
       power: this.shotSetup.power,
       point: { x: point.x, y: point.y },
       technique: strikeName(this.shotSetup.contact, this.shotSetup.foot),
@@ -467,9 +529,13 @@ export class Arena {
       this.desiredLook.set(p.x * 0.3, 1.0, p.z * 0.3);
     } else {
       const forward = this.phase === 'flight' || this.phase === 'result' ? Math.min(2.3, this.ball.time * 1.8) : 0;
-      this.desiredCamera.set(p.x + 0.65, 3.1, p.z + 9.5 - forward);
-      // Frame the kicker's whole body and the ball, rather than cropping at the waist.
-      this.desiredLook.set(p.x * 0.12, -2.7, 0);
+      const portrait = this.width < this.height;
+      const length = distanceToGoal(p);
+      const back = (portrait ? 13.2 : 9.7) - forward;
+      const lateral = portrait ? (this.settings.foot === 'right' ? -.45 : .45) : .65;
+      this.desiredCamera.set(p.x + p.x / length * back + p.z / length * lateral, 3.3, p.z + p.z / length * back - p.x / length * lateral);
+      // Constant camera pitch and shot-local positioning also frame wide spots/portrait phones.
+      this.desiredLook.set(0, 3.3 - (length + back) * (portrait ? .145 : .19), 0);
     }
     const blend = snap ? 1 : 1 - Math.exp(-dt * 4.5);
     this.camera.position.lerp(this.desiredCamera, blend);
