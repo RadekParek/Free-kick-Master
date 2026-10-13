@@ -276,10 +276,11 @@ export class GameApp {
     $('#reset-session').addEventListener('click', () => this.showReset());
     this.bindKeyboard();
     const modal = $<HTMLDialogElement>('#modal');
-    modal.addEventListener('click', event => { if (event.target === modal) modal.close(); });
+    modal.addEventListener('click', event => { if (event.target === modal) this.closeModal(); });
+    modal.addEventListener('cancel', event => { event.preventDefault(); this.closeModal(); });
     modal.addEventListener('close', () => {
-      this.arena?.setPaused(!this.visible);
-      if (this.visible) this.audio.resume();
+      this.arena?.setPaused(!this.visible || modal.open);
+      if (this.visible && !modal.open) this.audio.resume();
       this.modalReturnFocus?.focus({ preventScroll: true });
     });
     document.addEventListener('visibilitychange', () => this.setVisible(!document.hidden));
@@ -295,7 +296,7 @@ export class GameApp {
   }
 
   handleBack() {
-    if ($<HTMLDialogElement>('#modal').open) $<HTMLDialogElement>('#modal').close();
+    if ($<HTMLDialogElement>('#modal').open) this.closeModal();
     else this.showSettings();
   }
 
@@ -606,10 +607,16 @@ export class GameApp {
     this.arena?.setPaused(true);
     this.audio.pause();
     if (!modal.open) modal.showModal();
-    $('[data-close]').addEventListener('click', () => modal.close());
+    $('[data-close]').addEventListener('click', () => this.closeModal());
     drawIcons();
   }
-  private closeModal() { $<HTMLDialogElement>('#modal').close(); }
+  private closeModal() {
+    $<HTMLDialogElement>('#modal').close();
+    // The native `close` event is queued. Resume synchronously so an immediate
+    // Space press after selecting a challenge is not lost while still paused.
+    this.arena?.setPaused(!this.visible);
+    if (this.visible) this.audio.resume();
+  }
 
   private showHelp() {
     this.openModal(`<span class="modal-eyebrow">A GAME OF SMALL ADJUSTMENTS</span><h2 id="modal-title">Own the dead ball.</h2><p class="modal-intro">The goal is simple. The perfect free kick takes a little practice.</p>

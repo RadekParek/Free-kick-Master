@@ -60,6 +60,11 @@ test('scores a physical goal, records it once, replays, and prepares the next ki
   await expect(page.locator('#result-title')).toHaveText(/GOAL|TOP BINS/);
   await expect(page.locator('#stat-attempts')).toHaveText('1');
   await expect(page.locator('#stat-goals')).toHaveText('1');
+  // Cosmetic settings must not erase a completed shot or its replay.
+  await page.locator('#settings-button').click();
+  await page.locator('#setting-guides').uncheck();
+  await page.locator('#resume-button').click();
+  await expect(page.locator('#app')).toHaveAttribute('data-phase', 'result');
   await page.locator('#replay-button').click();
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'replay');
   await expect(page.locator('#replay-label')).toBeVisible();

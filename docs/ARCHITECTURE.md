@@ -34,7 +34,7 @@ All gameplay physics and goal/save decisions are deterministic. Randomness is co
 
 ## Mobile/performance
 
-A single WebGL renderer is resized with `ResizeObserver`. Quality limits DPR (1.75 / 1.25 / 1.0); Performance turns off shadow maps. Seats and crowd use instancing. Goal-net deformation only runs briefly after a goal. Assets are generated locally or bundled, with no model/texture requests. Android haptics are called only on the native platform and gracefully tolerate unsupported devices.
+A single WebGL renderer is resized with `ResizeObserver`. Quality limits DPR (1.75 / 1.25 / 1.0); High uses 2048 px shadow maps, Balanced uses 1024 px, and Performance turns off shadow maps. Seats and crowd use instancing. Goal-net deformation only runs briefly after a goal. Assets are generated locally or bundled, with no model/texture requests. Android haptics are called only on the native platform and gracefully tolerate unsupported devices.
 
 ## Data
 
@@ -43,5 +43,5 @@ Only preferences, personal-best streak, and per-challenge personal bests are sto
 ## Testing
 
 - Unit tests exercise the exact shared physics/keeper stepper: power/spin sensitivity, deterministic knuckle flight, preview agreement, geometry and swept collisions, valid placement, difficulty ordering, scoreable/saveable scenarios, and finite resolution across extreme positions.
-- Chromium tests use a real WebGL canvas, interact through the actual DOM, score/replay/reset a shot, test pause cancellation and challenge setup, and exercise a real CDP touch gesture plus portrait/landscape bounds.
+- Chromium tests use a real WebGL canvas, interact through the actual DOM, score/replay/reset a shot, test pause cancellation and challenge setup, and exercise a real CDP touch gesture plus portrait/landscape bounds. A complete five-attempt challenge test verifies its completion dialog and return to practice.
 - APK compilation and Android lint run in `.github/workflows/android.yml`. Physical-device graphics/performance validation remains a separate required release step.

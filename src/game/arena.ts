@@ -84,6 +84,8 @@ export class Arena {
     this.renderer.domElement.setAttribute('role', 'img');
     this.container.appendChild(this.renderer.domElement);
     this.stadium = new Stadium(this.scene);
+    const shadowSize = settings.quality === 'high' ? 2048 : 1024;
+    this.stadium.sun.shadow.mapSize.set(shadowSize, shadowSize);
     this.football = makeFootball();
     this.scene.add(this.football);
     this.taker = new Player('taker', 10, 0);
@@ -134,12 +136,23 @@ export class Arena {
   }
 
   updateSettings(settings: Settings) {
-    const moved = settings.position.x !== this.settings.position.x || settings.position.z !== this.settings.position.z || settings.foot !== this.settings.foot || settings.wall !== this.settings.wall;
+    const old = this.settings;
+    const moved = settings.position.x !== old.position.x || settings.position.z !== old.position.z || settings.foot !== old.foot || settings.wall !== old.wall;
+    const techniqueChanged = settings.aim.x !== old.aim.x || settings.aim.y !== old.aim.y || settings.contact.x !== old.contact.x || settings.contact.y !== old.contact.y;
+    const gameplayChanged = moved || techniqueChanged || settings.difficulty !== old.difficulty;
+    const qualityChanged = settings.quality !== old.quality;
     this.settings = structuredClone(settings);
-    this.renderer.shadowMap.enabled = settings.quality !== 'low';
-    this.resize();
-    if (this.phase === 'result' || moved) this.reset();
+    if (qualityChanged) {
+      this.renderer.shadowMap.enabled = settings.quality !== 'low';
+      const size = settings.quality === 'high' ? 2048 : 1024;
+      this.stadium.sun.shadow.mapSize.set(size, size);
+      this.stadium.sun.shadow.map?.dispose();
+      this.stadium.sun.shadow.map = null;
+      this.resize();
+    }
+    if (moved || (this.phase === 'result' && gameplayChanged)) this.reset();
     else if (this.phase === 'ready' || this.phase === 'charging') this.updatePreview(true);
+    this.trace.visible = this.settings.guides && this.tracePoints.length > 3 && (this.phase === 'flight' || this.phase === 'result');
   }
 
   private resize() {
