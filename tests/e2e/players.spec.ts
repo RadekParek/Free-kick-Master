@@ -4,7 +4,7 @@ const initSettings = () => {
   if (!localStorage.getItem('fkm.settings.v1')) localStorage.setItem('fkm.settings.v1', JSON.stringify({ quality: 'low', sound: false }));
 };
 
-test('menu opens the full roster with 30 cards, searches real players, switches the taker and persists the selection', async ({ page }) => {
+test('menu opens the full roster with 40 cards, searches real players, switches the taker and persists the selection', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' || message.type() === 'warning') errors.push(message.text()); });
@@ -15,10 +15,10 @@ test('menu opens the full roster with 30 cards, searches real players, switches 
   await expect(page.locator('#game-view')).toBeHidden();
   await expect(page.locator('#menu-play')).toBeVisible();
   await expect(page.locator('#menu-practice')).toBeVisible();
-  await expect(page.locator('#menu-player-count')).toHaveText('30');
+  await expect(page.locator('#menu-player-count')).toHaveText('40');
   await page.locator('#menu-players').click();
-  await expect(page.locator('.player-card[data-player]')).toHaveCount(30);
-  await expect(page.locator('.player-card[data-player].is-special')).toHaveCount(15);
+  await expect(page.locator('.player-card[data-player]')).toHaveCount(40);
+  await expect(page.locator('.player-card[data-player].is-special')).toHaveCount(20);
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('.card-portrait')].every(image => image.complete && image.naturalWidth > 0));
   expect(await page.locator('.card-portrait').evaluateAll(images => images.every(image => new URL((image as HTMLImageElement).src).origin === location.origin))).toBe(true);
   await page.locator('#player-search').fill('argentina');
@@ -28,7 +28,7 @@ test('menu opens the full roster with 30 cards, searches real players, switches 
   await expect(page.locator('#roster-empty')).toBeVisible();
   await page.locator('#player-search').fill('');
   await page.locator('[data-edition-filter="special"]').click();
-  await expect(page.locator('.player-card[data-player]:visible')).toHaveCount(15);
+  await expect(page.locator('.player-card[data-player]:visible')).toHaveCount(20);
   await page.locator('[data-edition-filter="all"]').click();
   await page.locator('[data-player="messi"]').click();
   await expect(page.locator('#selected-player-name')).toHaveText('Lionel Messi');

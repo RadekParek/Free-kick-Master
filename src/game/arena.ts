@@ -90,7 +90,7 @@ export class Arena {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = settings.quality !== 'low';
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = settings.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.setClearColor('#b9cfc6');
     this.renderer.domElement.setAttribute('aria-label', 'Interactive 3D free-kick arena. Drag to aim, or use the arrow keys.');
@@ -99,7 +99,7 @@ export class Arena {
     this.stadium = new Stadium(this.scene);
     this.stadium.setAtmosphere(settings.atmosphere);
     this.stadium.setQuality(settings.quality);
-    const shadowSize = settings.quality === 'high' ? 2048 : 1024;
+    const shadowSize = settings.quality === 'high' ? 1024 : 512;
     this.stadium.sun.shadow.mapSize.set(shadowSize, shadowSize);
     this.football = makeFootball();
     this.scene.add(this.football);
@@ -165,10 +165,11 @@ export class Arena {
     if (qualityChanged) {
       this.stadium.setQuality(settings.quality);
       this.renderer.shadowMap.enabled = settings.quality !== 'low';
+      this.renderer.shadowMap.type = settings.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
       this.scene.traverse(object => {
         if (object instanceof THREE.Mesh) for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.needsUpdate = true;
       });
-      const size = settings.quality === 'high' ? 2048 : 1024;
+      const size = settings.quality === 'high' ? 1024 : 512;
       this.stadium.sun.shadow.mapSize.set(size, size);
       this.stadium.sun.shadow.map?.dispose();
       this.stadium.sun.shadow.map = null;
@@ -529,9 +530,9 @@ export class Arena {
       const length = distanceToGoal(p);
       const back = (portrait ? 13.2 : 9.7) - forward;
       const lateral = portrait ? (this.settings.foot === 'right' ? -.45 : .45) : .65;
-      this.desiredCamera.set(p.x + p.x / length * back + p.z / length * lateral, 3.3, p.z + p.z / length * back - p.x / length * lateral);
+      this.desiredCamera.set(p.x + p.x / length * back + p.z / length * lateral, 2.5, p.z + p.z / length * back - p.x / length * lateral);
       // Constant camera pitch and shot-local positioning also frame wide spots/portrait phones.
-      this.desiredLook.set(0, 3.3 - (length + back) * (portrait ? .145 : .19), 0);
+      this.desiredLook.set(0, 1.2, 0);
       // Barely perceptible handheld drift while the kicker sets up.
       if (this.phase === 'ready' || this.phase === 'charging') {
         this.desiredCamera.x += Math.sin(this.time * 0.61) * 0.028;

@@ -43,7 +43,11 @@ function knit(): THREE.CanvasTexture {
   return knitTexture;
 }
 
+const numberCache = new Map<string, THREE.CanvasTexture>();
 function numberTexture(number: number, name: string, color: string) {
+  const key = `${number}|${name}|${color}`;
+  const cached = numberCache.get(key);
+  if (cached) return cached;
   const canvas = document.createElement('canvas');
   canvas.width = 256; canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
@@ -53,6 +57,7 @@ function numberTexture(number: number, name: string, color: string) {
   ctx.font = '600 160px "Barlow Condensed", sans-serif';
   ctx.fillText(String(number), 128, 205);
   const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace;
+  numberCache.set(key, tex);
   return tex;
 }
 
@@ -94,9 +99,9 @@ class Athlete {
     const faceDark = material('#302524');
     const sclera = material('#f1ece2', 0.35);
     const mesh = (geometry: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D, x: number, y: number, z: number) => {
-      const m = new THREE.Mesh(geometry, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m;
+      const m = new THREE.Mesh(geometry, mat); m.position.set(x, y, z); m.castShadow = hi; parent.add(m); return m;
     };
-    const sphereGeometry = (s: number) => new THREE.SphereGeometry(1, pick(Math.round(s * 1.6), 8), pick(Math.round(s * 1.1), 6));
+    const sphereGeometry = (s: number) => new THREE.SphereGeometry(1, pick(Math.round(s * 2.2), 10), pick(Math.round(s * 1.6), 6));
     const sphere = (mat: THREE.Material, parent: THREE.Object3D, x: number, y: number, z: number, sx: number, sy: number, sz: number, s = 28) => {
       const m = mesh(sphereGeometry(s), mat, parent, x, y, z); m.scale.set(sx, sy, sz); return m;
     };
@@ -106,14 +111,14 @@ class Athlete {
     ], pick(64, 14));
     this.torso = mesh(chest, jersey, this.body, 0, 1.18, 0);
     this.torso.scale.set(1.1, 1, .73);
-    mesh(new THREE.CylinderGeometry(.181, .189, .19, pick(48, 12)), shorts, this.body, 0, .87, 0).scale.z = .77;
-    mesh(new THREE.CylinderGeometry(.069, .079, .13, pick(36, 10)), skin, this.body, 0, 1.49, 0);
-    const collar = mesh(new THREE.TorusGeometry(.086, .013, 8, pick(48, 12)), trim, this.body, 0, 1.449, 0);
+    mesh(new THREE.CylinderGeometry(.181, .189, .19, pick(64, 12)), shorts, this.body, 0, .87, 0).scale.z = .77;
+    mesh(new THREE.CylinderGeometry(.069, .079, .13, pick(48, 10)), skin, this.body, 0, 1.49, 0);
+    const collar = mesh(new THREE.TorusGeometry(.086, .013, 8, pick(64, 12)), trim, this.body, 0, 1.449, 0);
     collar.rotation.x = Math.PI / 2;
     // Neck-to-chest V: a darker jersey insert reads as a real collar, not a flat cut.
-    if (hi) mesh(new THREE.ConeGeometry(.07, .1, 20, 1, true), jersey, this.body, 0, 1.43, -.045).rotation.x = Math.PI;
+    if (hi) mesh(new THREE.ConeGeometry(.07, .1, 28, 1, true), jersey, this.body, 0, 1.43, -.045).rotation.x = Math.PI;
     sphere(skin, this.body, 0, 1.655, -.006, .131, .178, .137, 32);
-    const scalp = mesh(new THREE.SphereGeometry(.136, pick(32, 14), pick(20, 8), 0, Math.PI * 2, 0, 1.47), hair, this.body, 0, 1.685, .012);
+    const scalp = mesh(new THREE.SphereGeometry(.136, pick(48, 14), pick(28, 8), 0, Math.PI * 2, 0, 1.47), hair, this.body, 0, 1.685, .012);
     scalp.scale.set(1, .91, 1.01);
     sphere(hair, this.body, 0, 1.787, .002, .119, .065, .126, 24);
     sphere(skin, this.body, 0, 1.642, -.132, .027, .041, .035, 14);
@@ -146,23 +151,23 @@ class Athlete {
       const leg = side === -1 ? this.leftLeg : this.rightLeg;
       const shin = side === -1 ? this.leftShin : this.rightShin;
       leg.position.set(side * .108, .84, 0); this.body.add(leg);
-      mesh(new THREE.CylinderGeometry(.100, .083, .24, pick(36, 10)), shorts, leg, 0, -.11, 0);
-      mesh(new THREE.CapsuleGeometry(.075, .15, pick(6, 2), pick(20, 8)), skin, leg, 0, -.29, 0);
+      mesh(new THREE.CylinderGeometry(.100, .083, .24, pick(48, 10)), shorts, leg, 0, -.11, 0);
+      mesh(new THREE.CapsuleGeometry(.075, .15, pick(6, 2), pick(28, 8)), skin, leg, 0, -.29, 0);
       shin.position.y = -.4; leg.add(shin);
       sphere(skin, shin, 0, -.005, -.007, .064, .067, .065, 20);
       if (hi) sphere(skin, shin, 0, -.2, .028, .074, .105, .072, 20);
-      mesh(new THREE.CylinderGeometry(.065, .042, .3, pick(36, 10)), sock, shin, 0, -.16, 0);
-      mesh(new THREE.CylinderGeometry(.066, .065, .022, pick(36, 10)), trim, shin, 0, -.037, 0).receiveShadow = true;
-      const shoe = mesh(new THREE.CapsuleGeometry(.060, .15, pick(5, 2), pick(16, 8)), boot, shin, 0, -.36, -.067);
+      mesh(new THREE.CylinderGeometry(.065, .042, .3, pick(48, 10)), sock, shin, 0, -.16, 0);
+      mesh(new THREE.CylinderGeometry(.066, .065, .022, pick(48, 10)), trim, shin, 0, -.037, 0).receiveShadow = true;
+      const shoe = mesh(new THREE.CapsuleGeometry(.060, .15, pick(5, 2), pick(24, 8)), boot, shin, 0, -.36, -.067);
       shoe.rotation.x = Math.PI / 2; shoe.scale.z = .68;
       sphere(sole, shin, 0, -.393, -.065, .063, .018, .135, 14).receiveShadow = true;
       if (hi) for (let i = 0; i < 3; i++) mesh(new THREE.BoxGeometry(.058, .006, .009), sock, shin, 0, -.322, -.063 - i * .018);
       const arm = side === -1 ? this.leftArm : this.rightArm;
       arm.position.set(side * .238, 1.391, 0); this.body.add(arm);
-      const sleeve = mesh(new THREE.CapsuleGeometry(.083, .085, pick(5, 2), pick(20, 8)), jersey, arm, 0, -.055, 0);
+      const sleeve = mesh(new THREE.CapsuleGeometry(.083, .085, pick(5, 2), pick(28, 8)), jersey, arm, 0, -.055, 0);
       sleeve.scale.z = .9;
-      mesh(new THREE.CylinderGeometry(.079, .076, .019, pick(36, 10)), trim, arm, 0, -.147, 0);
-      mesh(new THREE.CapsuleGeometry(.052, .245, pick(5, 2), pick(16, 8)), role === 'keeper' ? jersey : skin, arm, 0, -.292, -.025);
+      mesh(new THREE.CylinderGeometry(.079, .076, .019, pick(48, 10)), trim, arm, 0, -.147, 0);
+      mesh(new THREE.CapsuleGeometry(.052, .245, pick(5, 2), pick(24, 8)), role === 'keeper' ? jersey : skin, arm, 0, -.292, -.025);
       const keeperHand = role === 'keeper';
       sphere(keeperHand ? glove : skin, arm, 0, -.50, -.046, keeperHand ? .084 : .046, keeperHand ? .106 : .066, .043, 16);
       sphere(keeperHand ? glove : skin, arm, side * .04, -.48, -.065, .025, .040, .025, 10);
@@ -186,7 +191,7 @@ class Athlete {
       for (const [mat, items] of batches) {
         if (items.length < 2) continue;
         const geometries = items.map(item => { item.updateMatrix(); return item.geometry.clone().applyMatrix4(item.matrix); });
-        const merged = new THREE.Mesh(mergeGeometries(geometries), mat); merged.castShadow = true;
+        const merged = new THREE.Mesh(mergeGeometries(geometries), mat); merged.castShadow = items[0].castShadow;
         object.add(merged);
         for (const item of items) { object.remove(item); item.geometry.dispose(); }
         geometries.forEach(geometry => geometry.dispose());
@@ -200,7 +205,6 @@ class Athlete {
     this.skin.color.set(a.skin); this.jersey.color.set(a.shirt); this.shorts.color.set(a.shorts);
     this.trim.color.set(a.trim); this.hair.color.set(a.hair); this.beard.visible = a.beard;
     this.body.scale.set(1, a.height / 1.83, 1);
-    this.numberPlate.material.map?.dispose();
     const special = profile.edition === 'special';
     this.numberPlate.material.map = numberTexture(profile.number, profile.shortName, special ? '#082f31' : profile.id === 'messi' ? '#182b3d' : '#f5eddb');
     this.numberPlate.material.needsUpdate = true;
@@ -372,7 +376,7 @@ export function makeFootball(): THREE.Mesh {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 16;
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 48, 36), new THREE.MeshStandardMaterial({ map: texture, roughness: 0.4 }));
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 64, 48), new THREE.MeshStandardMaterial({ map: texture, roughness: 0.4 }));
   ball.castShadow = true;
   return ball;
 }
