@@ -421,25 +421,52 @@ export class Stadium {
   }
 
   private makeGrassBlades() {
+    // Short, tapered turf blades. The field is denser near the kick and thins radially,
+    // so there is no visible patch edge. Counts are fixed per quality and cull with the mesh.
     const blade = new THREE.BufferGeometry();
-    blade.setAttribute('position', new THREE.Float32BufferAttribute([-.007,0,0, .007,0,0, 0,.022,.007],3));
+    blade.setAttribute('position', new THREE.Float32BufferAttribute([
+      -.0055, 0, 0, .0055, 0, 0, .0012, .026, .0015,
+      -.0055, 0, 0, .0012, .026, .0015, -.0012, .026, .0015,
+    ], 3));
     blade.computeVertexNormals();
-    const mat=new THREE.MeshBasicMaterial({color:'#315d3e',side:THREE.DoubleSide});
-    const grass=this.grassBlades=new THREE.InstancedMesh(blade,mat,5500);
-    const random=seededRandom(767);const dummy=new THREE.Object3D();
-    for(let i=0;i<5500;i++) {
-      dummy.position.set((random()-.5)*16,.003,(random()-.5)*15);
-      dummy.rotation.set((random()-.5)*.22,random()*Math.PI,0);dummy.scale.setScalar(.65+random()*.75);dummy.updateMatrix();
-      grass.setMatrixAt(i,dummy.matrix);const shade=.8+random()*.4;grass.setColorAt(i,new THREE.Color(shade,shade,shade));
+    const mat = new THREE.MeshBasicMaterial({ color: '#3f7a48', side: THREE.DoubleSide });
+    const MAX = 16000;
+    this.grassMax = MAX;
+    const grass = this.grassBlades = new THREE.InstancedMesh(blade, mat, MAX);
+    const random = seededRandom(767);
+    const dummy = new THREE.Object3D();
+    const colour = new THREE.Color();
+    const radius = 9;
+    let placed = 0;
+    while (placed < MAX) {
+      const r = radius * Math.sqrt(random());
+      const a = random() * Math.PI * 2;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r * 0.95;
+      // Radial falloff: the outer ring is sparse so the blades blend into the textured turf.
+      if (random() > 1 - (r / radius) * (r / radius) * 0.85) continue;
+      dummy.position.set(x, 0.002, z);
+      dummy.rotation.set((random() - .5) * .5, random() * Math.PI * 2, (random() - .5) * .35);
+      dummy.scale.set(.75 + random() * .6, .6 + random() * .9, .75 + random() * .6);
+      dummy.updateMatrix();
+      grass.setMatrixAt(placed, dummy.matrix);
+      const tint = .72 + random() * .42;
+      colour.setRGB(tint * .85, tint * 1.05, tint * .72);
+      grass.setColorAt(placed, colour);
+      placed++;
     }
+    grass.instanceMatrix.needsUpdate = true;
+    if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
+    grass.frustumCulled = true;
     this.group.add(grass);
   }
+
+  private grassMax = 0;
 
   focusPatch(x: number, z: number) { this.grassBlades.position.set(x,0,z); }
 
   setQuality(quality: Quality) {
     this.quality = quality;
-    this.grassBlades.count=quality==='high'?5500:quality==='balanced'?2800:0;
+    this.grassBlades.count=quality==='high'?this.grassMax:quality==='balanced'?Math.round(this.grassMax*.5):0;
     this.crowdHeads.visible=!this.photoCrowdReady && quality!=='low';
   }
 

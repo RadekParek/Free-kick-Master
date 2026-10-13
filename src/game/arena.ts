@@ -57,7 +57,6 @@ export class Arena {
   private metricsFrames = 0;
   /** Attract mode: the menu background. Orbiting camera, no input, no shots. */
   attract = false;
-  private shadowTime = -1;
   private time = 0;
   private phaseTime = 0;
   private accumulator = 0;
@@ -360,9 +359,7 @@ export class Arena {
   private tick = (timestamp: number) => {
     this.raf = requestAnimationFrame(this.tick);
     if (this.paused) { this.metricsStart = timestamp; this.metricsFrames = 0; return; }
-    const idle = this.phase === 'ready' || (this.phase === 'result' && this.phaseTime > 3);
-    // Idle breathing/crowd animation at 30 Hz; active shots retain the display frame rate.
-    if (idle && this.lastTick && timestamp - this.lastTick < 1000 / 30 - 1) return;
+    // Every frame renders at the display rate, idle included: no throttling, so no catch-up spikes.
     const dt = this.lastTick ? Math.min((timestamp - this.lastTick) / 1000, 0.1) : 1 / 60;
     this.lastTick = timestamp;
     this.time += dt;
@@ -421,10 +418,7 @@ export class Arena {
     this.updateCamera(dt);
     const aim = this.projectedAim.set(this.settings.aim.x, this.settings.aim.y, 0).project(this.camera);
     this.events.target((aim.x + 1) / 2 * this.width, (-aim.y + 1) / 2 * this.height, this.phase === 'ready' || this.phase === 'charging');
-    if (!idle || this.time - this.shadowTime > .12) {
-      this.renderer.shadowMap.needsUpdate = true;
-      this.shadowTime = this.time;
-    }
+    this.renderer.shadowMap.needsUpdate = true;
     this.renderer.render(this.scene, this.camera);
     this.metricsFrames++;
     if (!this.metricsStart) this.metricsStart = timestamp;
