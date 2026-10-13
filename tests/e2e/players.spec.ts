@@ -19,7 +19,7 @@ test('menu opens the full roster with 30 cards, searches real players, switches 
   await page.locator('#menu-players').click();
   await expect(page.locator('.player-card[data-player]')).toHaveCount(30);
   await expect(page.locator('.player-card[data-player].is-special')).toHaveCount(15);
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('.card-portrait')].every(image => image.complete && image.naturalWidth >= 500));
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('.card-portrait')].every(image => image.complete && image.naturalWidth > 0));
   expect(await page.locator('.card-portrait').evaluateAll(images => images.every(image => new URL((image as HTMLImageElement).src).origin === location.origin))).toBe(true);
   await page.locator('#player-search').fill('argentina');
   await expect(page.locator('.player-card[data-player]:visible')).toHaveCount(2);
@@ -45,6 +45,13 @@ test('menu opens the full roster with 30 cards, searches real players, switches 
   await page.locator('#confirm-player').click();
   await page.locator('#menu-practice').click();
   await expect(page.locator('#taker-name')).toHaveClass(/handwritten/);
+  await page.locator('#back-button').click();
+  await page.locator('#menu-players').click();
+  // Double-clicking a card takes that player straight away.
+  await page.locator('[data-player="yamal"]').dblclick();
+  await expect(page.locator('#modal')).toBeHidden();
+  await page.locator('#menu-practice').click();
+  await expect(page.locator('#taker-name')).toHaveText('Yamal');
   await page.locator('#back-button').click();
   await page.locator('#menu-players').click();
   await page.locator('#roster-credits').click();

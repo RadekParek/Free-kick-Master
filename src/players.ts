@@ -35,6 +35,31 @@ export interface TakerProfile {
 export const PHOTO_LICENSE = 'https://creativecommons.org/licenses/by-sa/4.0/';
 const photoCredit = 'Bryan Berlin / WikiPortraits · CC BY-SA 4.0';
 
+/** Unlicensed web photos for personal use. Only the four credited photos above carry a CC licence. */
+const UNLICENSED = 'Unlicensed web photo, personal use only. Rights remain with the photographer.';
+const PHOTO_EXTRA: Record<string, { portrait: string; photoSource: string }> = {
+  haaland: { portrait: './players/haaland.jpg', photoSource: 'https://timesofindia.indiatimes.com/sports/football/top-stories/stick-together-and-smile-erling-haalands-message-after-man-citys-explosive-verdict/articleshow/134806973.cms' },
+  debruyne: { portrait: './players/debruyne.jpg', photoSource: 'https://gettyimages.com/photos/kevin-de-bruyne?page=2' },
+  neymar: { portrait: './players/neymar.jpg', photoSource: 'https://www.gettyimages.in/photos/neymar-portrait' },
+  vandijk: { portrait: './players/vandijk.jpg', photoSource: 'https://gettyimages.com/photos/virgil-van-dijk-netherlands' },
+  kane: { portrait: './players/kane.jpg', photoSource: 'https://www.gettyimages.com.br/fotos/harry-kane-portrait' },
+  vinicius: { portrait: './players/vinicius.jpg', photoSource: 'https://www.nytimes.com/athletic/6455491/2025/06/27/vinicius-jr-real-madrid-club-world-cup/' },
+  bellingham: { portrait: './players/bellingham.jpg', photoSource: 'https://www.gettyimages.co.uk/editorial-images/sport/event/jude-bellingham/776168773' },
+  yamal: { portrait: './players/yamal.jpg', photoSource: 'https://www.gettyimages.com/detail/news-photo/lamine-yamal-of-fc-barcelona-poses-for-a-portrait-during-news-photo/2232611768' },
+  modric: { portrait: './players/modric.jpg', photoSource: 'https://www.gettyimages.in/photos/luka-modric' },
+  lewandowski: { portrait: './players/lewandowski.jpg', photoSource: 'https://www.gettyimages.no/photos/robert-lewandowski-portrait' },
+  'alexander-arnold': { portrait: './players/alexander-arnold.jpg', photoSource: 'https://gettyimages.pt/fotos/trent-alexander-arnold' },
+};
+function resolvePhoto(base: BaseSpec & { id: string }): Pick<TakerProfile, 'portrait' | 'photoDate' | 'photoSource' | 'credit'> {
+  const extra = PHOTO_EXTRA[base.id];
+  return {
+    portrait: base.portrait ?? extra?.portrait ?? null,
+    photoDate: base.photoDate ?? null,
+    photoSource: base.photoSource ?? extra?.photoSource ?? null,
+    credit: base.credit ?? (extra ? UNLICENSED : null),
+  };
+}
+
 type BaseSpec = Omit<TakerProfile, 'id' | 'baseId' | 'edition' | 'portrait' | 'photoDate' | 'photoSource' | 'credit'> & Partial<Pick<TakerProfile, 'portrait' | 'photoDate' | 'photoSource' | 'credit'>>;
 
 /** Real, well-known players with fan-made training numbers. Ratings and attributes are not EA or FC data. */
@@ -118,15 +143,12 @@ function specialOf(base: BaseSpec & { id: string }): TakerProfile {
     description: `Turquoise special. ${base.description}`,
     attributes: { power: bump(base.attributes.power), curve: bump(base.attributes.curve), knuckle: bump(base.attributes.knuckle), control: bump(base.attributes.control) },
     appearance: { ...base.appearance, shirt: TURQUOISE.shirt, shorts: TURQUOISE.shorts, trim: TURQUOISE.trim },
-    portrait: base.portrait ?? null,
-    photoDate: base.photoDate ?? null,
-    photoSource: base.photoSource ?? null,
-    credit: base.credit ?? null,
+    ...resolvePhoto(base),
   };
 }
 const standardCards: TakerProfile[] = BASE.map(base => ({
   ...base, baseId: base.id, edition: 'standard',
-  portrait: base.portrait ?? null, photoDate: base.photoDate ?? null, photoSource: base.photoSource ?? null, credit: base.credit ?? null,
+  ...resolvePhoto(base),
 }));
 /** Standard cards first, then each player's turquoise special. */
 export const PLAYERS: readonly TakerProfile[] = [...standardCards, ...BASE.map(specialOf)];

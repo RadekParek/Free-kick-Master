@@ -321,9 +321,11 @@ export class Arena {
     const p = this.settings.position;
     const side = this.settings.foot === 'right' ? -1 : 1;
     const t = Math.min(1, run / 0.85);
+    const e = t * t * (3 - 2 * t); // eased: the run-up accelerates, then settles at the ball
     const length = distanceToGoal(p);
-    const back = lerp(2.15, 0.21, t);
-    const lateral = side * lerp(1.07, 0.2, t);
+    const back = lerp(2.6, 0.21, e);
+    // The lateral offset falls off faster than the distance, which bends the approach into an arc.
+    const lateral = side * lerp(1.3, 0.22, Math.pow(e, 0.7));
     this.taker.group.position.set(p.x + p.x / length * back + p.z / length * lateral, 0, p.z + p.z / length * back - p.x / length * lateral);
     this.taker.group.rotation.y = Math.atan2(p.x - this.settings.aim.x, p.z);
   }

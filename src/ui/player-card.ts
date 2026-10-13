@@ -36,7 +36,7 @@ export function playerCard(player: TakerProfile, selected = false, interactive =
   const special = player.edition === 'special';
   const classes = ['player-card', special ? 'is-special' : '', selected ? 'selected' : '', interactive ? '' : 'is-showcase'].filter(Boolean).join(' ');
   const art = player.portrait
-    ? `<img class="card-portrait" src="${player.portrait}" alt="${player.name}, photographed ${player.photoDate}" width="500" height="750" loading="lazy" draggable="false" />`
+    ? `<img class="card-portrait" src="${player.portrait}" alt="${player.name}" width="500" height="750" loading="lazy" draggable="false" />`
     : `<span class="card-monogram" aria-hidden="true">${monogram(player)}</span>`;
   const body = `<span class="card-foil"></span><span class="card-lines"></span>
     <span class="card-edition">${special ? 'TURQUOISE <b>SPECIAL</b>' : 'FK SERIES <b>01</b>'}</span>

@@ -118,7 +118,7 @@ kbd { font: 600 9px 'Manrope', sans-serif; border: 1px solid #ffffff40; padding:
 .mini-card > span:first-child { position: absolute; top: 8px; left: 6px; z-index: 2; color: #352e1b; font: 600 20px/.9 var(--condensed); }
 .mini-card.is-special > span:first-child { color: #082f31; }
 .mini-card small { display: block; font: 700 7px/1.4 'Manrope', sans-serif; }
-.mini-card img { position: absolute; width: 90px; height: 134px; object-fit: contain; bottom: -6px; right: -10px; }
+.mini-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 12%; }
 .mini-card .card-monogram { position: absolute; inset: 0; display: grid; place-items: center; font: 700 italic 36px var(--condensed); color: #3c321b; padding-top: 16px; }
 .mini-card.is-special .card-monogram { color: #082f31; }
 .taker-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -339,7 +339,7 @@ dialog::backdrop { background: #04080cc8; backdrop-filter: blur(3px); }
 .card-rating strong { font: 600 clamp(27px,3.1vw,42px)/.9 var(--condensed); }
 .card-rating small { font-size: 10px; font-weight: 700; }
 .card-rating .nation-flag { margin-top: 6px; width: 22px; height: 14px; }
-.card-portrait { position: absolute; right: -5%; top: 10%; width: 90%; height: auto; user-select: none; pointer-events: none; }
+.card-portrait { position: absolute; left: 4%; right: 4%; top: 9%; width: 92%; height: 66%; object-fit: cover; object-position: 50% 14%; user-select: none; pointer-events: none; -webkit-mask-image: linear-gradient(#000 72%, transparent); mask-image: linear-gradient(#000 72%, transparent); }
 .card-monogram { position: absolute; z-index: 1; left: 50%; top: 22%; transform: translateX(-50%); font: 700 italic 96px/1 var(--condensed); color: #4a3d1f55; text-shadow: 0 2px 0 #ffffff40; }
 .is-special .card-monogram { color: #0b4d4a4d; }
 .card-shade { position: absolute; inset: 45% 0 0; background: linear-gradient(transparent, #e4cd94 39%, #ccb17b 80%, #a38856); }
