@@ -38,8 +38,19 @@ export const shotSpeed = (power: number) => 16 + clamp(power, 0, 1) * 21;
 export function constrainPosition(p: Position): Position {
   const x = clamp(Number.isFinite(p.x) ? p.x : 0, -30, 30);
   // Direct free kicks are not taken inside the penalty area. Wide positions can be closer.
-  const minZ = Math.abs(x) < 20.65 ? 17.5 : 10;
+  const minZ = Math.abs(x) < 20.65 - 1e-8 ? 17.5 : 10;
   return { x, z: clamp(Number.isFinite(p.z) ? p.z : 24, minZ, 46) };
+}
+
+/** Legal radial range along the selected bearing; avoids a misleading distance slider. */
+export function distanceBounds(position: Position): { min: number; max: number } {
+  const p = constrainPosition(position);
+  const length = distanceToGoal(p);
+  const ux = Math.abs(p.x) / length;
+  const uz = p.z / length;
+  const min = Math.max(10 / uz, Math.min(17.5 / uz, ux > 1e-8 ? 20.65 / ux : Infinity));
+  const max = Math.min(46 / uz, ux > 1e-8 ? 30 / ux : Infinity);
+  return { min, max };
 }
 
 /** Aiming sets elevation for a reference power, NOT a homing target for the actual shot. */
@@ -206,7 +217,7 @@ export function previewShot(setup: ShotSetup, maxTime = 3): Vec3[] {
 export function strikeName(contact: Contact, foot: Foot): string {
   if (Math.hypot(contact.x, contact.y) < 0.17) return 'Knuckleball';
   if (contact.y > 0.5 && Math.abs(contact.x) < 0.3) return 'Low driven';
-  if (contact.y < -0.55 && Math.abs(contact.x) < 0.3) return 'Dipping lob';
+  if (contact.y < -0.55 && Math.abs(contact.x) < 0.3) return 'Backspin lob';
   if (Math.abs(contact.x) < 0.25) return 'Topspin';
   const inside = foot === 'right' ? contact.x < 0 : contact.x > 0;
   return inside ? 'Inside-foot curl' : 'Outside-foot curl';

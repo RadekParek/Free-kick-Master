@@ -640,7 +640,7 @@ kbd { font-family: 'Manrope', sans-serif; font-size: 7px; font-weight: 700; lett
   .contact-copy h3 { font-size: 20px; }
   .contact-copy p, .tiny-label, .key-hint { display: none; }
   .foot-toggle button { min-width: 24px; }
-  .strike-presets { position: absolute; opacity: 0; pointer-events: none; }
+  .strike-presets { display: none; }
   .power-section { display: grid; grid-template-columns: 1fr 1fr; column-gap: 10px; grid-template-rows: 17px 26px 9px 11px; }
   .power-section .control-heading { grid-column: 1 / -1; }
   .power-readout { margin: 6px 0 4px; align-items: center; grid-column: 1; }

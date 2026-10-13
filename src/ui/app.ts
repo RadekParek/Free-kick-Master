@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { Arena, type Phase } from '../game/arena';
 import { GameAudio } from '../game/audio';
-import { clamp, constrainPosition, distanceToGoal, recommendedPower, strikeName, type Position } from '../game/physics';
+import { clamp, constrainPosition, distanceBounds, distanceToGoal, recommendedPower, strikeName, type Position } from '../game/physics';
 import { DIFFICULTIES, KEEPER_PROFILES, type Difficulty } from '../game/keeper';
 import { DEFAULT_SETTINGS, emptySession, loadSettings, recordShot, saveSettings, type Settings, type ShotResult } from '../state';
 
@@ -11,7 +11,11 @@ const icons = { ArrowDownLeft, ArrowRight, ArrowUpRight, AudioLines, Check, Chev
 const icon = (name: string, className = '') => `<i data-lucide="${name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()}" class="${className}" aria-hidden="true"></i>`;
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const $$ = <T extends HTMLElement = HTMLElement>(selector: string) => [...document.querySelectorAll<T>(selector)];
-const drawIcons = () => createIcons({ icons, attrs: { 'stroke-width': 1.7 } });
+const drawIcons = () => {
+  createIcons({ icons, attrs: { 'stroke-width': 1.7 } });
+  // Existing icons do not need to be recreated on every pointer-driven settings update.
+  document.querySelectorAll('svg[data-lucide]').forEach(svg => svg.removeAttribute('data-lucide'));
+};
 const logo = `<svg class="brand-symbol" viewBox="0 0 48 48" aria-hidden="true"><path d="M7 37 18 9h28l-4 9H26l-2 6h13l-4 9H20l-2 4Z" fill="currentColor"/><circle cx="38" cy="37" r="7" fill="currentColor"/><path d="m38 33 4 3-1 4h-5l-1-4Z" fill="#172219"/></svg>`;
 
 interface Challenge {
@@ -146,8 +150,8 @@ export class GameApp {
                 <svg viewBox="0 0 300 188" aria-hidden="true"><defs><pattern id="pitch-stripes" width="300" height="42" patternUnits="userSpaceOnUse"><rect width="300" height="21" fill="#263d2c"/><rect y="21" width="300" height="21" fill="#2a4230"/></pattern><pattern id="restricted-zone" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line y2="5" stroke="#9db68e" stroke-width="1" opacity=".13"/></pattern></defs><rect x="0" y="0" width="300" height="188" rx="7" fill="url(#pitch-stripes)"/><g fill="none" stroke="#839577" stroke-width="1.1" opacity=".6"><path d="M21 187V19H279V187"/><path d="M73.5 19v55.3h153V19M115.2 19v18.4h69.6V19"/><path d="M122 74.3a34.5 34.5 0 0 0 56 0"/><circle cx="150" cy="55.8" r="1.5" fill="#839577"/><path d="M21 19a7 7 0 0 0 7 7M279 19a7 7 0 0 1-7 7"/><path d="M135.8 19V12h28.4v7" stroke="#d6e5c7" stroke-width="2"/></g><rect x="73.5" y="20" width="153" height="54.3" fill="url(#restricted-zone)"/><path id="map-aimline" d="M127 108 150 19" fill="none" stroke="#c3f58d" stroke-width="1" stroke-dasharray="3 4" opacity=".55"/><g id="map-marker"><circle r="14" fill="#c2f970" opacity=".1"/><circle r="8.5" fill="none" stroke="#c2f970" opacity=".5"/><circle r="4" fill="#c2f970"/><path d="M0-16v-4M0 16v4M-16 0h-4M16 0h4" stroke="#c2f970"/></g><text x="150" y="176" text-anchor="middle" fill="#b1c29d" font-size="8" font-family="Manrope, sans-serif" letter-spacing="1.6">TAP ANYWHERE TO PLACE</text></svg>
               </div>
               <div class="distance-row"><label for="distance-slider">Distance to goal</label><strong id="distance-value">24.7 <span>m</span></strong></div>
-              <input class="range-slider" type="range" id="distance-slider" min="18" max="46" step="0.5" value="24.5" aria-label="Distance to goal in metres" />
-              <div class="range-labels"><span>18 m</span><span>46 m</span></div>
+              <input class="range-slider" type="range" id="distance-slider" min="17.5" max="55" step="0.1" value="24.5" aria-label="Distance to goal in metres" />
+              <div class="range-labels"><span id="min-distance-label">18 m</span><span id="max-distance-label">46 m</span></div>
               <div class="spot-presets"><button data-spot="left">Left flank</button><button data-spot="central">Central</button><button data-spot="right">Right flank</button></div>
             </section>
 
@@ -392,8 +396,14 @@ export class GameApp {
     $('#stage-distance').innerHTML = `${distance.toFixed(1)}<span>m</span>`;
     $('#stage-foot').textContent = s.foot === 'right' ? 'RIGHT FOOT' : 'LEFT FOOT';
     const slider = $<HTMLInputElement>('#distance-slider');
+    const bounds = distanceBounds(s.position);
+    slider.min = bounds.min.toFixed(2);
+    slider.max = bounds.max.toFixed(2);
     slider.value = String(distance);
-    slider.style.setProperty('--range-progress', `${(distance - 18) / 28 * 100}%`);
+    slider.setAttribute('aria-valuetext', `${distance.toFixed(1)} metres. Range depends on the selected angle.`);
+    slider.style.setProperty('--range-progress', `${clamp((distance - bounds.min) / (bounds.max - bounds.min) * 100, 0, 100)}%`);
+    $('#min-distance-label').textContent = `${bounds.min.toFixed(1)} m`;
+    $('#max-distance-label').textContent = `${bounds.max.toFixed(1)} m`;
     const mapX = 150 + s.position.x / 34 * 129;
     const mapY = 19 + s.position.z * 3.35;
     document.querySelector('#map-marker')!.setAttribute('transform', `translate(${mapX} ${mapY})`);
@@ -619,7 +629,7 @@ export class GameApp {
         <label class="setting-row"><span>${icon('Move')}<span><strong>Trajectory guide</strong><small>A preview at the suggested power, then your live power</small></span></span><input type="checkbox" id="setting-guides" ${this.settings.guides ? 'checked' : ''}/><span class="toggle" aria-hidden="true"></span></label>
         <label class="setting-row"><span>${icon('Smartphone')}<span><strong>Haptic feedback</strong><small>Feel the strike on supported Android devices</small></span></span><input type="checkbox" id="setting-haptics" ${this.settings.haptics ? 'checked' : ''}/><span class="toggle" aria-hidden="true"></span></label>
         <label class="setting-row quality-setting"><span>${icon('Sparkles')}<span><strong>Graphics quality</strong><small>Lower settings help older devices stay smooth</small></span></span><select id="setting-quality" aria-label="Graphics quality"><option value="high">High</option><option value="balanced">Balanced</option><option value="low">Performance</option></select></label>
-      </div><div class="settings-bottom"><span>OFFLINE. NO ADS. JUST FOOTBALL.</span><button class="primary-button" id="resume-button">BACK TO THE PITCH ${icon('Play')}</button></div>`);
+      </div><div class="settings-bottom"><button class="secondary-button" id="settings-help">${icon('HelpCircle')} HOW TO PLAY</button><button class="primary-button" id="resume-button">BACK TO THE PITCH ${icon('Play')}</button></div>`);
     $<HTMLSelectElement>('#setting-quality').value = this.settings.quality;
     for (const key of ['sound', 'guides', 'haptics'] as const) {
       $(`#setting-${key}`).addEventListener('change', event => {
@@ -633,6 +643,7 @@ export class GameApp {
       this.applySettings();
     });
     $('#resume-button').addEventListener('click', () => this.closeModal());
+    $('#settings-help').addEventListener('click', () => this.showHelp());
   }
 
   private showAndroid() {

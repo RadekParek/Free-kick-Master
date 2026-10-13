@@ -65,8 +65,9 @@ export class Player {
     };
     this.torso = mesh(new THREE.CylinderGeometry(0.225, 0.175, 0.52, 10), jersey, this.body, 0, 1.18, 0);
     this.torso.scale.set(1.23, 1, 0.75);
-    const hips = mesh(new THREE.BoxGeometry(0.38, 0.2, 0.26), shorts, this.body, 0, 0.87, 0);
+    const hips = mesh(new THREE.CylinderGeometry(0.19, 0.195, 0.2, 12), shorts, this.body, 0, 0.87, 0);
     hips.rotation.z = 0.015;
+    hips.scale.z = 0.72;
     mesh(new THREE.CylinderGeometry(0.071, 0.09, 0.12, 8), skin, this.body, 0, 1.5, 0);
     const head = mesh(sharedSphere, skin, this.body, 0, 1.65, -0.01);
     head.scale.set(0.137, 0.177, 0.137);
@@ -84,7 +85,9 @@ export class Player {
       shin.position.y = -0.4;
       leg.add(shin);
       mesh(new THREE.CylinderGeometry(0.067, 0.043, 0.3, 8), sock, shin, 0, -0.16, 0);
-      mesh(new THREE.BoxGeometry(0.13, 0.085, 0.27), boot, shin, 0, -0.36, -0.065);
+      const shoe = mesh(new THREE.CapsuleGeometry(0.064, 0.145, 3, 8), boot, shin, 0, -0.36, -0.065);
+      shoe.rotation.x = Math.PI / 2;
+      shoe.scale.z = 0.65;
       const arm = side === -1 ? this.leftArm : this.rightArm;
       arm.position.set(side * 0.255, 1.39, 0);
       this.body.add(arm);
