@@ -27,14 +27,16 @@ function grassTexture(): THREE.CanvasTexture {
   for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
     const i = (y * canvas.width + x) * 4;
     const stripe = Math.floor(y / 128) % 2 ? .9 : 1.06;
+    // Low-frequency mowing patches and worn spots break up the uniform colour, like real turf.
+    const patch = 1 + Math.sin(x * .013 + Math.cos(y * .009) * 2) * Math.cos(y * .011 + x * .004) * .055 - (Math.sin(x * .047 + y * .031) > .92 ? .08 : 0);
     const grain = (random() - .5) * 19 + Math.sin(x * .31 + y * .1) * 2.2;
-    pixels.data[i] = 43 * stripe + grain * .66;
-    pixels.data[i + 1] = 91 * stripe + grain;
-    pixels.data[i + 2] = 43 * stripe + grain * .52;
+    pixels.data[i] = (43 * stripe + grain * .66) * patch;
+    pixels.data[i + 1] = (91 * stripe + grain) * patch;
+    pixels.data[i + 2] = (43 * stripe + grain * .52) * patch;
     pixels.data[i + 3] = 255;
   }
   ctx.putImageData(pixels, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 8;
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 16;
   return texture;
 }
 function turfNormal(): THREE.DataTexture {
@@ -66,6 +68,71 @@ function signageTexture(text: string, dark = true): THREE.CanvasTexture {
   return tex;
 }
 
+/** Pooled confetti: one instanced draw call, no allocation per goal. */
+class Confetti {
+  readonly mesh: THREE.InstancedMesh;
+  private readonly count = 90;
+  private readonly position = new Float32Array(90 * 3);
+  private readonly velocity = new Float32Array(90 * 3);
+  private readonly life = new Float32Array(90);
+  private readonly spin = new Float32Array(90);
+  private readonly dummy = new THREE.Object3D();
+  private active = false;
+
+  constructor(parent: THREE.Object3D) {
+    this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.09, 0.05), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false }), this.count);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.frustumCulled = false;
+    const palette = ['#b4ff37', '#2fd8c8', '#ffffff', '#ffd166', '#ef476f'].map(color => new THREE.Color(color));
+    for (let i = 0; i < this.count; i++) {
+      this.mesh.setColorAt(i, palette[i % palette.length]);
+      this.dummy.position.set(0, -100, 0); this.dummy.scale.setScalar(0); this.dummy.updateMatrix();
+      this.mesh.setMatrixAt(i, this.dummy.matrix);
+    }
+    parent.add(this.mesh);
+  }
+
+  burst(origin: THREE.Vector3) {
+    for (let i = 0; i < this.count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const up = 2.5 + Math.random() * 4;
+      this.position.set([origin.x, origin.y, origin.z], i * 3);
+      this.velocity.set([Math.cos(a) * (1 + Math.random() * 2.5), up, Math.sin(a) * (1 + Math.random() * 2.5) - 1], i * 3);
+      this.life[i] = 2.2 + Math.random() * 1.6;
+      this.spin[i] = (Math.random() - 0.5) * 12;
+    }
+    this.active = true;
+  }
+
+  update(dt: number, time: number) {
+    if (!this.active) return;
+    let alive = 0;
+    for (let i = 0; i < this.count; i++) {
+      if (this.life[i] <= 0) continue;
+      this.life[i] -= dt;
+      if (this.life[i] <= 0) {
+        // Hide the particle once; dead particles are skipped on later frames.
+        this.dummy.position.set(0, -100, 0); this.dummy.scale.setScalar(0); this.dummy.updateMatrix();
+        this.mesh.setMatrixAt(i, this.dummy.matrix);
+        continue;
+      }
+      alive++;
+      const j = i * 3;
+      // Air drag keeps confetti floating for a moment before it falls.
+      this.velocity[j] *= 1 - dt * 1.6; this.velocity[j + 1] = this.velocity[j + 1] * (1 - dt * 1.2) - 2.2 * dt; this.velocity[j + 2] *= 1 - dt * 1.6;
+      this.position[j] += this.velocity[j] * dt; this.position[j + 1] += this.velocity[j + 1] * dt; this.position[j + 2] += this.velocity[j + 2] * dt;
+      const flutter = Math.max(0.15, Math.abs(Math.sin(time * this.spin[i] * 0.5 + i)));
+      this.dummy.position.set(this.position[j], Math.max(0.02, this.position[j + 1]), this.position[j + 2]);
+      this.dummy.rotation.set(time * this.spin[i], time * this.spin[i] * 0.7, 0);
+      this.dummy.scale.set(1, flutter, 1);
+      this.dummy.updateMatrix();
+      this.mesh.setMatrixAt(i, this.dummy.matrix);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+    if (alive === 0) this.active = false;
+  }
+}
+
 export class Stadium {
   readonly group = new THREE.Group();
   readonly net: THREE.LineSegments;
@@ -84,9 +151,14 @@ export class Stadium {
   private readonly fill = new THREE.DirectionalLight('#8eb8fc', .65);
   private skyMaterial!: THREE.ShaderMaterial;
   private sunDisc!: THREE.Mesh;
-  private grassBlades!: THREE.InstancedMesh;
   private readonly glows = new THREE.Group();
   private readonly crowdTime = { value: 0 };
+  private readonly crowdEnergy = { value: 0 };
+  private cheerStart = -100;
+  private cheerStrength = 0;
+  private flags: { geometry: THREE.PlaneGeometry; base: Float32Array }[] = [];
+  private confetti!: Confetti;
+  private lastUpdate = 0;
 
   constructor(private scene: THREE.Scene) {
     scene.add(this.group);
@@ -119,6 +191,7 @@ export class Stadium {
     this.makeDetails();
     this.makeGrassBlades();
     this.makePhotoCrowd();
+    this.confetti = new Confetti(this.group);
     this.batchStaticGeometry();
     this.setAtmosphere('night');
   }
@@ -285,8 +358,13 @@ export class Stadium {
     const headMat = standard('#ceb698');
     for (const mat of [crowdMat, headMat]) mat.onBeforeCompile = shader => {
       shader.uniforms.crowdTime = this.crowdTime;
-      shader.vertexShader = 'uniform float crowdTime;\n' + shader.vertexShader;
-      shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n transformed.y += 0.025 * sin(crowdTime * 1.6 + instanceMatrix[3].x * 1.7 + instanceMatrix[3].z);');
+      shader.uniforms.crowdEnergy = this.crowdEnergy;
+      shader.vertexShader = 'uniform float crowdTime;\nuniform float crowdEnergy;\n' + shader.vertexShader;
+      // Idle bob, a slow travelling wave along the stands, and a stronger jump after a goal.
+      shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        float wave = max(0.0, sin(instanceMatrix[3].x * 0.085 - crowdTime * 2.1)) * 0.05;
+        float bob = (0.025 + crowdEnergy * 0.2) * sin(crowdTime * (1.6 + crowdEnergy * 5.0) + instanceMatrix[3].x * 1.7 + instanceMatrix[3].z);
+        transformed.y += bob + wave * (0.6 + crowdEnergy);`);
     };
     const seats = this.crowdSeats = new THREE.InstancedMesh(new THREE.BoxGeometry(.48,.43,.4), seatMat, places.length);
     const crowd = new THREE.InstancedMesh(new THREE.CapsuleGeometry(.16,.24,1,5), crowdMat, places.length);
@@ -342,25 +420,75 @@ export class Stadium {
   }
 
   private makeGrassBlades() {
+    // Thicker three-segment blades in a fixed grid of 8 m tiles covering the whole play area.
+    // Density falls with distance from the kick, every tile is its own draw call, and the camera
+    // frustum culls tiles that are off screen. Blades sway in the vertex shader (no CPU work).
     const blade = new THREE.BufferGeometry();
-    blade.setAttribute('position', new THREE.Float32BufferAttribute([-.007,0,0, .007,0,0, 0,.022,.007],3));
+    blade.setAttribute('position', new THREE.Float32BufferAttribute([
+      -.0042, 0, 0, .0042, 0, 0, .0024, .02, .0012,
+      -.0042, 0, 0, .0024, .02, .0012, -.0024, .02, .0012,
+      -.0024, .02, .0012, .0024, .02, .0012, 0, .042, .0018,
+    ], 3));
     blade.computeVertexNormals();
-    const mat=new THREE.MeshBasicMaterial({color:'#315d3e',side:THREE.DoubleSide});
-    const grass=this.grassBlades=new THREE.InstancedMesh(blade,mat,5500);
-    const random=seededRandom(767);const dummy=new THREE.Object3D();
-    for(let i=0;i<5500;i++) {
-      dummy.position.set((random()-.5)*16,.003,(random()-.5)*15);
-      dummy.rotation.set((random()-.5)*.22,random()*Math.PI,0);dummy.scale.setScalar(.65+random()*.75);dummy.updateMatrix();
-      grass.setMatrixAt(i,dummy.matrix);const shade=.8+random()*.4;grass.setColorAt(i,new THREE.Color(shade,shade,shade));
+    const mat = new THREE.MeshBasicMaterial({ color: '#3f7a48', side: THREE.DoubleSide });
+    mat.onBeforeCompile = shader => {
+      shader.uniforms.uTime = this.grassTime;
+      shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+#ifdef USE_INSTANCING
+  float sway = position.y * (sin(uTime * 1.7 + instanceMatrix[3].x * 0.9 + instanceMatrix[3].z * 0.6) * 0.6 + sin(uTime * 3.1 + instanceMatrix[3].z * 1.3) * 0.25);
+  transformed.x += sway * 0.02;
+  transformed.z += sway * 0.008;
+#endif`);
+    };
+    const random = seededRandom(767);
+    const dummy = new THREE.Object3D();
+    const colour = new THREE.Color();
+    const TILE = 8;
+    const centres: number[] = [];
+    for (let x = -20; x <= 20; x += TILE) for (let z = 4; z <= 44; z += TILE) centres.push(x, z);
+    this.grassPatches = [];
+    this.grassFull = [];
+    for (let i = 0; i < centres.length; i += 2) {
+      const cx = centres[i], cz = centres[i + 1];
+      // Distance from the kick area (0, 22) sets the density: dense near the ball, sparse at the edges.
+      const d = Math.hypot(cx, cz - 22);
+      const count = d < 12 ? 1800 : d < 22 ? 1000 : 480;
+      const patch = new THREE.InstancedMesh(blade, mat, count);
+      for (let n = 0; n < count; n++) {
+        const x = cx + (random() - .5) * TILE, z = cz + (random() - .5) * TILE;
+        dummy.position.set(x, 0.002, z);
+        dummy.rotation.set((random() - .5) * .5, random() * Math.PI * 2, (random() - .5) * .35);
+        dummy.scale.set(.75 + random() * .6, .7 + random() * .9, .75 + random() * .6);
+        dummy.updateMatrix();
+        patch.setMatrixAt(n, dummy.matrix);
+        const tint = .72 + random() * .42;
+        colour.setRGB(tint * .85, tint * 1.05, tint * .72);
+        patch.setColorAt(n, colour);
+      }
+      patch.instanceMatrix.needsUpdate = true;
+      if (patch.instanceColor) patch.instanceColor.needsUpdate = true;
+      patch.computeBoundingSphere();
+      patch.frustumCulled = true;
+      // Tiles never move, so their matrices are computed once instead of every frame.
+      patch.matrixAutoUpdate = false;
+      patch.updateMatrix();
+      this.group.add(patch);
+      this.grassPatches.push(patch);
+      this.grassFull.push(count);
     }
-    this.group.add(grass);
   }
 
-  focusPatch(x: number, z: number) { this.grassBlades.position.set(x,0,z); }
+  private grassPatches: THREE.InstancedMesh[] = [];
+  private readonly grassTime = { value: 0 };
+  private grassFull: number[] = [];
 
   setQuality(quality: Quality) {
     this.quality = quality;
-    this.grassBlades.count=quality==='high'?5500:quality==='balanced'?2800:0;
+    this.fill.visible = quality === 'high';
+    this.grassPatches.forEach((patch, i) => {
+      const full = this.grassFull[i];
+      patch.count = quality === 'high' ? full : quality === 'balanced' ? Math.floor(full / 2) : 0;
+    });
     this.crowdHeads.visible=!this.photoCrowdReady && quality!=='low';
   }
 
@@ -420,10 +548,13 @@ export class Stadium {
 
   /** Static stadium pieces sharing a material become one draw call, not one per step/beam. */
   private batchStaticGeometry() {
+    // Batches are split into 30 m spatial cells: one draw call per material and cell, so frustum culling
+    // can skip whole sections of stand, boards and steel that are behind or beside the camera.
     const batches=new Map<string,THREE.Mesh[]>();
     for(const child of [...this.group.children]) {
       if(!(child instanceof THREE.Mesh) || child instanceof THREE.InstancedMesh || Array.isArray(child.material)) continue;
-      const key=`${child.material.uuid}/${child.castShadow}/${child.receiveShadow}`;
+      const cell=`${Math.floor(child.position.x/30)}/${Math.floor(child.position.z/30)}`;
+      const key=`${child.material.uuid}/${child.castShadow}/${child.receiveShadow}/${cell}`;
       const list=batches.get(key)||[];list.push(child);batches.set(key,list);
     }
     for(const items of batches.values()) {
@@ -454,14 +585,17 @@ export class Stadium {
 
   private makeDetails() {
     const white = standard('#dfe2c8');
-    const flagMat = new THREE.MeshStandardMaterial({ color: '#c2f970', side: THREE.DoubleSide });
+    const flagMat = new THREE.MeshStandardMaterial({ color: '#c2f970', side: THREE.DoubleSide, roughness: 0.7 });
     for (const side of [-1, 1]) {
       const pole = cylinderBetween(new THREE.Vector3(side * 34, 0, 0), new THREE.Vector3(side * 34, 1.65, 0), 0.022, white);
       this.group.add(pole);
-      const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.47, 0.3), flagMat);
+      const geometry = new THREE.PlaneGeometry(0.47, 0.3, 10, 4);
+      const flag = new THREE.Mesh(geometry, flagMat);
       flag.position.set(side * 34 + 0.23, 1.49, 0);
       flag.rotation.y = 0.5;
+      flag.castShadow = false;
       this.group.add(flag);
+      this.flags.push({ geometry, base: (geometry.attributes.position.array as Float32Array).slice() });
     }
     // Broadcast camera pods behind the advertising boards.
     const dark = standard('#263c36');
@@ -477,8 +611,30 @@ export class Stadium {
     this.impactTime = time;
   }
 
+  /** Crowd reaction: a goal sends the stands up and fires confetti; a near miss only gets a louder roar. */
+  celebrate(point: THREE.Vector3, time: number, goal: boolean) {
+    this.cheerStart = time;
+    this.cheerStrength = goal ? 1 : 0.45;
+    if (goal) this.confetti.burst(point);
+  }
+
   update(time: number) {
     this.crowdTime.value = time;
+    this.grassTime.value = time;
+    const dt = this.lastUpdate ? Math.min(0.1, Math.max(0, time - this.lastUpdate)) : 1 / 30;
+    this.lastUpdate = time;
+    const cheer = time - this.cheerStart;
+    this.crowdEnergy.value = cheer < 6 ? Math.exp(-cheer / 2.2) * this.cheerStrength : 0;
+    this.confetti.update(dt, time);
+    for (const flag of this.flags) {
+      const position = flag.geometry.attributes.position.array as Float32Array;
+      for (let i = 0; i < position.length; i += 3) {
+        const u = (flag.base[i] + 0.235) / 0.47;
+        // Pole-anchored flutter, stronger at the free edge.
+        position[i + 2] = flag.base[i + 2] + Math.sin(time * 5.2 + u * 5.5) * 0.045 * u;
+      }
+      flag.geometry.attributes.position.needsUpdate = true;
+    }
     const elapsed = time - this.impactTime;
     if (elapsed > 3) return;
     const vertices = this.net.geometry.attributes.position.array as Float32Array;

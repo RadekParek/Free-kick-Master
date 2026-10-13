@@ -8,6 +8,8 @@ async function openGame(page: Page) {
   });
   await page.goto('/');
   await expect(page.locator('#app')).toHaveClass('is-ready');
+  await page.locator('#menu-practice').click();
+  await expect(page.locator('#game-view')).toBeVisible();
   await expect(page.locator('#shoot-button')).toBeEnabled();
 }
 async function shoot(page: Page, targetPower = 63) {
@@ -17,7 +19,7 @@ async function shoot(page: Page, targetPower = 63) {
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'result');
 }
 
-test('loads actual WebGL, adjusts pitch, contact, difficulty and remembers preferences', async ({ page }) => {
+test('loads actual WebGL full-screen, adjusts pitch, contact, difficulty and remembers preferences', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' || message.type() === 'warning') errors.push(message.text()); });
@@ -26,9 +28,11 @@ test('loads actual WebGL, adjusts pitch, contact, difficulty and remembers prefe
   const arenaBounds = await page.locator('#arena').boundingBox();
   const viewport = page.viewportSize()!;
   expect(arenaBounds).toMatchObject({ x: 0, y: 0, width: viewport.width, height: viewport.height });
-  await expect(page.locator('#setup-drawer')).toBeHidden();
+  await expect(page.locator('#settings-view')).toBeHidden();
+  await expect(page.locator('#menu-view')).toBeHidden();
   await expect(page.locator('#scene-loading')).toHaveCount(0);
   await page.locator('#settings-button').click();
+  await expect(page.locator('#settings-view')).toBeVisible();
   await page.locator('[data-spot="right"]').click();
   await expect(page.locator('#distance-value')).toHaveText('26.0 m');
   const map = page.locator('#pitch-map');
@@ -41,6 +45,7 @@ test('loads actual WebGL, adjusts pitch, contact, difficulty and remembers prefe
   await page.locator('[data-foot="left"]').click();
   await expect(page.locator('#stage-foot')).toHaveText('LEFT FOOT');
   await page.locator('#resume-button').click();
+  await expect(page.locator('#game-view')).toBeVisible();
   await page.locator('[data-strike="knuckle"]').click();
   await expect(page.locator('#strike-name')).toHaveText('Knuckleball');
   await page.locator('#contact-pad').focus();
@@ -48,6 +53,7 @@ test('loads actual WebGL, adjusts pitch, contact, difficulty and remembers prefe
   await expect(page.locator('#contact-pad')).toHaveAttribute('aria-valuetext', /vertical 7 percent/);
   await page.reload();
   await expect(page.locator('#app')).toHaveClass('is-ready');
+  await page.locator('#menu-practice').click();
   await expect(page.locator('#difficulty-name')).toHaveText('Legend');
   await expect(page.locator('#stage-foot')).toHaveText('LEFT FOOT');
   expect(errors).toEqual([]);
@@ -89,45 +95,42 @@ test('scores a physical goal, records it once, replays, and prepares the next ki
   await expect(page.locator('#shot-result')).toBeHidden();
 });
 
-test('cancels charge safely when paused and does not create a phantom attempt', async ({ page }) => {
+test('cancels charge safely when settings open and does not create a phantom attempt', async ({ page }) => {
   await openGame(page);
   await page.keyboard.down('Space');
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'charging');
   await page.locator('#settings-button').click();
   await page.keyboard.up('Space');
-  await expect(page.locator('#setup-drawer')).toBeVisible();
+  await expect(page.locator('#settings-view')).toBeVisible();
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'ready');
   await page.locator('[data-settings-tab="graphics"]').click();
   await page.locator('#setting-guides').uncheck();
   await page.locator('#setting-quality').selectOption('balanced');
   await page.locator('#resume-button').click();
-  await expect(page.locator('#setup-drawer')).not.toBeVisible();
+  await expect(page.locator('#settings-view')).toBeHidden();
   await expect(page.locator('#stat-attempts')).toHaveText('0');
-  await page.locator('#help-button').click();
+  await page.locator('#settings-button').click();
+  await page.locator('#settings-help').click();
   await expect(page.locator('#modal-title')).toHaveText('Own the dead ball.');
   await page.keyboard.press('Escape');
   await expect(page.locator('#modal')).not.toBeVisible();
 });
 
-test('challenge setup is real, locked to the challenge, and free practice restores the setup', async ({ page }) => {
+test('settings scroll on a short phone screen and back returns to the menu', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
+  const page = await context.newPage();
   await openGame(page);
   await page.locator('#settings-button').click();
-  await page.locator('[data-spot="right"]').click();
-  await page.locator('[data-difficulty="world-class"]').click();
-  await page.locator('#resume-button').click();
-  await page.locator('#challenges-tab').click();
-  await expect(page.locator('.challenge-card')).toHaveCount(3);
-  await page.locator('[data-start-challenge="long-range"]').click();
-  await expect(page.locator('#mode-pill')).toContainText('FROM WAY OUT');
-  await expect(page.locator('#distance-value')).toHaveText('30.0 m');
-  await expect(page.locator('#distance-slider')).toBeDisabled();
-  await expect(page.locator('#wall-minus')).toBeDisabled();
-  await expect(page.locator('[data-difficulty="rookie"]')).toBeDisabled();
-  await page.locator('#training-tab').click();
-  await expect(page.locator('#mode-pill')).toContainText('FREE PRACTICE');
-  await expect(page.locator('#distance-slider')).toBeEnabled();
-  await expect(page.locator('#distance-value')).toHaveText('26.0 m');
-  await expect(page.locator('#difficulty-name')).toHaveText('World class');
+  const scroller = page.locator('#settings-scroll');
+  const scrollable = await scroller.evaluate(element => element.scrollHeight > element.clientHeight);
+  expect(scrollable).toBe(true);
+  await scroller.evaluate(element => element.scrollTo(0, element.scrollHeight));
+  await expect.poll(() => scroller.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  await page.locator('#settings-back').click();
+  await expect(page.locator('#game-view')).toBeVisible();
+  await page.locator('#back-button').click();
+  await expect(page.locator('#menu-view')).toBeVisible();
+  await context.close();
 });
 
 test('touch viewport has no horizontal overflow and supports a touch shoot gesture', async ({ browser }) => {
