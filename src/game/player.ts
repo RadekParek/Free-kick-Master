@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { normalMapFromCanvas } from './pbr';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { KeeperState } from './keeper';
 import type { Foot } from './physics';
@@ -23,6 +24,7 @@ const shadowTexture = new THREE.CanvasTexture(shadowCanvas);
 
 /** Shared knit texture: near-white so the kit colour multiplies cleanly and the cloth reads up close. */
 let knitTexture: THREE.CanvasTexture | null = null;
+let knitNormalMap: THREE.CanvasTexture | null = null;
 function knit(): THREE.CanvasTexture {
   if (knitTexture) return knitTexture;
   const canvas = document.createElement('canvas');
@@ -38,6 +40,9 @@ function knit(): THREE.CanvasTexture {
   knitTexture = new THREE.CanvasTexture(canvas);
   knitTexture.wrapS = knitTexture.wrapT = THREE.RepeatWrapping;
   knitTexture.repeat.set(2, 2);
+  // Woven relief as a tangent-space normal map, generated once with the knit texture.
+  knitNormalMap = normalMapFromCanvas(canvas, 2.5);
+  knitNormalMap.repeat.set(2, 2);
   knitTexture.colorSpace = THREE.SRGBColorSpace;
   knitTexture.anisotropy = 4;
   return knitTexture;
@@ -87,8 +92,9 @@ class Athlete {
     const pick = (high: number, low: number) => hi ? high : low;
     this.root.add(this.body);
     const cloth = knit();
+    const clothNormal = knitNormalMap!;
     const skin = this.skin = material(skinColors[variation % skinColors.length], 0.58);
-    const jersey = this.jersey = new THREE.MeshStandardMaterial({ color: role === 'taker' ? '#b72b39' : role === 'keeper' ? '#ffbb3b' : '#ecedf0', roughness: 0.78, map: cloth });
+    const jersey = this.jersey = new THREE.MeshStandardMaterial({ color: role === 'taker' ? '#b72b39' : role === 'keeper' ? '#ffbb3b' : '#ecedf0', roughness: 0.78, map: cloth, normalMap: clothNormal, normalScale: new THREE.Vector2(.35, .35) });
     const shorts = this.shorts = new THREE.MeshStandardMaterial({ color: role === 'taker' ? '#173c30' : role === 'keeper' ? '#242634' : '#1c2c42', roughness: 0.8, map: cloth });
     const trim = this.trim = material(role === 'keeper' ? '#292a37' : '#d3bf84', 0.6);
     const sock = new THREE.MeshStandardMaterial({ color: role === 'keeper' ? '#ffc149' : '#ecede5', roughness: 0.82, map: cloth });
@@ -376,7 +382,7 @@ export function makeFootball(): THREE.Mesh {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 16;
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 64, 48), new THREE.MeshStandardMaterial({ map: texture, roughness: 0.4 }));
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 64, 48), new THREE.MeshStandardMaterial({ map: texture, normalMap: normalMapFromCanvas(canvas, 1.5), normalScale: new THREE.Vector2(.25, .25), roughness: 0.4 }));
   ball.castShadow = true;
   return ball;
 }

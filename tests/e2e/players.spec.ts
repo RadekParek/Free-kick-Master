@@ -4,7 +4,7 @@ const initSettings = () => {
   if (!localStorage.getItem('fkm.settings.v1')) localStorage.setItem('fkm.settings.v1', JSON.stringify({ quality: 'low', sound: false }));
 };
 
-test('menu opens the full roster with 40 cards, searches real players, switches the taker and persists the selection', async ({ page }) => {
+test('menu opens the full roster with 30 cards, searches real players, switches the taker and persists the selection', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' || message.type() === 'warning') errors.push(message.text()); });

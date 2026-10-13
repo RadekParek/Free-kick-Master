@@ -8,6 +8,8 @@ import {
 import { cloneKeeper, createKeeper, KEEPER_Z, type KeeperState } from './keeper';
 import { Player, makeFootball } from './player';
 import { Stadium } from './stadium';
+import { PostStack } from './post';
+import { applyStudioLight, studioEnvironment } from './pbr';
 import { advanceShot } from './simulation';
 import { getPlayer } from '../players';
 import type { Settings, ShotResult } from '../state';
@@ -26,6 +28,7 @@ interface ReplayFrame { ball: Vec3; keeper: KeeperState; time: number }
 
 export class Arena {
   readonly renderer: THREE.WebGLRenderer;
+  private readonly post: PostStack;
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(39, 1, 0.05, 450);
   phase: Phase = 'ready';
@@ -92,6 +95,7 @@ export class Arena {
     this.renderer.shadowMap.enabled = settings.quality !== 'low';
     this.renderer.shadowMap.type = settings.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
+    this.post = new PostStack(this.renderer, this.scene, this.camera);
     this.renderer.setClearColor('#b9cfc6');
     this.renderer.domElement.setAttribute('aria-label', 'Interactive 3D free-kick arena. Drag to aim, or use the arrow keys.');
     this.renderer.domElement.setAttribute('role', 'img');
@@ -109,6 +113,9 @@ export class Arena {
     this.keeperModel.group.position.z = KEEPER_Z;
     this.wallModels = Array.from({ length: 5 }, (_, i) => new Player('wall', [4, 5, 6, 8, 2][i], i + 1));
     this.scene.add(this.taker.group, this.keeperModel.group, ...this.wallModels.map(p => p.group));
+    // Studio image-based lighting for the athletes and ball only (PBR reflections, generated once).
+    const studio = studioEnvironment(this.renderer);
+    for (const object of [this.football, this.taker.group, this.keeperModel.group, ...this.wallModels.map(p => p.group)]) applyStudioLight(object, studio);
     this.ring = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.425, 48), new THREE.MeshBasicMaterial({ color: '#d8ffad', transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
     this.ring.rotation.x = -Math.PI / 2;
     this.scene.add(this.ring);
@@ -186,6 +193,7 @@ export class Arena {
     this.height = Math.max(1, bounds.height);
     this.renderer.setPixelRatio(window.devicePixelRatio || 1);
     this.renderer.setSize(this.width, this.height, false);
+    this.post.configure(this.settings.quality, this.width, this.height);
     this.camera.aspect = this.width / this.height;
     this.camera.fov = this.width < this.height ? 50 : this.height < 500 ? 44 : 39;
     this.camera.updateProjectionMatrix();
@@ -420,7 +428,7 @@ export class Arena {
     const aim = this.projectedAim.set(this.settings.aim.x, this.settings.aim.y, 0).project(this.camera);
     this.events.target((aim.x + 1) / 2 * this.width, (-aim.y + 1) / 2 * this.height, this.phase === 'ready' || this.phase === 'charging');
     this.renderer.shadowMap.needsUpdate = true;
-    this.renderer.render(this.scene, this.camera);
+    this.post.render();
     this.metricsFrames++;
     if (!this.metricsStart) this.metricsStart = timestamp;
     if (timestamp - this.metricsStart >= 1200) {

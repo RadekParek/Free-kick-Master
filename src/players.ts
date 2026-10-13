@@ -33,16 +33,22 @@ export interface TakerProfile {
   credit: string | null;
 }
 export const PHOTO_LICENSE = 'https://creativecommons.org/licenses/by-sa/4.0/';
-const photoCredit = 'Bryan Berlin / WikiPortraits · CC BY-SA 4.0 · background removed';
+const photoCredit = 'Bryan Berlin / WikiPortraits · CC BY-SA 4.0';
 
 /** Unlicensed web photos for personal use. Only the four credited photos above carry a CC licence. */
 const UNLICENSED = 'Unlicensed web photo, personal use only. Rights remain with the photographer.';
 const PHOTO_EXTRA: Record<string, { portrait: string; photoSource: string }> = {
-  neymar: { portrait: './players/neymar-cut.webp', photoSource: 'https://www.gettyimages.in/photos/neymar-portrait' },
-  vandijk: { portrait: './players/vandijk-cut.webp', photoSource: 'https://gettyimages.com/photos/virgil-van-dijk-netherlands' },
-  yamal: { portrait: './players/yamal-cut.webp', photoSource: 'https://www.gettyimages.com/detail/news-photo/lamine-yamal-of-fc-barcelona-poses-for-a-portrait-during-news-photo/2232611768' },
-  modric: { portrait: './players/modric-cut.webp', photoSource: 'https://www.gettyimages.in/photos/luka-modric' },
-  lewandowski: { portrait: './players/lewandowski-cut.webp', photoSource: 'https://www.gettyimages.no/photos/robert-lewandowski-portrait' },
+  haaland: { portrait: './players/haaland.jpg', photoSource: 'https://timesofindia.indiatimes.com/sports/football/top-stories/stick-together-and-smile-erling-haalands-message-after-man-citys-explosive-verdict/articleshow/134806973.cms' },
+  debruyne: { portrait: './players/debruyne.jpg', photoSource: 'https://gettyimages.com/photos/kevin-de-bruyne?page=2' },
+  neymar: { portrait: './players/neymar.jpg', photoSource: 'https://www.gettyimages.in/photos/neymar-portrait' },
+  vandijk: { portrait: './players/vandijk.jpg', photoSource: 'https://gettyimages.com/photos/virgil-van-dijk-netherlands' },
+  kane: { portrait: './players/kane.jpg', photoSource: 'https://www.gettyimages.com.br/fotos/harry-kane-portrait' },
+  vinicius: { portrait: './players/vinicius.jpg', photoSource: 'https://www.nytimes.com/athletic/6455491/2025/06/27/vinicius-jr-real-madrid-club-world-cup/' },
+  bellingham: { portrait: './players/bellingham.jpg', photoSource: 'https://www.gettyimages.co.uk/editorial-images/sport/event/jude-bellingham/776168773' },
+  yamal: { portrait: './players/yamal.jpg', photoSource: 'https://www.gettyimages.com/detail/news-photo/lamine-yamal-of-fc-barcelona-poses-for-a-portrait-during-news-photo/2232611768' },
+  modric: { portrait: './players/modric.jpg', photoSource: 'https://www.gettyimages.in/photos/luka-modric' },
+  lewandowski: { portrait: './players/lewandowski.jpg', photoSource: 'https://www.gettyimages.no/photos/robert-lewandowski-portrait' },
+  'alexander-arnold': { portrait: './players/alexander-arnold.jpg', photoSource: 'https://gettyimages.pt/fotos/trent-alexander-arnold' },
 };
 function resolvePhoto(base: BaseSpec & { id: string }): Pick<TakerProfile, 'portrait' | 'photoDate' | 'photoSource' | 'credit'> {
   const extra = PHOTO_EXTRA[base.id];
@@ -62,22 +68,22 @@ const BASE: (BaseSpec & { id: string })[] = [
     specialty: 'Power specialist', description: 'A powerful, low-spin strike with a pronounced late wobble. Take a step back, hit the centre, and let it move.',
     attributes: { power: 99, curve: 87, knuckle: 99, control: 92 },
     appearance: { shirt: '#b82b38', shorts: '#123b33', trim: '#e4ca83', skin: '#b97e59', hair: '#271e1a', beard: false, height: 1.87 },
-    portrait: './players/ronaldo-cut.webp', photoDate: '2 July 2026', photoSource: 'https://commons.wikimedia.org/wiki/File:Cristiano_Ronaldo_Croatia_v_Portugal_2_July_2026-075.jpg', credit: photoCredit },
+    portrait: './players/ronaldo.webp', photoDate: '2 July 2026', photoSource: 'https://commons.wikimedia.org/wiki/File:Cristiano_Ronaldo_Croatia_v_Portugal_2_July_2026-075.jpg', credit: photoCredit },
   { id: 'messi', name: 'Lionel Messi', shortName: 'Messi', nation: 'Argentina', nationCode: 'AR', foot: 'left', number: 10, rating: 97,
     specialty: 'Finesse specialist', description: 'A left-footed artist. Exceptional sidespin and a controlled flight reward a well-placed, curling strike.',
     attributes: { power: 87, curve: 99, knuckle: 70, control: 99 },
     appearance: { shirt: '#c4e6ed', shorts: '#142735', trim: '#f6f3e2', skin: '#c39574', hair: '#3a2e24', beard: true, height: 1.70 },
-    portrait: './players/messi-cut.webp', photoDate: '7 July 2026', photoSource: 'https://commons.wikimedia.org/wiki/File:Leo_Messi_Argentina_v_Egypt_7_July_2026-1.jpg', credit: photoCredit },
+    portrait: './players/messi.webp', photoDate: '7 July 2026', photoSource: 'https://commons.wikimedia.org/wiki/File:Leo_Messi_Argentina_v_Egypt_7_July_2026-1.jpg', credit: photoCredit },
   { id: 'mbappe', name: 'Kylian Mbappé', shortName: 'Mbappé', nation: 'France', nationCode: 'FR', foot: 'right', number: 10, rating: 93,
     specialty: 'Driven specialist', description: 'Fast, direct, decisive. A high launch speed makes driven shots and long-range strikes arrive in a hurry.',
     attributes: { power: 96, curve: 84, knuckle: 89, control: 89 },
     appearance: { shirt: '#18356d', shorts: '#172645', trim: '#d9cda5', skin: '#936140', hair: '#201b18', beard: false, height: 1.78 },
-    portrait: './players/mbappe-cut.webp', photoDate: '16 June 2026', photoSource: 'https://commons.wikimedia.org/wiki/File:Kylian_Mbappe_France_v_Senegal_16_June_2026-391_(cropped).jpg', credit: photoCredit },
+    portrait: './players/mbappe.webp', photoDate: '16 June 2026', photoSource: 'https://commons.wikimedia.org/wiki/File:Kylian_Mbappe_France_v_Senegal_16_June_2026-391_(cropped).jpg', credit: photoCredit },
   { id: 'salah', name: 'Mohamed Salah', shortName: 'Salah', nation: 'Egypt', nationCode: 'EG', foot: 'left', number: 10, rating: 94,
     specialty: 'Curve specialist', description: 'Shape it with the left. Strong curl with a little extra pace is ideal for finding the far corner from an angle.',
     attributes: { power: 91, curve: 96, knuckle: 76, control: 95 },
     appearance: { shirt: '#cc3b32', shorts: '#e5e3d8', trim: '#1e282e', skin: '#ad784f', hair: '#25201b', beard: true, height: 1.75 },
-    portrait: './players/salah-cut.webp', photoDate: '7 July 2026', photoSource: 'https://commons.wikimedia.org/wiki/File:Mohamed_Salah_Argentina_v_Egypt_7_July_2026-163_(cropped).jpg', credit: photoCredit },
+    portrait: './players/salah.webp', photoDate: '7 July 2026', photoSource: 'https://commons.wikimedia.org/wiki/File:Mohamed_Salah_Argentina_v_Egypt_7_July_2026-163_(cropped).jpg', credit: photoCredit },
   { id: 'haaland', name: 'Erling Haaland', shortName: 'Haaland', nation: 'Norway', nationCode: 'NO', foot: 'left', number: 9, rating: 92,
     specialty: 'Power striker', description: 'A big left-footed hammer. Hit it with conviction and let the power do the talking.',
     attributes: { power: 94, curve: 72, knuckle: 88, control: 80 },

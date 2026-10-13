@@ -151,7 +151,6 @@ export class Stadium {
   private readonly fill = new THREE.DirectionalLight('#8eb8fc', .65);
   private skyMaterial!: THREE.ShaderMaterial;
   private sunDisc!: THREE.Mesh;
-  private grassBlades!: THREE.InstancedMesh;
   private readonly glows = new THREE.Group();
   private readonly crowdTime = { value: 0 };
   private readonly crowdEnergy = { value: 0 };
@@ -421,22 +420,22 @@ export class Stadium {
   }
 
   private makeGrassBlades() {
-    // Short, tapered turf blades. The field is denser near the kick and thins radially,
-    // so there is no visible patch edge. Counts are fixed per quality and cull with the mesh.
+    // Short tapered turf blades, 36 mm tall. The field is denser near the kick and thins radially,
+    // so there is no visible patch edge. Blades are split into four quadrant patches so the
+    // camera frustum can skip whole patches that are off screen.
     const blade = new THREE.BufferGeometry();
     blade.setAttribute('position', new THREE.Float32BufferAttribute([
-      -.0055, 0, 0, .0055, 0, 0, .0012, .026, .0015,
-      -.0055, 0, 0, .0012, .026, .0015, -.0012, .026, .0015,
+      -.006, 0, 0, .006, 0, 0, .0013, .036, .0016,
+      -.006, 0, 0, .0013, .036, .0016, -.0013, .036, .0016,
     ], 3));
     blade.computeVertexNormals();
     const mat = new THREE.MeshBasicMaterial({ color: '#3f7a48', side: THREE.DoubleSide });
-    const MAX = 16000;
-    this.grassMax = MAX;
-    const grass = this.grassBlades = new THREE.InstancedMesh(blade, mat, MAX);
+    const MAX = 26000;
     const random = seededRandom(767);
     const dummy = new THREE.Object3D();
     const colour = new THREE.Color();
     const radius = 9;
+    const buckets: { matrix: THREE.Matrix4; colour: THREE.Color }[][] = [[], [], [], []];
     let placed = 0;
     while (placed < MAX) {
       const r = radius * Math.sqrt(random());
@@ -448,25 +447,36 @@ export class Stadium {
       dummy.rotation.set((random() - .5) * .5, random() * Math.PI * 2, (random() - .5) * .35);
       dummy.scale.set(.75 + random() * .6, .6 + random() * .9, .75 + random() * .6);
       dummy.updateMatrix();
-      grass.setMatrixAt(placed, dummy.matrix);
       const tint = .72 + random() * .42;
       colour.setRGB(tint * .85, tint * 1.05, tint * .72);
-      grass.setColorAt(placed, colour);
+      buckets[(x >= 0 ? 1 : 0) + (z >= 0 ? 2 : 0)].push({ matrix: dummy.matrix.clone(), colour: colour.clone() });
       placed++;
     }
-    grass.instanceMatrix.needsUpdate = true;
-    if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
-    grass.frustumCulled = true;
-    this.group.add(grass);
+    this.grassPatches = buckets.map(items => {
+      const patch = new THREE.InstancedMesh(blade, mat, Math.max(1, items.length));
+      items.forEach((item, i) => { patch.setMatrixAt(i, item.matrix); patch.setColorAt(i, item.colour); });
+      patch.count = items.length;
+      patch.instanceMatrix.needsUpdate = true;
+      if (patch.instanceColor) patch.instanceColor.needsUpdate = true;
+      patch.computeBoundingSphere();
+      patch.frustumCulled = true;
+      this.group.add(patch);
+      return patch;
+    });
+    this.grassFull = this.grassPatches.map(patch => patch.count);
   }
 
-  private grassMax = 0;
+  private grassPatches: THREE.InstancedMesh[] = [];
+  private grassFull: number[] = [];
 
-  focusPatch(x: number, z: number) { this.grassBlades.position.set(x,0,z); }
+  focusPatch(x: number, z: number) { for (const patch of this.grassPatches) patch.position.set(x, 0, z); }
 
   setQuality(quality: Quality) {
     this.quality = quality;
-    this.grassBlades.count=quality==='high'?this.grassMax:quality==='balanced'?Math.round(this.grassMax*.5):0;
+    this.grassPatches.forEach((patch, i) => {
+      const full = this.grassFull[i];
+      patch.count = quality === 'high' ? full : quality === 'balanced' ? Math.floor(full / 2) : 0;
+    });
     this.crowdHeads.visible=!this.photoCrowdReady && quality!=='low';
   }
 

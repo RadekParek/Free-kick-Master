@@ -35,7 +35,7 @@ export const AIM_LIMITS = { x: 14, yMin: 0.05, yMax: 7.5 } as const;
 const DRAG = 0.16;
 /** Distance from the kick to the defensive wall. Slightly further back than the 9.15 m law. */
 export const WALL_DISTANCE = 10.5;
-export const SIDE_MAGNUS = 0.0095; // ~40% more curve than the previous tuning.
+export const SIDE_MAGNUS = 0.011; // ~16% more curve than the previous tuning.
 const TOP_MAGNUS = 0.005;
 export const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
