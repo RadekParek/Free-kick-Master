@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Free Kick Master</string>
+    <string name="title_activity_main">Free Kick Master</string>
+    <string name="package_name">com.freekickmaster.game</string>
+    <string name="custom_url_scheme">com.freekickmaster.game</string>
+</resources>

@@ -1,0 +1,69 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'arena/**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Test and build offline Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Type-check and test physics
+        run: npm run check
+      - name: Build and bundle the offline game
+        run: npm run android:sync
+      - name: Set up Gradle caching
+        uses: gradle/actions/setup-gradle@v4
+      - name: Build installable debug APK and run Android lint
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug lintDebug
+      - name: Name and checksum the APK
+        run: |
+          mkdir -p apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk apk/Free-Kick-Master-debug.apk
+          cd apk
+          sha256sum Free-Kick-Master-debug.apk > SHA256SUMS.txt
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Free-Kick-Master-Android
+          path: apk/
+          retention-days: 30
+          if-no-files-found: error
+      - name: Upload Android lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-lint
+          path: android/app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
