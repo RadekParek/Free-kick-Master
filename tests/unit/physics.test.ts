@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BALL_RADIUS, FIXED_DT, GOAL_HEIGHT, GOAL_WIDTH, classifyGoalCrossing, cloneBall,
-  constrainPosition, crossingAtZ, distanceToGoal, getWall, hitsWall, integrateBall,
+  constrainPosition, crossingAtZ, distanceBounds, distanceToGoal, getWall, hitsWall, integrateBall,
   intersectsFrame, launchBall, previewShot, recommendedPower, shotSpeed, strikeName,
   wallJump, type ShotSetup,
 } from '../../src/game/physics';
@@ -100,6 +100,20 @@ describe('pitch and physical dimensions', () => {
   });
   it('measures diagonal distance rather than only distance up the pitch', () => {
     expect(distanceToGoal({ x: 18, z: 24 })).toBe(30);
+  });
+  it('distance controls cover the legal range without changing the chosen bearing', () => {
+    for (const position of [{ x: 0, z: 24 }, { x: -10, z: 24 }, { x: 30, z: 10 }, { x: -30, z: 46 }]) {
+      const bounds = distanceBounds(position);
+      const length = distanceToGoal(position);
+      expect(bounds.min).toBeLessThanOrEqual(length + 1e-8);
+      expect(bounds.max).toBeGreaterThanOrEqual(length - 1e-8);
+      for (const distance of [bounds.min, (bounds.min + bounds.max) / 2, bounds.max]) {
+        const p = { x: position.x / length * distance, z: position.z / length * distance };
+        const constrained = constrainPosition(p);
+        expect(constrained.x).toBeCloseTo(p.x, 7);
+        expect(constrained.z).toBeCloseTo(p.z, 7);
+      }
+    }
   });
   it('offers a bounded reference power for every training position', () => {
     expect(recommendedPower({ x: 0, z: 18 })).toBeGreaterThan(0.5);

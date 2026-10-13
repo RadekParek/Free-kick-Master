@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GOAL_HEIGHT, GOAL_WIDTH } from './physics';
 
 const standard = (color: THREE.ColorRepresentation, roughness = 0.85) => new THREE.MeshStandardMaterial({ color, roughness });
@@ -139,13 +140,18 @@ export class Stadium {
     pitch.receiveShadow = true;
     this.group.add(pitch);
     const white = new THREE.MeshBasicMaterial({ color: '#e1e5cd', transparent: true, opacity: 0.88 });
+    const markings: THREE.BufferGeometry[] = [];
+    const addMarking = (mesh: THREE.Mesh) => {
+      mesh.updateMatrix();
+      markings.push(mesh.geometry.applyMatrix4(mesh.matrix));
+    };
     const line = (x1: number, z1: number, x2: number, z2: number, width = 0.095) => {
       const length = Math.hypot(x2 - x1, z2 - z1);
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, length), white);
       mesh.rotation.x = -Math.PI / 2;
       mesh.rotation.z = Math.atan2(x2 - x1, z2 - z1);
       mesh.position.set((x1 + x2) / 2, 0.018, (z1 + z2) / 2);
-      this.group.add(mesh);
+      addMarking(mesh);
     };
     const rectangle = (halfWidth: number, from: number, to: number) => {
       line(-halfWidth, from, -halfWidth, to);
@@ -174,15 +180,17 @@ export class Stadium {
       const mesh = new THREE.Mesh(new THREE.RingGeometry(radius - 0.045, radius + 0.045, 96), white);
       mesh.rotation.x = -Math.PI / 2;
       mesh.position.set(0, 0.019, z);
-      this.group.add(mesh);
+      addMarking(mesh);
     };
     circle(9.15, 52.5);
     for (const z of [11, 52.5, 94]) {
       const dot = new THREE.Mesh(new THREE.CircleGeometry(0.13, 16), white);
       dot.rotation.x = -Math.PI / 2;
       dot.position.set(0, 0.02, z);
-      this.group.add(dot);
+      addMarking(dot);
     }
+    this.group.add(new THREE.Mesh(mergeGeometries(markings), white));
+    markings.forEach(geometry => geometry.dispose());
   }
 
   private makeGoal(): THREE.LineSegments {

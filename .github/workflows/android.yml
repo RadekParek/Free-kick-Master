@@ -33,10 +33,24 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Verify the runner's preinstalled Android SDK
+        shell: bash
         run: |
-          test -d "$ANDROID_HOME"
-          sdkmanager --list_installed
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          if [ ! -d "$ANDROID_HOME" ]; then
+            echo "::error::The hosted runner did not provide ANDROID_HOME."
+            exit 1
+          fi
+          if [ ! -f "$ANDROID_HOME/platforms/android-35/android.jar" ] || [ ! -d "$ANDROID_HOME/build-tools/35.0.0" ]; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+            if [ ! -x "$SDKMANAGER" ]; then
+              echo "::error::Android SDK 35 and the command-line SDK manager are missing."
+              exit 1
+            fi
+            if ! "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"; then
+              echo "::error::SDK manager could not install Android SDK 35."
+              exit 1
+            fi
+          fi
+          echo "Using Android SDK 35 at $ANDROID_HOME"
       - name: Install locked dependencies
         run: npm ci
       - name: Type-check and test physics

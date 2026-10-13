@@ -39,7 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sound: true,
   guides: true,
   haptics: true,
-  quality: typeof window !== 'undefined' && window.innerWidth < 800 ? 'balanced' : 'high',
+  quality: typeof window !== 'undefined' && (window.innerWidth < 800 || window.matchMedia('(pointer: coarse)').matches) ? 'balanced' : 'high',
 };
 export const emptySession = (): Session => ({ attempts: 0, goals: 0, streak: 0, bestStreak: 0, history: [] });
 const KEY = 'fkm.settings.v1';
