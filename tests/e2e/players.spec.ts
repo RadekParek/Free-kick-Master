@@ -1,44 +1,52 @@
 import { test, expect } from '@playwright/test';
 
-test('searches real offline photo cards, switches the actual player/foot, and persists the selection', async ({ page }) => {
+const initSettings = () => {
+  if (!localStorage.getItem('fkm.settings.v1')) localStorage.setItem('fkm.settings.v1', JSON.stringify({ quality: 'low', sound: false }));
+};
+
+test('menu opens the full roster with 30 cards, searches real players, switches the taker and persists the selection', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' || message.type() === 'warning') errors.push(message.text()); });
-  await page.addInitScript(() => {
-    if (!localStorage.getItem('fkm.settings.v1')) localStorage.setItem('fkm.settings.v1', JSON.stringify({ quality: 'low', sound: false }));
-  });
+  await page.addInitScript(initSettings);
   await page.goto('/');
   await expect(page.locator('#app')).toHaveClass('is-ready');
-  await expect(page.locator('#taker-name')).toHaveText('Ronaldo');
-  await page.keyboard.press('KeyT');
-  await expect(page.locator('.player-card')).toHaveCount(4);
+  await expect(page.locator('#menu-view')).toBeVisible();
+  await expect(page.locator('#game-view')).toBeHidden();
+  await expect(page.locator('#menu-play')).toBeVisible();
+  await expect(page.locator('#menu-practice')).toBeVisible();
+  await expect(page.locator('#menu-player-count')).toHaveText('30');
+  await page.locator('#menu-players').click();
+  await expect(page.locator('.player-card[data-player]')).toHaveCount(30);
+  await expect(page.locator('.player-card[data-player].is-special')).toHaveCount(15);
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('.card-portrait')].every(image => image.complete && image.naturalWidth >= 500));
   expect(await page.locator('.card-portrait').evaluateAll(images => images.every(image => new URL((image as HTMLImageElement).src).origin === location.origin))).toBe(true);
   await page.locator('#player-search').fill('argentina');
-  await expect(page.locator('.player-card:visible')).toHaveCount(1);
+  await expect(page.locator('.player-card[data-player]:visible')).toHaveCount(2);
   await expect(page.locator('[data-player="messi"]')).toBeVisible();
-  await page.locator('[data-player="messi"]').click();
-  await expect(page.locator('#selected-player-name')).toHaveText('Lionel Messi');
-  await page.locator('#confirm-player').click();
-  await expect(page.locator('#taker-name')).toHaveText('Messi');
-  await expect(page.locator('#stage-foot')).toHaveText('LEFT FOOT');
-  // Immediate keyboard input after closing the roster must resume synchronously.
-  await page.keyboard.down('Space');
-  await expect(page.locator('#app')).toHaveAttribute('data-phase', 'charging');
-  await page.locator('#settings-button').click();
-  await page.keyboard.up('Space');
-  await expect(page.locator('#app')).toHaveAttribute('data-phase', 'ready');
-  await page.locator('#resume-button').click();
-  await page.reload();
-  await expect(page.locator('#app')).toHaveClass('is-ready');
-  await expect(page.locator('#taker-name')).toHaveText('Messi');
-  await expect(page.locator('#stage-foot')).toHaveText('LEFT FOOT');
-  await page.locator('#taker-button').click();
   await page.locator('#player-search').fill('not-a-footballer');
   await expect(page.locator('#roster-empty')).toBeVisible();
   await page.locator('#player-search').fill('');
-  await page.locator('[data-roster-filter="right"]').click();
-  await expect(page.locator('.player-card:visible')).toHaveCount(2);
+  await page.locator('[data-edition-filter="special"]').click();
+  await expect(page.locator('.player-card[data-player]:visible')).toHaveCount(15);
+  await page.locator('[data-edition-filter="all"]').click();
+  await page.locator('[data-player="messi"]').click();
+  await expect(page.locator('#selected-player-name')).toHaveText('Lionel Messi');
+  await page.locator('#confirm-player').click();
+  await expect(page.locator('#menu-view')).toBeVisible();
+  await page.locator('#menu-practice').click();
+  await expect(page.locator('#game-view')).toBeVisible();
+  await expect(page.locator('#taker-name')).toHaveText('Messi');
+  await expect(page.locator('#stage-foot')).toHaveText('LEFT FOOT');
+  await page.locator('#back-button').click();
+  await expect(page.locator('#menu-view')).toBeVisible();
+  await page.locator('#menu-players').click();
+  await page.locator('[data-player="messi-special"]').click();
+  await page.locator('#confirm-player').click();
+  await page.locator('#menu-practice').click();
+  await expect(page.locator('#taker-name')).toHaveClass(/handwritten/);
+  await page.locator('#back-button').click();
+  await page.locator('#menu-players').click();
   await page.locator('#roster-credits').click();
   await expect(page.locator('.photo-credit-list article')).toHaveCount(4);
   await expect(page.locator('#modal-content')).toContainText('CC BY-SA 4.0');
@@ -47,32 +55,31 @@ test('searches real offline photo cards, switches the actual player/foot, and pe
   expect(errors).toEqual([]);
 });
 
-test('visual controls persist atmosphere, guides, adaptive resolution and monitor without changing the shot setup', async ({ page }) => {
+test('visual controls persist atmosphere, guides and the performance monitor without changing the shot setup', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.addInitScript(() => {
-    if (!localStorage.getItem('fkm.settings.v1')) localStorage.setItem('fkm.settings.v1', JSON.stringify({ quality: 'low', sound: false }));
-  });
+  await page.addInitScript(initSettings);
   await page.goto('/');
   await expect(page.locator('#app')).toHaveClass('is-ready');
+  await page.locator('#menu-practice').click();
+  await expect(page.locator('#game-view')).toBeVisible();
   const distance = await page.locator('#stage-distance').textContent();
   await page.locator('#settings-button').click();
   await page.locator('[data-settings-tab="graphics"]').click();
   await page.locator('#setting-atmosphere').selectOption('sunset');
-  await page.locator('#setting-adaptiveResolution').uncheck();
   await page.locator('#setting-showFps').check();
   await page.locator('#setting-guides').uncheck();
   await page.locator('#resume-button').click();
   await expect(page.locator('#atmosphere-label')).toHaveText('GOLDEN HOUR');
   await expect(page.locator('#performance')).toBeVisible();
-  await expect(page.locator('#performance')).toHaveText(/\d+ FPS · \d+ DRAWS · 100%/);
+  await expect(page.locator('#performance')).toHaveText(/\d+ FPS · \d+ DRAWS · NATIVE [\d.]+×/);
   await expect(page.locator('#stage-distance')).toHaveText(distance!);
   await page.reload();
   await expect(page.locator('#app')).toHaveClass('is-ready');
+  await page.locator('#menu-practice').click();
   await expect(page.locator('#atmosphere-label')).toHaveText('GOLDEN HOUR');
   await page.locator('#settings-button').click();
   await page.locator('[data-settings-tab="graphics"]').click();
-  await expect(page.locator('#setting-adaptiveResolution')).not.toBeChecked();
   await expect(page.locator('#setting-guides')).not.toBeChecked();
   await expect(page.locator('#setting-showFps')).toBeChecked();
   await page.locator('#setting-atmosphere').selectOption('day');

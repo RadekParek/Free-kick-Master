@@ -30,6 +30,8 @@ export const GOAL_WIDTH = 7.32;
 export const GOAL_HEIGHT = 2.44;
 export const FIXED_DT = 1 / 120;
 export const GRAVITY = 9.81;
+/** Aim may leave the goal mouth (wide and high) so the aim reticle can reach every useful launch line. */
+export const AIM_LIMITS = { x: 14, yMin: 0.05, yMax: 7.5 } as const;
 const DRAG = 0.16;
 export const SIDE_MAGNUS = 0.0068; // 36% stronger side force than v1.
 const TOP_MAGNUS = 0.005;
@@ -61,7 +63,7 @@ export function distanceBounds(position: Position): { min: number; max: number }
 /** Aiming sets elevation for a reference power, NOT a homing target for the actual shot. */
 function referenceElevation(distance: number, height: number, speed: number): number {
   let low = -0.12;
-  let high = 0.72;
+  let high = 1.05;
   for (let i = 0; i < 22; i++) {
     const angle = (low + high) / 2;
     const vHorizontal = speed * Math.cos(angle);
@@ -78,12 +80,12 @@ export function launchBall(setup: ShotSetup): BallState {
   const p = constrainPosition(setup.position);
   const cx = clamp(setup.contact.x, -1, 1);
   const cy = clamp(setup.contact.y, -1, 1);
-  const dx = clamp(setup.aim.x, -10, 10) - p.x;
+  const dx = clamp(setup.aim.x, -AIM_LIMITS.x, AIM_LIMITS.x) - p.x;
   const dz = -p.z;
   const distance = Math.hypot(dx, dz);
   const speed = shotSpeed(setup.power, setup.attributes);
   const controlPenalty = setup.attributes ? Math.max(0, setup.power - recommendedPower(p) - 0.1) ** 2 * (100 - setup.attributes.control) / 100 * 0.65 : 0;
-  const angle = referenceElevation(distance, clamp(setup.aim.y, 0.15, 5.5), shotSpeed(recommendedPower(p), setup.attributes)) - cy * 0.07 + controlPenalty;
+  const angle = referenceElevation(distance, clamp(setup.aim.y, AIM_LIMITS.yMin, AIM_LIMITS.yMax), shotSpeed(recommendedPower(p), setup.attributes)) - cy * 0.07 + controlPenalty;
   const curveScale = setup.attributes ? 0.78 + (setup.attributes.curve - 80) * 0.028 : 1;
   const horizontal = speed * Math.cos(angle);
   return {

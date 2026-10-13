@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  BALL_RADIUS, FIXED_DT, GOAL_HEIGHT, GOAL_WIDTH, clamp, cloneBall,
+  AIM_LIMITS, BALL_RADIUS, FIXED_DT, GOAL_HEIGHT, GOAL_WIDTH, clamp, cloneBall,
   distanceToGoal, getWall, integrateBall, launchBall,
   lerp, previewShot, recommendedPower, shotSpeed, strikeName, wallJump,
   type Aim, type BallState, type Outcome, type ShotSetup, type Vec3, type WallPlayer,
@@ -20,7 +20,7 @@ export interface ArenaEvents {
   aim: (aim: Aim) => void;
   target: (x: number, y: number, visible: boolean) => void;
   error: (message: string) => void;
-  performance?: (stats: { fps: number; calls: number; triangles: number; scale: number }) => void;
+  performance?: (stats: { fps: number; calls: number; triangles: number; pixelRatio: number }) => void;
 }
 interface ReplayFrame { ball: Vec3; keeper: KeeperState; time: number }
 
@@ -54,11 +54,10 @@ export class Arena {
   private readonly scratchObject = new THREE.Object3D();
   private readonly projectedAim = new THREE.Vector3();
   private wall: WallPlayer[] = [];
-  private resolutionScale = 1;
   private metricsStart = 0;
   private metricsFrames = 0;
-  private slowWindows = 0;
-  private fastWindows = 0;
+  /** Attract mode: the menu background. Orbiting camera, no input, no shots. */
+  attract = false;
   private shadowTime = -1;
   private time = 0;
   private phaseTime = 0;
@@ -87,7 +86,8 @@ export class Arena {
     this.shotSetup = this.setup(recommendedPower(settings.position));
     this.ball = launchBall(this.shotSetup);
     this.keeper = createKeeper(settings.position.x);
-    this.renderer = new THREE.WebGLRenderer({ antialias: (window.devicePixelRatio || 1) < 1.5, alpha: false, powerPreference: 'high-performance' });
+    // Native resolution is always used; MSAA is only needed on low-density screens.
+    this.renderer = new THREE.WebGLRenderer({ antialias: (window.devicePixelRatio || 1) < 2, alpha: false, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
@@ -163,9 +163,7 @@ export class Arena {
     this.settings = structuredClone(settings);
     if (playerChanged) this.taker.setProfile(getPlayer(settings.playerId));
     if (settings.atmosphere !== old.atmosphere) this.stadium.setAtmosphere(settings.atmosphere);
-    if (settings.adaptiveResolution !== old.adaptiveResolution) { this.resolutionScale = 1; this.slowWindows = this.fastWindows = 0; this.resize(); }
     if (qualityChanged) {
-      this.resolutionScale = 1;
       this.stadium.setQuality(settings.quality);
       this.renderer.shadowMap.enabled = settings.quality !== 'low';
       this.scene.traverse(object => {
@@ -186,8 +184,7 @@ export class Arena {
     const bounds = this.container.getBoundingClientRect();
     this.width = Math.max(1, bounds.width);
     this.height = Math.max(1, bounds.height);
-    const maxRatio = this.settings.quality === 'high' ? 1.5 : this.settings.quality === 'balanced' ? 1.25 : 1;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxRatio) * this.resolutionScale);
+    this.renderer.setPixelRatio(window.devicePixelRatio || 1);
     this.renderer.setSize(this.width, this.height, false);
     this.camera.aspect = this.width / this.height;
     this.camera.fov = this.width < this.height ? 50 : this.height < 500 ? 44 : 39;
@@ -224,7 +221,7 @@ export class Arena {
   }
 
   charge(): boolean {
-    if (this.phase !== 'ready' || this.paused) return false;
+    if (this.phase !== 'ready' || this.paused || this.attract) return false;
     this.power = 0;
     this.chargeTime = 0;
     this.setPhase('charging');
@@ -274,13 +271,21 @@ export class Arena {
     this.lastTick = 0;
   }
 
+  setAttract(on: boolean) {
+    this.attract = on;
+    this.cancelCharge();
+    this.lastTick = 0;
+    this.pointer = null;
+    this.renderer.domElement.style.cursor = on ? 'default' : 'grab';
+  }
+
   adjustAim(dx: number, dy: number) {
     if (this.phase !== 'ready') return;
     this.setAim({ x: this.settings.aim.x + dx, y: this.settings.aim.y + dy });
   }
 
   private setAim(aim: Aim) {
-    this.settings.aim = { x: clamp(aim.x, -8, 8), y: clamp(aim.y, 0.15, 5.2) };
+    this.settings.aim = { x: clamp(aim.x, -AIM_LIMITS.x, AIM_LIMITS.x), y: clamp(aim.y, AIM_LIMITS.yMin, AIM_LIMITS.yMax) };
     this.events.aim({ ...this.settings.aim });
     this.updatePreview(true);
   }
@@ -288,7 +293,7 @@ export class Arena {
   private bindInput() {
     const el = this.renderer.domElement;
     el.addEventListener('pointerdown', event => {
-      if (this.phase !== 'ready' || this.paused || !event.isPrimary) return;
+      if (this.phase !== 'ready' || this.paused || this.attract || !event.isPrimary) return;
       el.setPointerCapture(event.pointerId);
       this.pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, aim: { ...this.settings.aim }, moved: false };
       el.style.cursor = 'grabbing';
@@ -298,7 +303,8 @@ export class Arena {
       const dx = event.clientX - this.pointer.x;
       const dy = event.clientY - this.pointer.y;
       if (Math.hypot(dx, dy) > 3) this.pointer.moved = true;
-      this.setAim({ x: this.pointer.aim.x + dx / this.width * 17, y: this.pointer.aim.y - dy / this.height * 6 });
+      // A wider drag range than v2: a full screen width is 24 m of aim, a full height is 9 m.
+      this.setAim({ x: this.pointer.aim.x + dx / this.width * 24, y: this.pointer.aim.y - dy / this.height * 9 });
     });
     el.addEventListener('pointerup', event => {
       if (!this.pointer || event.pointerId !== this.pointer.id) return;
@@ -308,7 +314,7 @@ export class Arena {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(point, this.camera);
         const hit = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), new THREE.Vector3());
-        if (hit && Math.abs(hit.x) < 8 && hit.y > 0.1 && hit.y < 5.2) this.setAim(hit);
+        if (hit && Math.abs(hit.x) < AIM_LIMITS.x && hit.y > AIM_LIMITS.yMin && hit.y < AIM_LIMITS.yMax) this.setAim(hit);
       }
       this.pointer = null;
       el.style.cursor = 'grab';
@@ -427,15 +433,7 @@ export class Arena {
     if (!this.metricsStart) this.metricsStart = timestamp;
     if (timestamp - this.metricsStart >= 1200) {
       const fps = Math.round(this.metricsFrames * 1000 / (timestamp - this.metricsStart));
-      this.events.performance?.({ fps, calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, scale: Math.round(this.resolutionScale * 100) });
-      const target = idle ? 30 : 60;
-      this.slowWindows = fps < target * .72 ? this.slowWindows + 1 : 0;
-      this.fastWindows = fps >= target * .95 ? this.fastWindows + 1 : 0;
-      if (this.settings.adaptiveResolution && this.slowWindows >= 3 && this.resolutionScale > .65) {
-        this.resolutionScale = Math.max(.65, this.resolutionScale - .1); this.slowWindows = 0; this.resize();
-      } else if (this.settings.adaptiveResolution && this.fastWindows >= 8 && this.resolutionScale < 1) {
-        this.resolutionScale = Math.min(1, this.resolutionScale + .05); this.fastWindows = 0; this.resize();
-      }
+      this.events.performance?.({ fps, calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, pixelRatio: this.renderer.getPixelRatio() });
       this.metricsStart = timestamp; this.metricsFrames = 0;
     }
   };
@@ -444,7 +442,9 @@ export class Arena {
     const event = advanceShot(this.ball, this.keeper, this.wall, this.settings.difficulty);
     this.recordFrame();
     if (!event) return;
-    if (event.outcome === 'goal') this.stadium.ripple(new THREE.Vector3(event.point.x, event.point.y, -1.6), this.time);
+    const impact = new THREE.Vector3(event.point.x, event.point.y, -1.6);
+    if (event.outcome === 'goal') this.stadium.ripple(impact, this.time);
+    if (event.outcome === 'goal' || event.outcome === 'post') this.stadium.celebrate(impact, this.time, event.outcome === 'goal');
     this.resolve(event.outcome, event.point);
   }
 
@@ -524,7 +524,12 @@ export class Arena {
   private updateCamera(dt: number, snap = false) {
     const p = this.settings.position;
     const replay = this.phase === 'replay';
-    if (this.cameraMode === 'broadcast' || replay) {
+    if (this.attract) {
+      // Menu background: a slow, drifting broadcast view around the kicker.
+      const t = this.time;
+      this.desiredCamera.set(p.x + 13 + Math.sin(t * 0.11) * 4, 8.4 + Math.sin(t * 0.23) * 0.5, p.z + 9 + Math.sin(t * 0.07) * 3);
+      this.desiredLook.set(p.x * 0.3, 1.2, p.z * 0.3 + Math.sin(t * 0.09) * 0.6);
+    } else if (this.cameraMode === 'broadcast' || replay) {
       this.desiredCamera.set(p.x + 12.5, 9.2, p.z + 8);
       this.desiredLook.set(p.x * 0.3, 1.0, p.z * 0.3);
     } else {
@@ -536,6 +541,11 @@ export class Arena {
       this.desiredCamera.set(p.x + p.x / length * back + p.z / length * lateral, 3.3, p.z + p.z / length * back - p.x / length * lateral);
       // Constant camera pitch and shot-local positioning also frame wide spots/portrait phones.
       this.desiredLook.set(0, 3.3 - (length + back) * (portrait ? .145 : .19), 0);
+      // Barely perceptible handheld drift while the kicker sets up.
+      if (this.phase === 'ready' || this.phase === 'charging') {
+        this.desiredCamera.x += Math.sin(this.time * 0.61) * 0.028;
+        this.desiredCamera.y += Math.sin(this.time * 0.93) * 0.02;
+      }
     }
     const blend = snap ? 1 : 1 - Math.exp(-dt * 4.5);
     this.camera.position.lerp(this.desiredCamera, blend);

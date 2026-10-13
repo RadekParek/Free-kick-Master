@@ -15,9 +15,13 @@ describe('player catalogue and real offline portraits', () => {
       expect(getPlayer(player.id)).toBe(player);
       expect(['left', 'right']).toContain(player.foot);
       for (const value of Object.values(player.attributes)) { expect(value).toBeGreaterThanOrEqual(0); expect(value).toBeLessThanOrEqual(100); }
-      expect(player.photoDate).toContain('2026');
-      expect(player.photoSource).toMatch(/^https:\/\/commons\.wikimedia\.org\/wiki\/File:/);
-      expect(player.credit).toContain('CC BY-SA 4.0');
+      if (player.portrait) {
+        expect(player.photoDate).toContain('2026');
+        expect(player.photoSource).toMatch(/^https:\/\/commons\.wikimedia\.org\/wiki\/File:/);
+        expect(player.credit).toContain('CC BY-SA 4.0');
+      } else {
+        expect(player.photoSource).toBeNull();
+      }
     }
   });
   it('rejects unknown identities without accepting arbitrary image URLs or attributes from storage', () => {
@@ -26,9 +30,9 @@ describe('player catalogue and real offline portraits', () => {
     expect(getPlayer('not-a-player').id).toBe('ronaldo');
   });
   it('ships all portraits as local WebP files, not network hotlinks', () => {
-    for (const player of PLAYERS) {
+    for (const player of PLAYERS.filter(candidate => candidate.portrait)) {
       expect(player.portrait).toMatch(/^\.\/players\/[a-z]+\.webp$/);
-      const path = `public/${player.portrait.slice(2)}`;
+      const path = `public/${player.portrait!.slice(2)}`;
       expect(existsSync(path)).toBe(true);
       const photo = readFileSync(path);
       expect(photo.subarray(0, 4).toString()).toBe('RIFF');

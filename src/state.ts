@@ -1,5 +1,5 @@
 import { constrainPosition, type Aim, type Contact, type Foot, type Outcome, type Position } from './game/physics';
-import { getPlayer, isPlayerId } from './players';
+import { DEFAULT_PLAYER_ID, getPlayer, isPlayerId } from './players';
 import { DIFFICULTIES, type Difficulty } from './game/keeper';
 
 export type Quality = 'high' | 'balanced' | 'low';
@@ -7,7 +7,6 @@ export type Atmosphere = 'night' | 'sunset' | 'day';
 export interface Settings {
   playerId: string;
   atmosphere: Atmosphere;
-  adaptiveResolution: boolean;
   showFps: boolean;
   position: Position;
   aim: Aim;
@@ -36,9 +35,8 @@ export interface Session {
   history: ShotResult[];
 }
 export const DEFAULT_SETTINGS: Settings = {
-  playerId: 'ronaldo',
+  playerId: DEFAULT_PLAYER_ID,
   atmosphere: 'night',
-  adaptiveResolution: true,
   showFps: false,
   position: { x: -6, z: 24 },
   aim: { x: 1.9, y: 1.9 },
@@ -69,7 +67,7 @@ export function loadSettings(): Settings {
     if (DIFFICULTIES.includes(saved.difficulty)) defaults.difficulty = saved.difficulty;
     if (Number.isInteger(saved.wall) && saved.wall >= 0 && saved.wall <= 5) defaults.wall = saved.wall;
     if (['high', 'balanced', 'low'].includes(saved.quality)) defaults.quality = saved.quality;
-    for (const key of ['sound', 'guides', 'haptics', 'adaptiveResolution', 'showFps'] as const) {
+    for (const key of ['sound', 'guides', 'haptics', 'showFps'] as const) {
       if (typeof saved[key] === 'boolean') defaults[key] = saved[key];
     }
     // Aiming and contact reset to a playable starting point on a fresh launch.
