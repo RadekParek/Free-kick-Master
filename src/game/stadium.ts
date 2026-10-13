@@ -140,9 +140,9 @@ export class Stadium {
   private impact = new THREE.Vector3();
   private impactTime = -10;
   readonly sun: THREE.DirectionalLight;
-  readonly crowd: THREE.InstancedMesh;
-  private crowdHeads!: THREE.InstancedMesh;
-  private crowdSeats!: THREE.InstancedMesh;
+  readonly crowd: THREE.Group;
+  private crowdHeads!: THREE.Group;
+  private crowdSeats!: THREE.Group;
   private readonly photoCrowd = new THREE.Group();
   private photoCrowdReady = false;
   private quality: Quality = 'high';
@@ -153,6 +153,7 @@ export class Stadium {
   private sunDisc!: THREE.Mesh;
   private readonly glows = new THREE.Group();
   private readonly crowdTime = { value: 0 };
+  private readonly flagTime = { value: 0 };
   private readonly crowdEnergy = { value: 0 };
   private cheerStart = -100;
   private cheerStrength = 0;
@@ -333,7 +334,7 @@ export class Stadium {
     return net;
   }
 
-  private makeStands(): THREE.InstancedMesh {
+  private makeStands(): THREE.Group {
     const concrete = standard('#454f5b');
     const charcoal = standard('#1b2737');
     const roof = standard('#354350', .65);
@@ -366,21 +367,44 @@ export class Stadium {
         float bob = (0.025 + crowdEnergy * 0.2) * sin(crowdTime * (1.6 + crowdEnergy * 5.0) + instanceMatrix[3].x * 1.7 + instanceMatrix[3].z);
         transformed.y += bob + wave * (0.6 + crowdEnergy);`);
     };
-    const seats = this.crowdSeats = new THREE.InstancedMesh(new THREE.BoxGeometry(.48,.43,.4), seatMat, places.length);
-    const crowd = new THREE.InstancedMesh(new THREE.CapsuleGeometry(.16,.24,1,5), crowdMat, places.length);
-    const heads = this.crowdHeads = new THREE.InstancedMesh(new THREE.SphereGeometry(.104,6,4), headMat, places.length);
     const clothes = ['#d8dee2','#d6d4c6','#1b2940','#334860','#ae3d45','#56758f','#87939c','#203448','#a6b6c3','#a57044'];
     const skin = ['#c38d65','#a97555','#794c36','#d4ad87','#49392e'];
-    places.forEach((p,i) => {
-      dummy.position.set(p.x,p.y+.12,p.z); dummy.rotation.set(0,p.rotation,0); dummy.scale.set(1,1,1); dummy.updateMatrix();
-      seats.setMatrixAt(i,dummy.matrix); seats.setColorAt(i,new THREE.Color(i%13<7?'#315678':'#263d57'));
-      const occupied=random()>.07; const scale=occupied?.85+random()*.3:0;
-      dummy.position.y=p.y+.48; dummy.scale.set(occupied?1:0,scale,occupied?1:0); dummy.updateMatrix();
-      crowd.setMatrixAt(i,dummy.matrix); crowd.setColorAt(i,new THREE.Color(clothes[Math.floor(random()*clothes.length)]));
-      dummy.position.y=p.y+.76; dummy.scale.setScalar(occupied?1:0); dummy.updateMatrix();
-      heads.setMatrixAt(i,dummy.matrix); heads.setColorAt(i,new THREE.Color(skin[Math.floor(random()*skin.length)]));
+    // Random draws keep the original per-seat order, so the crowd looks exactly as before.
+    const occupied: boolean[] = [], scales: number[] = [], clothing: string[] = [], skinTone: string[] = [];
+    places.forEach(() => {
+      const isOccupied = random() > .07;
+      occupied.push(isOccupied);
+      scales.push(isOccupied ? .85 + random() * .3 : 0);
+      clothing.push(clothes[Math.floor(random() * clothes.length)]);
+      skinTone.push(skin[Math.floor(random() * skin.length)]);
     });
-    this.group.add(seats,crowd,heads);
+    // Seats are grouped into 30 m cells, one instanced mesh per cell and part. Cells that are behind or
+    // beside the camera are then skipped by frustum culling instead of drawing the whole stadium crowd.
+    const cells = new Map<string, number[]>();
+    places.forEach((pl, i) => {
+      const key = `${Math.floor(pl.x / 30)}/${Math.floor(pl.z / 30)}/${pl.y > 10 ? 1 : 0}`;
+      const list = cells.get(key) || [];
+      list.push(i);
+      cells.set(key, list);
+    });
+    const seatGeometry = new THREE.BoxGeometry(.48,.43,.4), crowdGeometry = new THREE.CapsuleGeometry(.16,.24,1,5), headGeometry = new THREE.SphereGeometry(.104,6,4);
+    const seatsGroup = this.crowdSeats = new THREE.Group(), crowdGroup = new THREE.Group(), headsGroup = this.crowdHeads = new THREE.Group();
+    for (const indices of cells.values()) {
+      const seats = new THREE.InstancedMesh(seatGeometry, seatMat, indices.length);
+      const crowd = new THREE.InstancedMesh(crowdGeometry, crowdMat, indices.length);
+      const heads = new THREE.InstancedMesh(headGeometry, headMat, indices.length);
+      indices.forEach((i, j) => {
+        const pl = places[i];
+        dummy.position.set(pl.x,pl.y+.12,pl.z); dummy.rotation.set(0,pl.rotation,0); dummy.scale.set(1,1,1); dummy.updateMatrix();
+        seats.setMatrixAt(j,dummy.matrix); seats.setColorAt(j,new THREE.Color(i%13<7?'#315678':'#263d57'));
+        dummy.position.y=pl.y+.48; dummy.scale.set(occupied[i]?1:0,scales[i],occupied[i]?1:0); dummy.updateMatrix();
+        crowd.setMatrixAt(j,dummy.matrix); crowd.setColorAt(j,new THREE.Color(clothing[i]));
+        dummy.position.y=pl.y+.76; dummy.scale.setScalar(occupied[i]?1:0); dummy.updateMatrix();
+        heads.setMatrixAt(j,dummy.matrix); heads.setColorAt(j,new THREE.Color(skinTone[i]));
+      });
+      seatsGroup.add(seats); crowdGroup.add(crowd); headsGroup.add(heads);
+    }
+    this.group.add(seatsGroup,crowdGroup,headsGroup);
     // Continuous upper tier and hospitality band; no flat wall of repeated blocks.
     this.box(103,1.4,.5,0,8.6,-24.4,charcoal);
     this.box(105,1.0,1,0,17.4,-35.2,charcoal);
@@ -416,7 +440,7 @@ export class Stadium {
     this.group.add(this.glows);
     const name=new THREE.Mesh(new THREE.PlaneGeometry(35,1.13),new THREE.MeshBasicMaterial({map:signageTexture('THE FLOODLIGHT ARENA'),toneMapped:false}));
     name.position.set(0,8.6,-24.05);this.group.add(name);
-    return crowd;
+    return crowdGroup;
   }
 
   private makeGrassBlades() {
@@ -586,6 +610,14 @@ export class Stadium {
   private makeDetails() {
     const white = standard('#dfe2c8');
     const flagMat = new THREE.MeshStandardMaterial({ color: '#c2f970', side: THREE.DoubleSide, roughness: 0.7 });
+    // The flutter runs on the GPU: the vertex shader uses the same formula the CPU used to write per frame.
+    flagMat.onBeforeCompile = shader => {
+      shader.uniforms.flagTime = this.flagTime;
+      shader.vertexShader = 'uniform float flagTime;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        float flagU = (position.x + 0.235) / 0.47;
+        // Pole-anchored flutter, stronger at the free edge.
+        transformed.z = position.z + sin(flagTime * 5.2 + flagU * 5.5) * 0.045 * flagU;`);
+    };
     for (const side of [-1, 1]) {
       const pole = cylinderBetween(new THREE.Vector3(side * 34, 0, 0), new THREE.Vector3(side * 34, 1.65, 0), 0.022, white);
       this.group.add(pole);
@@ -620,21 +652,13 @@ export class Stadium {
 
   update(time: number) {
     this.crowdTime.value = time;
+    this.flagTime.value = time;
     this.grassTime.value = time;
     const dt = this.lastUpdate ? Math.min(0.1, Math.max(0, time - this.lastUpdate)) : 1 / 30;
     this.lastUpdate = time;
     const cheer = time - this.cheerStart;
     this.crowdEnergy.value = cheer < 6 ? Math.exp(-cheer / 2.2) * this.cheerStrength : 0;
     this.confetti.update(dt, time);
-    for (const flag of this.flags) {
-      const position = flag.geometry.attributes.position.array as Float32Array;
-      for (let i = 0; i < position.length; i += 3) {
-        const u = (flag.base[i] + 0.235) / 0.47;
-        // Pole-anchored flutter, stronger at the free edge.
-        position[i + 2] = flag.base[i + 2] + Math.sin(time * 5.2 + u * 5.5) * 0.045 * u;
-      }
-      flag.geometry.attributes.position.needsUpdate = true;
-    }
     const elapsed = time - this.impactTime;
     if (elapsed > 3) return;
     const vertices = this.net.geometry.attributes.position.array as Float32Array;
