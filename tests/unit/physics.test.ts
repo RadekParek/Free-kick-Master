@@ -88,7 +88,7 @@ describe('pitch and physical dimensions', () => {
     expect(GOAL_HEIGHT).toBe(2.44);
     const p = { x: 0, z: 25 };
     const wall = getWall(p, 3);
-    expect(Math.hypot(wall[1].x - p.x, wall[1].z - p.z)).toBeCloseTo(9.15, 8);
+    expect(Math.hypot(wall[1].x - p.x, wall[1].z - p.z)).toBeCloseTo(10.5, 8);
     expect(getWall(p, 0)).toEqual([]);
     expect(getWall(p, 5)).toHaveLength(5);
   });

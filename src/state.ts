@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   aim: { x: 1.9, y: 1.9 },
   contact: { x: -0.43, y: 0.02 },
   foot: 'right',
-  difficulty: 'pro',
+  difficulty: 'amateur',
   wall: 4,
   sound: true,
   guides: true,

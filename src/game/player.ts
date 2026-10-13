@@ -121,6 +121,9 @@ class Athlete {
     this.beard = sphere(hair, this.body, 0, 1.565, -.078, .112, .089, .073, 20);
     this.beard.visible = false;
     if (hi) {
+      // Nose and mouth give the face a readable profile instead of a blank capsule.
+      sphere(skin, this.body, 0, 1.628, -.142, .018, .03, .02, 10);
+      sphere(faceDark, this.body, 0, 1.598, -.131, .03, .006, .008, 10);
       // Shoulder caps and a dark brow line give the upper body volume and expression.
       for (const side of [-1, 1]) {
         sphere(jersey, this.body, side * .215, 1.39, 0, .092, .085, .09, 20);
@@ -131,7 +134,12 @@ class Athlete {
       sphere(skin, this.body, side * .132, 1.658, -.004, .027, .047, .030, 14);
       sphere(faceDark, this.body, side * .049, 1.684, -.126, .018, .009, .007, 12);
       sphere(hair, this.body, side * .049, 1.706, -.124, .023, .006, .009, 10);
-      if (hi) sphere(sclera, this.body, side * .049, 1.66, -.124, .017, .011, .008, 12);
+      if (hi) {
+        sphere(sclera, this.body, side * .049, 1.66, -.124, .017, .011, .008, 12);
+        sphere(faceDark, this.body, side * .049, 1.66, -.13, .0095, .0095, .006, 10);
+        sphere(faceDark, this.body, side * .049, 1.695, -.136, .024, .004, .008, 8);
+        sphere(skin, this.body, side * .14, 1.66, -.012, .016, .03, .022, 10);
+      }
       const leg = side === -1 ? this.leftLeg : this.rightLeg;
       const shin = side === -1 ? this.leftShin : this.rightShin;
       leg.position.set(side * .108, .84, 0); this.body.add(leg);
@@ -221,21 +229,24 @@ class Athlete {
     this.rightLeg.rotation.x = -swing * 0.62;
     this.leftShin.rotation.x = Math.min(0, -swing) * 0.5;
     this.rightShin.rotation.x = Math.min(0, swing) * 0.5;
-    this.leftArm.rotation.x = -swing * 0.5;
-    this.rightArm.rotation.x = swing * 0.5;
+    this.leftArm.rotation.x = -swing * 0.8;
+    this.rightArm.rotation.x = swing * 0.8;
     this.leftArm.rotation.z = -0.25;
     this.rightArm.rotation.z = 0.25;
     if (phase > 0.67) {
       const kick = (phase - 0.67) / 0.33;
       const strikingLeg = foot === 'right' ? this.rightLeg : this.leftLeg;
       const supportLeg = foot === 'right' ? this.leftLeg : this.rightLeg;
-      strikingLeg.rotation.x = -0.8 + kick * 2.2;
-      supportLeg.rotation.x = -0.04;
+      strikingLeg.rotation.x = -1.25 + kick * 2.9;
+      strikingLeg.rotation.z = foot === 'right' ? -0.12 * kick : 0.12 * kick;
+      supportLeg.rotation.x = -0.1;
+      supportLeg.rotation.z = foot === 'right' ? 0.08 : -0.08;
       this.leftShin.rotation.x = 0;
       this.rightShin.rotation.x = 0;
-      this.leftArm.rotation.z = -0.85;
-      this.rightArm.rotation.z = 0.65;
-      this.body.rotation.z = foot === 'right' ? 0.12 : -0.12;
+      this.leftArm.rotation.z = -1.15;
+      this.rightArm.rotation.z = 0.95;
+      this.body.rotation.x = -0.22 * kick;
+      this.body.rotation.z = foot === 'right' ? 0.2 : -0.2;
     }
   }
 
@@ -243,10 +254,10 @@ class Athlete {
     const settle = Math.max(0, 1 - time * 1.8);
     this.idle(time);
     const strikingLeg = foot === 'right' ? this.rightLeg : this.leftLeg;
-    strikingLeg.rotation.x = settle * 1.25;
-    this.leftArm.rotation.z = -0.16 - settle * 0.7;
-    this.rightArm.rotation.z = 0.16 + settle * 0.5;
-    this.body.rotation.x = -0.1 * settle;
+    strikingLeg.rotation.x = settle * 1.7 - 0.2;
+    this.leftArm.rotation.z = -0.16 - settle * 1.0;
+    this.rightArm.rotation.z = 0.16 + settle * 0.8;
+    this.body.rotation.x = -0.22 * settle;
   }
 
   wallPose(jump: number, time: number) {
@@ -318,35 +329,30 @@ export class Player {
 }
 
 export function makeFootball(): THREE.Mesh {
+  // Original triangular panel pattern in navy, turquoise and white, drawn in UV space.
   const canvas = document.createElement('canvas');
   canvas.width = 1024;
   canvas.height = 512;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#f8f5e5';
+  ctx.fillStyle = '#f7f9f6';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = '#83978d';
-  ctx.lineWidth = 3;
-  const size = 80;
-  for (let row = -1; row < 6; row++) {
-    for (let col = -1; col < 10; col++) {
-      const x = col * size * 1.5;
-      const y = row * size * 1.73 + (col % 2) * size * 0.865;
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const angle = Math.PI / 3 * i;
-        const px = x + Math.cos(angle) * size;
-        const py = y + Math.sin(angle) * size;
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  const cols = 16, rows = 8, cw = canvas.width / cols, rh = canvas.height / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * cw, y = r * rh;
+      const up = (r + c) % 2 === 0;
+      const triangles = up ? [[x, y + rh, x + cw / 2, y, x + cw, y + rh]] : [[x, y, x + cw, y, x + cw / 2, y + rh]];
+      const colour = (r * 3 + c * 5) % 7 === 0 ? '#2fd8c8' : (r * 7 + c) % 4 === 0 ? '#0e2a44' : '#f7f9f6';
+      for (const [ax, ay, bx, by, cx, cy] of triangles) {
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx, cy); ctx.closePath();
+        ctx.fillStyle = colour; ctx.fill();
+        ctx.strokeStyle = '#1b2a36'; ctx.lineWidth = 2; ctx.stroke();
       }
-      ctx.closePath();
-      ctx.fillStyle = (row + col * 2) % 3 === 0 ? '#101f31' : (row + col) % 4 === 0 ? '#90bbdc' : '#f0f0df';
-      ctx.fill();
-      ctx.stroke();
     }
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
+  texture.anisotropy = 16;
   const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 48, 36), new THREE.MeshStandardMaterial({ map: texture, roughness: 0.4 }));
   ball.castShadow = true;
   return ball;

@@ -18,7 +18,7 @@ describe('local preferences and session statistics', () => {
     const loaded = loadSettings();
     expect(loaded.position).toEqual(DEFAULT_SETTINGS.position);
     expect(loaded.wall).toBe(4);
-    expect(loaded.difficulty).toBe('pro');
+    expect(loaded.difficulty).toBe('amateur');
     expect(loaded.sound).toBe(false);
   });
   it('persists a selected player and video options, and rejects invalid replacements', () => {

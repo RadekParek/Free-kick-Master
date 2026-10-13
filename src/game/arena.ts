@@ -31,7 +31,6 @@ export class Arena {
   phase: Phase = 'ready';
   paused = false;
   power = 0;
-  cameraMode: 'player' | 'broadcast' = 'player';
   lastResult: ShotResult | null = null;
   private settings: Settings;
   private events: ArenaEvents;
@@ -87,7 +86,7 @@ export class Arena {
     this.ball = launchBall(this.shotSetup);
     this.keeper = createKeeper(settings.position.x);
     // Native resolution is always used; MSAA is only needed on low-density screens.
-    this.renderer = new THREE.WebGLRenderer({ antialias: (window.devicePixelRatio || 1) < 2, alpha: false, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
@@ -117,13 +116,14 @@ export class Arena {
     this.ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.14, 20), new THREE.MeshBasicMaterial({ color: '#183420', transparent: true, opacity: 0.3, depthWrite: false }));
     this.ballShadow.rotation.x = -Math.PI / 2;
     this.scene.add(this.ballShadow);
-    this.guide = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(this.guidePositions, 3).setUsage(THREE.DynamicDrawUsage)).setAttribute('lineDistance', new THREE.BufferAttribute(this.guideDistances, 1).setUsage(THREE.DynamicDrawUsage)), new THREE.LineDashedMaterial({ color: '#efffd5', transparent: true, opacity: 0.65, dashSize: 0.2, gapSize: 0.19, depthWrite: false }));
+    this.guide = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(this.guidePositions, 3).setUsage(THREE.DynamicDrawUsage)).setAttribute('lineDistance', new THREE.BufferAttribute(this.guideDistances, 1).setUsage(THREE.DynamicDrawUsage)), new THREE.LineBasicMaterial({ color: '#2d9cff', transparent: true, opacity: 0.95, depthWrite: false }));
     this.guide.frustumCulled = false;
     this.scene.add(this.guide);
     this.dots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.043, 6, 4), new THREE.MeshBasicMaterial({ color: '#d4ffa0' }), 100);
     this.dots.frustumCulled = false;
+    this.dots.visible = false; // single blue line only, no waypoint dots
     this.scene.add(this.dots);
-    this.trace = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(this.tracePositions, 3).setUsage(THREE.DynamicDrawUsage)), new THREE.LineBasicMaterial({ color: '#edffd4', transparent: true, opacity: 0.42, depthWrite: false }));
+    this.trace = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(this.tracePositions, 3).setUsage(THREE.DynamicDrawUsage)), new THREE.LineBasicMaterial({ color: '#2d9cff', transparent: true, opacity: 0.6, depthWrite: false }));
     this.trace.frustumCulled = false;
     this.scene.add(this.trace);
     this.observer = new ResizeObserver(() => this.resize());
@@ -232,7 +232,7 @@ export class Arena {
     if (this.phase !== 'charging') return;
     this.power = clamp(this.power, 0.06, 1);
     this.shotSetup = this.setup(this.power);
-    this.guide.visible = this.dots.visible = false;
+    this.guide.visible = false;
     this.ring.visible = false;
     this.replayFrames = [];
     this.lastResult = null;
@@ -248,11 +248,6 @@ export class Arena {
       this.setPhase('ready');
       this.updatePreview(true);
     }
-  }
-
-  toggleCamera(): string {
-    this.cameraMode = this.cameraMode === 'player' ? 'broadcast' : 'player';
-    return this.cameraMode;
   }
 
   replay(): boolean {
@@ -356,7 +351,7 @@ export class Arena {
     this.guide.geometry.attributes.lineDistance.needsUpdate = true;
     this.dots.count = dot;
     this.dots.instanceMatrix.needsUpdate = true;
-    this.guide.visible = this.dots.visible = this.settings.guides && (this.phase === 'ready' || this.phase === 'charging');
+    this.guide.visible = this.settings.guides && (this.phase === 'ready' || this.phase === 'charging');
     this.ring.visible = true;
   }
 
@@ -529,7 +524,7 @@ export class Arena {
       const t = this.time;
       this.desiredCamera.set(p.x + 13 + Math.sin(t * 0.11) * 4, 8.4 + Math.sin(t * 0.23) * 0.5, p.z + 9 + Math.sin(t * 0.07) * 3);
       this.desiredLook.set(p.x * 0.3, 1.2, p.z * 0.3 + Math.sin(t * 0.09) * 0.6);
-    } else if (this.cameraMode === 'broadcast' || replay) {
+    } else if (replay) {
       this.desiredCamera.set(p.x + 12.5, 9.2, p.z + 8);
       this.desiredLook.set(p.x * 0.3, 1.0, p.z * 0.3);
     } else {

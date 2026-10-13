@@ -1,6 +1,25 @@
 import type { TakerProfile } from '../players';
 
-export const flag = (code: string) => `<span class="nation-flag flag-${code.toLowerCase()}" aria-hidden="true"></span>`;
+const FLAGS: Record<string, string> = {
+  pt: '<rect width="30" height="20" fill="#d80027"/><rect width="12" height="20" fill="#046a38"/><circle cx="12" cy="10" r="3.4" fill="#ffda44" stroke="#8a1b1b" stroke-width=".6"/>',
+  ar: '<rect width="30" height="20" fill="#74acdf"/><rect y="6.67" width="30" height="6.66" fill="#fff"/><circle cx="15" cy="10" r="1.7" fill="#f6b40e"/>',
+  fr: '<rect width="10" height="20" fill="#002395"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#ed2939"/>',
+  eg: '<rect width="30" height="20" fill="#ce1126"/><rect y="6.67" width="30" height="6.66" fill="#fff"/><rect y="13.33" width="30" height="6.67" fill="#000"/><circle cx="15" cy="10" r="1.6" fill="#c09300"/>',
+  no: '<rect width="30" height="20" fill="#ba0c2f"/><rect x="9" y="0" width="4" height="20" fill="#fff"/><rect y="8" width="30" height="4" fill="#fff"/><rect x="10" width="2" height="20" fill="#00205b"/><rect y="9" width="30" height="2" fill="#00205b"/>',
+  be: '<rect width="10" height="20" fill="#000"/><rect x="10" width="10" height="20" fill="#fae042"/><rect x="20" width="10" height="20" fill="#ed2939"/>',
+  br: '<rect width="30" height="20" fill="#009c3b"/><polygon points="15,2 28,10 15,18 2,10" fill="#ffdf00"/><circle cx="15" cy="10" r="4.2" fill="#002776"/>',
+  nl: '<rect width="30" height="6.67" fill="#ae1c28"/><rect y="6.67" width="30" height="6.66" fill="#fff"/><rect y="13.33" width="30" height="6.67" fill="#21468b"/>',
+  gb: '<rect width="30" height="20" fill="#012169"/><path d="M0 0L30 20M30 0L0 20" stroke="#fff" stroke-width="4"/><path d="M0 0L30 20M30 0L0 20" stroke="#c8102e" stroke-width="1.4"/><path d="M15 0V20M0 10H30" stroke="#fff" stroke-width="6"/><path d="M15 0V20M0 10H30" stroke="#c8102e" stroke-width="3.4"/>',
+  es: '<rect width="30" height="20" fill="#aa151b"/><rect y="5" width="30" height="10" fill="#f1bf00"/>',
+  hr: '<rect width="30" height="6.67" fill="#ff0000"/><rect y="6.67" width="30" height="6.66" fill="#fff"/><rect y="13.33" width="30" height="6.67" fill="#171796"/>',
+  pl: '<rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#dc143c"/>',
+};
+
+/** Accurate national flags as inline SVG, so the nation shown is always correct. */
+export const flag = (code: string) => {
+  const body = FLAGS[code.toLowerCase()] ?? '<rect width="30" height="20" fill="#334155"/>';
+  return `<span class="nation-flag" aria-hidden="true"><svg viewBox="0 0 30 20" preserveAspectRatio="none">${body}</svg></span>`;
+};
 
 /** Initials for players without a licensed portrait. Original monogram art, not a likeness. */
 export function monogram(player: TakerProfile): string {
@@ -35,6 +54,5 @@ export function playerCard(player: TakerProfile, selected = false, interactive =
 export function takerHud(player: TakerProfile): string {
   const special = player.edition === 'special';
   const art = player.portrait ? `<img src="${player.portrait}" alt="" width="500" height="750" draggable="false" />` : `<span class="card-monogram" aria-hidden="true">${monogram(player)}</span>`;
-  return `<span class="mini-card ${special ? 'is-special' : ''}"><span>${player.rating}<small>FK</small></span>${art}</span>
-    <span class="taker-copy"><span class="hud-eyebrow">${special ? 'TURQUOISE SPECIAL' : 'YOUR FREE-KICK TAKER'}</span><strong id="taker-name" class="${special ? 'handwritten' : ''}">${player.shortName}</strong><span class="taker-meta">${flag(player.nationCode)} ${player.nation}</span><span class="change-taker">CHANGE PLAYER <kbd>T</kbd></span></span>`;
+  return `<span class="mini-card ${special ? 'is-special' : ''}"><span>${player.rating}<small>FK</small></span>${art}</span><span class="sr-only"><strong id="taker-name" class="${special ? 'handwritten' : ''}">${player.shortName}</strong></span>`;
 }

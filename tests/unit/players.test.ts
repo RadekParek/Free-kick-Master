@@ -61,7 +61,7 @@ describe('stronger, attribute-driven ball flight', () => {
     const old = cloneBall(current); old.sideSpin *= .005 / SIDE_MAGNUS;
     for (let i = 0; i < 110; i++) { integrateBall(current); integrateBall(old); }
     expect(current.position.x).toBeGreaterThan(old.position.x * 1.25);
-    expect(SIDE_MAGNUS).toBeCloseTo(.005 * 1.36);
+    expect(SIDE_MAGNUS).toBeCloseTo(.0095, 4);
   });
   it('produces visible, repeated lateral knuckle transitions and a measurable late dip', () => {
     const ball = launchBall(setup);

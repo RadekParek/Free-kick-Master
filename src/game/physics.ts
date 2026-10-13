@@ -33,7 +33,9 @@ export const GRAVITY = 9.81;
 /** Aim may leave the goal mouth (wide and high) so the aim reticle can reach every useful launch line. */
 export const AIM_LIMITS = { x: 14, yMin: 0.05, yMax: 7.5 } as const;
 const DRAG = 0.16;
-export const SIDE_MAGNUS = 0.0068; // 36% stronger side force than v1.
+/** Distance from the kick to the defensive wall. Slightly further back than the 9.15 m law. */
+export const WALL_DISTANCE = 10.5;
+export const SIDE_MAGNUS = 0.0095; // ~40% more curve than the previous tuning.
 const TOP_MAGNUS = 0.005;
 export const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -175,8 +177,8 @@ export function getWall(position: Position, count: number): WallPlayer[] {
   const dx = nearPost - position.x;
   const dz = -position.z;
   const length = Math.hypot(dx, dz);
-  const cx = position.x + dx / length * 9.15;
-  const cz = position.z + dz / length * 9.15;
+  const cx = position.x + dx / length * WALL_DISTANCE;
+  const cz = position.z + dz / length * WALL_DISTANCE;
   const tangentX = -dz / length;
   const tangentZ = dx / length;
   return Array.from({ length: clamp(Math.round(count), 0, 5) }, (_, i) => {

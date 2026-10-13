@@ -116,30 +116,27 @@ export class GameApp {
       <section class="game-view" id="game-view" aria-label="Free-kick pitch" hidden>
         <header class="game-top">
           <button class="back-button" id="back-button" aria-label="Back to main menu">${icon('ArrowLeft')}<span>BACK</span></button>
-          <div class="game-mode" id="mode-pill"><span class="status-dot"></span> FREE PRACTICE</div>
+          <div class="game-mode" id="mode-pill" hidden><span class="status-dot"></span> FREE PRACTICE</div>
           <div class="game-top-right">
-            <button class="icon-button" id="camera-button" aria-label="Switch to broadcast camera" title="Switch camera (V)">${icon('Focus')}</button>
-            <button class="icon-button" id="sound-button" aria-label="Mute sound" title="Toggle sound">${icon('Volume2')}</button>
             <button class="icon-button" id="fullscreen-button" aria-label="Enter fullscreen" title="Fullscreen">${icon('Maximize')}</button>
             <button class="icon-button is-labelled" id="settings-button" aria-label="Settings">${icon('Settings2')}<span>SETTINGS</span></button>
           </div>
         </header>
         <div class="game-stats">
-          <div class="score-line"><div><span>GOALS</span><strong id="stat-goals">0</strong></div><i></i><div><strong id="stat-attempts">0</strong><span>ATTEMPTS</span></div><i></i><div><span>STREAK</span><strong id="streak-label"><b>0</b></strong></div></div>
-          <button id="position-button" class="setup-chip" aria-label="Change kick position, distance and goalkeeper">${icon('Crosshair')}<strong id="stage-distance">24.7<span>m</span></strong><span id="keeper-hud">PRO · 4-MAN WALL</span></button>
+          <div class="score-line"><div><span>GOALS</span><strong id="stat-goals">0</strong></div><div hidden><strong id="stat-attempts">0</strong><span>ATTEMPTS</span></div><div hidden><span>STREAK</span><strong id="streak-label"><b>0</b></strong></div></div>
+          <button id="position-button" class="setup-chip" hidden aria-label="Change kick position, distance and goalkeeper">${icon('Crosshair')}<strong id="stage-distance">24.7<span>m</span></strong><span id="keeper-hud">PRO · 4-MAN WALL</span></button>
         </div>
         <div class="aim-reticle" id="aim-reticle" hidden><span class="reticle-ring"></span><span class="reticle-center"></span><span class="reticle-label">AIM</span></div>
         <div class="scene-message" id="scene-message" hidden><span id="scene-message-label">SET YOUR POWER</span><strong id="scene-message-title">Make it count.</strong></div>
         <div class="shot-result" id="shot-result" aria-live="polite" hidden><span class="result-eyebrow" id="result-eyebrow">WHAT A HIT.</span><h2 id="result-title">GOAL!</h2><p id="result-description">Right where you wanted it.</p><div class="result-meta"><span id="result-distance"></span><span id="result-speed"></span></div></div>
         <div class="replay-label" id="replay-label" hidden><span></span> INSTANT REPLAY <b>0.55×</b></div>
-        <div class="drag-hint" id="drag-hint">${icon('Move')} DRAG TO AIM · HOLD SHOOT TO KICK</div>
         <span id="atmosphere-label" hidden>FLOODLIT NIGHT</span>
         <span id="performance" class="performance" hidden></span>
 
         <div class="game-bottom">
           <button class="taker-hud" id="taker-button" aria-label="Choose free-kick taker">${takerHud(selected)}</button>
           <section class="shot-dock" aria-label="Shoot">
-            <div class="power-block">
+            <div class="power-block" id="power-block" hidden>
               <div class="power-readout"><strong><span id="power-value">0</span><small>%</small></strong><span id="power-tip">SUGGESTED <b id="recommended-power">63%</b>${icon('ArrowDownLeft')}</span></div>
               <div class="power-meter" id="power-meter" role="progressbar" aria-label="Shot power" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="power-fill" id="power-fill"></div><div class="power-sweetspot" id="power-sweetspot"></div></div>
             </div>
@@ -225,18 +222,6 @@ export class GameApp {
     $('#settings-button').addEventListener('click', () => this.showSettings('game'));
     $('#position-button').addEventListener('click', () => this.showSettings('game', 'training'));
     $('#taker-button').addEventListener('click', () => this.showPlayers());
-    $('#camera-button').addEventListener('click', () => {
-      const mode = this.arena?.toggleCamera();
-      $('#camera-button').setAttribute('aria-label', `Switch to ${mode === 'player' ? 'broadcast' : 'player'} camera`);
-      this.toast(mode === 'player' ? 'Player camera' : 'Broadcast camera');
-    });
-    $('#sound-button').addEventListener('click', () => {
-      this.settings.sound = !this.settings.sound;
-      this.audio.setEnabled(this.settings.sound);
-      this.syncSound();
-      saveSettings(this.settings);
-      this.toast(this.settings.sound ? 'Sound on. Listen for the net.' : 'Sound muted. Stay in the zone.');
-    });
     $('#fullscreen-button').addEventListener('click', async () => {
       try {
         if (document.fullscreenElement) await document.exitFullscreen();
@@ -377,7 +362,6 @@ export class GameApp {
         const amount = event.shiftKey ? 0.3 : 0.12;
         this.arena?.adjustAim(event.code === 'ArrowLeft' ? -amount : event.code === 'ArrowRight' ? amount : 0, event.code === 'ArrowUp' ? amount : event.code === 'ArrowDown' ? -amount : 0);
       } else if (event.code === 'KeyR' && !event.repeat) this.arena?.replay();
-      else if (event.code === 'KeyV' && !event.repeat) $('#camera-button').click();
       else if (event.code === 'KeyT' && !event.repeat) this.showPlayers();
       else if (event.code === 'Escape') this.showSettings('game');
     });
@@ -532,12 +516,7 @@ export class GameApp {
     });
   }
 
-  private syncSound() {
-    $('#sound-button').innerHTML = icon(this.settings.sound ? 'Volume2' : 'VolumeX');
-    $('#sound-button').setAttribute('aria-label', this.settings.sound ? 'Mute sound' : 'Enable sound');
-    $('#sound-button').classList.toggle('muted', !this.settings.sound);
-    drawIcons();
-  }
+  private syncSound() {}
   private updateDisabled() {
     const locked = !this.canSetup();
     $<HTMLButtonElement>('#taker-button').disabled = locked;
@@ -576,7 +555,7 @@ export class GameApp {
     $<HTMLButtonElement>('#replay-button').disabled = phase !== 'result';
     $('#shot-result').hidden = phase !== 'result';
     $('#replay-label').hidden = phase !== 'replay';
-    $('#drag-hint').hidden = phase !== 'ready';
+    $('#power-block').hidden = phase !== 'charging' && phase !== 'runup';
     $('#scene-message').hidden = phase !== 'charging' && phase !== 'runup';
     $('#scene-message-label').textContent = phase === 'charging' ? 'HOLD. BUILD. RELEASE.' : 'THE MOMENT IS YOURS';
     $('#scene-message-title').textContent = phase === 'charging' ? 'Find your power.' : 'Make it count.';
@@ -653,6 +632,7 @@ export class GameApp {
 
   private updateMode() {
     const active = !!this.challenge;
+    $('#mode-pill').hidden = !active;
     $('#mode-pill').innerHTML = active ? `${icon('Trophy')} ${this.challenge!.definition.title.replace('.', '').toUpperCase()} <b>${Math.min(5, this.challenge!.attempts + 1)}/5</b>` : '<span class="status-dot"></span> FREE PRACTICE';
     drawIcons();
     this.updateDisabled();
@@ -768,8 +748,12 @@ export class GameApp {
       <div id="roster-empty" class="roster-empty" role="status" hidden>No players match. Try another name, nation or filter.</div>
       <div class="player-grid" aria-label="Free-kick takers">${PLAYERS.map(player => playerCard(player, player.id === selection)).join('')}</div>
       <div class="roster-selection"><div><span class="hud-eyebrow">SELECTED PLAYER</span><h3 id="selected-player-name">${selected.name}${selected.edition === 'special' ? ' <em class="handwritten">turquoise</em>' : ''}</h3><p id="selected-player-description">${selected.description}</p></div><button class="primary-button" id="confirm-player">TAKE THE KICK ${icon('ArrowRight')}</button></div>
-      <div class="roster-footnote"><span>Fan-made training ratings, not official FC ratings. Four cards carry licensed real photographs; the rest use original monogram art.</span><button class="text-link" id="roster-credits">PHOTO CREDITS &amp; LICENSES ${icon('ArrowUpRight')}</button></div>`, 'players-modal');
+      <div class="roster-footnote"><span>Fan-made training ratings, not official FC ratings. Double-click a card to take it. Licensed photographs are credited in the photo credits.</span><button class="text-link" id="roster-credits">PHOTO CREDITS &amp; LICENSES ${icon('ArrowUpRight')}</button></div>`, 'players-modal');
     const cards = () => $$<HTMLButtonElement>('.player-card[data-player]');
+    cards().forEach(button => button.addEventListener('dblclick', () => {
+      button.click();
+      $('#confirm-player').click();
+    }));
     cards().forEach(button => button.addEventListener('click', () => {
       selection = button.dataset.player!;
       cards().forEach(card => {

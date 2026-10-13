@@ -27,14 +27,16 @@ function grassTexture(): THREE.CanvasTexture {
   for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
     const i = (y * canvas.width + x) * 4;
     const stripe = Math.floor(y / 128) % 2 ? .9 : 1.06;
+    // Low-frequency mowing patches and worn spots break up the uniform colour, like real turf.
+    const patch = 1 + Math.sin(x * .013 + Math.cos(y * .009) * 2) * Math.cos(y * .011 + x * .004) * .055 - (Math.sin(x * .047 + y * .031) > .92 ? .08 : 0);
     const grain = (random() - .5) * 19 + Math.sin(x * .31 + y * .1) * 2.2;
-    pixels.data[i] = 43 * stripe + grain * .66;
-    pixels.data[i + 1] = 91 * stripe + grain;
-    pixels.data[i + 2] = 43 * stripe + grain * .52;
+    pixels.data[i] = (43 * stripe + grain * .66) * patch;
+    pixels.data[i + 1] = (91 * stripe + grain) * patch;
+    pixels.data[i + 2] = (43 * stripe + grain * .52) * patch;
     pixels.data[i + 3] = 255;
   }
   ctx.putImageData(pixels, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 8;
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 16;
   return texture;
 }
 function turfNormal(): THREE.DataTexture {
