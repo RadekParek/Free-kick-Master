@@ -22,10 +22,12 @@ export interface BallState {
   knuckleStrength: number;
   time: number;
   bounces: number;
+  frameHits: number;
 }
 export interface WallPlayer { x: number; z: number }
 export type Outcome = 'goal' | 'saved' | 'wall' | 'post' | 'wide' | 'over' | 'short';
 export const BALL_RADIUS = 0.11;
+export const POST_RADIUS = 0.06;
 export const GOAL_WIDTH = 7.32;
 export const GOAL_HEIGHT = 2.44;
 export const FIXED_DT = 1 / 120;
@@ -106,6 +108,7 @@ export function launchBall(setup: ShotSetup): BallState {
     knuckleStrength: (setup.attributes ? 0.6 + (setup.attributes.knuckle - 60) * 0.017 : 1) * (0.75 + clamp((setup.power - 0.64) / 0.36, 0, 1) * 0.25),
     time: 0,
     bounces: 0,
+    frameHits: 0,
   };
 }
 
@@ -170,13 +173,96 @@ export function classifyGoalCrossing(point: Vec3): Outcome {
   return 'goal';
 }
 
+export interface FrameContact {
+  kind: 'post' | 'bar';
+  fraction: number;
+  point: Vec3;
+  normal: Vec3;
+}
+
+/** Swept sphere versus a finite round frame member (cylinder with rounded end joins).
+ * Only approaching contacts count: separation after an impact cannot trigger it again.
+ */
+function sweepFrameMember(a: Vec3, b: Vec3, axis: 'x' | 'y', centre: number, low: number, high: number, kind: FrameContact['kind']): FrameContact | null {
+  const radial = axis === 'y' ? 'x' : 'y';
+  const u = a[radial] - centre, z = a.z;
+  const du = b[radial] - a[radial], dz = b.z - a.z, da = b[axis] - a[axis];
+  const radius = BALL_RADIUS + POST_RADIUS;
+  let best = Infinity;
+  let cap: number | null = null;
+  // Analytic cylinder intersection; no time sampling, even for a very fast shot.
+  const A = du * du + dz * dz, B = u * du + z * dz, C = u * u + z * z - radius * radius;
+  if (A > 1e-12 && B < 0) {
+    const discriminant = B * B - A * C;
+    if (discriminant >= 0) {
+      const t = Math.max(0, (-B - Math.sqrt(discriminant)) / A);
+      const height = a[axis] + da * t;
+      if (t <= 1 && height >= low && height <= high) best = t;
+    }
+  }
+  // End caps close the top-corner join and avoid infinite posts above the goal.
+  for (let end = 0; end < 2; end++) {
+    const h = end === 0 ? low : high, w = a[axis] - h;
+    const aa = A + da * da, bb = B + w * da, cc = C + w * w;
+    const disc = bb * bb - aa * cc;
+    if (aa < 1e-12 || bb >= 0 || disc < 0) continue;
+    const t = Math.max(0, (-bb - Math.sqrt(disc)) / aa);
+    const height = a[axis] + da * t;
+    if (t <= 1 && t < best && (end === 0 ? height <= low : height >= high)) { best = t; cap = h; }
+  }
+  if (!Number.isFinite(best)) return null;
+  const point = { x: lerp(a.x, b.x, best), y: lerp(a.y, b.y, best), z: lerp(a.z, b.z, best) };
+  const normal: Vec3 = { x: 0, y: 0, z: point.z };
+  normal[radial] = point[radial] - centre;
+  if (cap !== null) normal[axis] = point[axis] - cap;
+  const length = Math.hypot(normal.x, normal.y, normal.z);
+  if (length < 1e-9) return null;
+  normal.x /= length; normal.y /= length; normal.z /= length;
+  return { kind, fraction: best, point, normal };
+}
+
+export function frameContact(a: Vec3, b: Vec3): FrameContact | null {
+  const radius = BALL_RADIUS + POST_RADIUS;
+  // Most fixed ticks are metres from the frame. Reject them without any quadratics/objects.
+  if (Math.min(a.z, b.z) > radius || Math.max(a.z, b.z) < -radius || Math.min(a.y, b.y) > GOAL_HEIGHT + radius) return null;
+  let first: FrameContact | null = null;
+  for (const x of [-GOAL_WIDTH / 2, GOAL_WIDTH / 2]) {
+    if (Math.min(a.x, b.x) > x + radius || Math.max(a.x, b.x) < x - radius) continue;
+    const hit = sweepFrameMember(a, b, 'y', x, 0, GOAL_HEIGHT, 'post');
+    if (hit && (!first || hit.fraction < first.fraction)) first = hit;
+  }
+  if (Math.max(a.y, b.y) >= GOAL_HEIGHT - radius && Math.min(a.y, b.y) <= GOAL_HEIGHT + radius) {
+    const bar = sweepFrameMember(a, b, 'x', GOAL_HEIGHT, -GOAL_WIDTH / 2, GOAL_WIDTH / 2, 'bar');
+    if (bar && (!first || bar.fraction < first.fraction)) first = bar;
+  }
+  return first;
+}
+
+/** Compatibility helper for callers only interested in which member was struck. */
 export function intersectsFrame(a: Vec3, b: Vec3): 'post' | 'bar' | null {
-  const p = crossingAtZ(a, b, 0.07);
-  if (!p) return null;
-  const radius = BALL_RADIUS + 0.06;
-  if (Math.abs(Math.abs(p.x) - GOAL_WIDTH / 2) < radius && p.y <= GOAL_HEIGHT + radius) return 'post';
-  if (Math.abs(p.y - GOAL_HEIGHT) < radius && Math.abs(p.x) <= GOAL_WIDTH / 2 + radius) return 'bar';
-  return null;
+  return frameContact(a, b)?.kind ?? null;
+}
+
+/** Lossy normal impulse against painted metal. Glancing hits keep most tangential speed;
+ * direct hits bounce out. There is no random 'post and in' roll or goal-directed velocity.
+ */
+export function reboundFromFrame(ball: BallState, contact: FrameContact): void {
+  const n = contact.normal, v = ball.velocity;
+  const normalSpeed = v.x * n.x + v.y * n.y + v.z * n.z;
+  if (normalSpeed >= 0) return;
+  const restitution = 0.68, tangentRetention = 0.97;
+  const impulse = (tangentRetention + restitution) * normalSpeed;
+  v.x = tangentRetention * v.x - impulse * n.x;
+  v.y = tangentRetention * v.y - impulse * n.y;
+  v.z = tangentRetention * v.z - impulse * n.z;
+  ball.sideSpin *= 0.8;
+  ball.topSpin *= 0.8;
+  ball.knuckle = false;
+  ball.frameHits++;
+  // Separate by 0.1 mm, not a frame-sized teleport. The remaining tick is swept again.
+  ball.position.x = contact.point.x + n.x * 0.0001;
+  ball.position.y = Math.max(BALL_RADIUS, contact.point.y + n.y * 0.0001);
+  ball.position.z = contact.point.z + n.z * 0.0001;
 }
 
 export function getWall(position: Position, count: number, gapIndex = -1): WallPlayer[] {
@@ -202,16 +288,19 @@ export function wallJump(time: number): number {
   return phase > 0 && phase < 1 ? Math.sin(phase * Math.PI) * 0.36 : 0;
 }
 
-function segmentBox(a: Vec3, b: Vec3, min: Vec3, max: Vec3): boolean {
+const AXES = ['x', 'y', 'z'] as const;
+function segmentWall(a: Vec3, b: Vec3, p: WallPlayer, jump: number): boolean {
   let lo = 0;
   let hi = 1;
-  for (const axis of ['x', 'y', 'z'] as const) {
+  for (const axis of AXES) {
+    const min = axis === 'x' ? p.x - 0.26 - BALL_RADIUS : axis === 'y' ? jump - BALL_RADIUS : p.z - 0.2 - BALL_RADIUS;
+    const max = axis === 'x' ? p.x + 0.26 + BALL_RADIUS : axis === 'y' ? 1.83 + jump + BALL_RADIUS : p.z + 0.2 + BALL_RADIUS;
     const delta = b[axis] - a[axis];
     if (Math.abs(delta) < 1e-8) {
-      if (a[axis] < min[axis] || a[axis] > max[axis]) return false;
+      if (a[axis] < min || a[axis] > max) return false;
     } else {
-      const t1 = (min[axis] - a[axis]) / delta;
-      const t2 = (max[axis] - a[axis]) / delta;
+      const t1 = (min - a[axis]) / delta;
+      const t2 = (max - a[axis]) / delta;
       lo = Math.max(lo, Math.min(t1, t2));
       hi = Math.min(hi, Math.max(t1, t2));
       if (lo > hi) return false;
@@ -221,25 +310,46 @@ function segmentBox(a: Vec3, b: Vec3, min: Vec3, max: Vec3): boolean {
 }
 
 export function hitsWall(a: Vec3, b: Vec3, wall: WallPlayer[], time: number): boolean {
+  if (!wall.length) return false;
   const jump = wallJump(time);
-  return wall.some(p => segmentBox(a, b,
-    { x: p.x - 0.26 - BALL_RADIUS, y: jump - BALL_RADIUS, z: p.z - 0.2 - BALL_RADIUS },
-    { x: p.x + 0.26 + BALL_RADIUS, y: 1.83 + jump + BALL_RADIUS, z: p.z + 0.2 + BALL_RADIUS },
-  ));
+  for (const p of wall) {
+    if (Math.min(a.z, b.z) > p.z + 0.2 + BALL_RADIUS || Math.max(a.z, b.z) < p.z - 0.2 - BALL_RADIUS) continue;
+    if (segmentWall(a, b, p, jump)) return true;
+  }
+  return false;
 }
 
-export function previewShot(setup: ShotSetup, maxTime = 3): Vec3[] {
+/** Shared sampling loop for the public object preview and the renderer's persistent buffer. */
+function samplePreview(setup: ShotSetup, maxTime: number, output: Vec3[] | Float32Array): number {
   const ball = launchBall(setup);
-  const points: Vec3[] = [{ ...ball.position }];
-  for (let i = 0; i < maxTime / FIXED_DT; i++) {
-    const previous = { ...ball.position };
+  const previous: Vec3 = { x: 0, y: 0, z: 0 };
+  let count = 0;
+  const limit = output instanceof Float32Array ? Math.floor(output.length / 3) : Infinity;
+  if (!limit) return 0;
+  writePreviewPoint(output, count++, ball.position);
+  for (let i = 0; i < maxTime / FIXED_DT && count < limit; i++) {
+    previous.x = ball.position.x; previous.y = ball.position.y; previous.z = ball.position.z;
     integrateBall(ball);
     const goal = crossingAtZ(previous, ball.position, -BALL_RADIUS);
-    if (goal) { points.push(goal); break; }
-    if (i % 5 === 0) points.push({ ...ball.position });
+    if (goal) { writePreviewPoint(output, count++, goal); break; }
+    if (i % 5 === 0) writePreviewPoint(output, count++, ball.position);
     if (ball.bounces > 1 || ball.position.z < -3) break;
   }
+  return count;
+}
+function writePreviewPoint(output: Vec3[] | Float32Array, index: number, point: Vec3) {
+  if (output instanceof Float32Array) {
+    const offset = index * 3;
+    output[offset] = point.x; output[offset + 1] = point.y; output[offset + 2] = point.z;
+  } else output.push({ ...point });
+}
+export function previewShot(setup: ShotSetup, maxTime = 3): Vec3[] {
+  const points: Vec3[] = [];
+  samplePreview(setup, maxTime, points);
   return points;
+}
+export function previewShotInto(setup: ShotSetup, output: Float32Array, maxTime = 3): number {
+  return samplePreview(setup, maxTime, output);
 }
 
 export function strikeName(contact: Contact, foot: Foot): string {

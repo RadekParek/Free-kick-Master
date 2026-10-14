@@ -5,7 +5,7 @@ import { PLAYERS, PHOTO_LICENSE, getPlayer, type TakerProfile } from '../players
 import { playerCard, showcaseArt, takerHud } from './player-card';
 import { Arena, type Phase } from '../game/arena';
 import { GameAudio } from '../game/audio';
-import { MusicPlayer } from '../game/music';
+import { MusicPlayer, type MusicStatus } from '../game/music';
 import { inPenaltyBox, clamp, constrainPosition, distanceBounds, distanceToGoal, recommendedPower, strikeName, type Position } from '../game/physics';
 import { DIFFICULTIES, KEEPER_PROFILES, type Difficulty } from '../game/keeper';
 import { DEFAULT_SETTINGS, GRAPHICS_PRESETS, emptySession, loadSettings, recordShot, saveSettings, tierOf, type GraphicsOptions, type Preset, type RenderScale, type Settings, type ShotResult, type ShadowSize } from '../state';
@@ -45,6 +45,7 @@ export class GameApp {
   private arena: Arena | null = null;
   private audio = new GameAudio();
   private music = new MusicPlayer();
+  private musicBlocked = false;
   private currentPhase: Phase = 'ready';
   private view: View = 'menu';
   private settingsOrigin: SettingsOrigin | null = null;
@@ -53,7 +54,9 @@ export class GameApp {
   private practiceSettings: Settings | null = null;
   private modalReturnFocus: HTMLElement | null = null;
   private powerPointer: number | null = null;
-  private visible = true;
+  private visible = !document.hidden;
+  private lastPowerPercent = -1;
+  private lastOverpowered = false;
 
   async mount() {
     $('#app').innerHTML = this.layout();
@@ -61,17 +64,21 @@ export class GameApp {
     this.bindUI();
     this.syncUI();
     this.audio.enabled = this.settings.sound;
+    this.music.onStatus = status => this.syncMusic(status);
+    this.music.setVisible(this.visible);
     this.music.setEnabled(this.settings.music);
-    this.music.onStatus = title => { if (title === null) this.toast('Music: add the mp3 files to public/music/ (see README.txt).'); };
+    this.music.start();
     await document.fonts.ready;
     try {
       this.arena = new Arena($('#arena'), this.settings, {
         phase: phase => this.onPhase(phase),
         power: power => this.onPower(power),
         result: result => this.onResult(result),
+        woodwork: () => { this.audio.result(false, true); this.haptic('impact'); },
         aim: aim => { this.settings.aim = aim; },
         error: message => this.showGraphicsError(message),
         performance: stats => {
+          if (!this.settings.showFps) return;
           const monitor = $('#performance');
           monitor.textContent = `${stats.fps} FPS · ${stats.calls} DRAWS · NATIVE ${stats.pixelRatio}×`;
           monitor.dataset.drawCalls = String(stats.calls);
@@ -107,7 +114,11 @@ export class GameApp {
           <button class="menu-big" id="menu-settings"><span class="menu-big-label">SETTINGS</span><small>Graphics, sound, pitch</small></button>
         </nav>
         <div class="menu-showcase" aria-live="polite"><div id="showcase"></div><strong id="showcase-name">${selected.name}</strong></div>
-        <footer class="menu-bottom"><button class="text-link" id="menu-help">${icon('HelpCircle')} HOW TO PLAY</button><button class="text-link" id="menu-android">${icon('Smartphone')} ANDROID APK</button><span>FK · v2.0</span></footer>
+        <footer class="menu-bottom"><button class="text-link" id="menu-help">${icon('HelpCircle')} HOW TO PLAY</button><button class="text-link" id="menu-android">${icon('Smartphone')} ANDROID APK</button><div class="menu-music" id="menu-music" role="group" aria-label="Soundtrack controls">
+          <button id="music-previous" aria-label="Previous song" title="Previous song">${icon('ArrowLeft')}</button>
+          <button id="music-toggle" class="music-track" aria-label="Pause music"><small id="music-state">SHUFFLED SOUNDTRACK</small><span id="music-title" aria-live="polite">Loading soundtrack…</span></button>
+          <button id="music-next" aria-label="Next song" title="Next song">${icon('ArrowRight')}</button>
+        </div></footer>
       </section>
 
       <!-- GAME (covers the screen) -->
@@ -200,7 +211,7 @@ export class GameApp {
                 <label class="setting-row"><span><strong>Shadows</strong><small>Shadow map size. Off removes dynamic shadows.</small></span><select id="gfx-shadows" aria-label="Shadow map size"><option value="0">Off</option><option value="512">512</option><option value="1024">1024</option><option value="2048">2048</option></select></label>
               </div>
               <label class="setting-row"><span><strong>Stadium atmosphere</strong><small>A new light on the beautiful game</small></span><select id="setting-atmosphere" aria-label="Stadium atmosphere"><option value="night">Floodlit night</option><option value="sunset">Golden hour</option><option value="day">Clear day</option></select></label>
-              ${[['music', 'Background music', 'Six tracks in playlist order. Full volume in the menu, 75% in play and practice.'], ['guides', 'Trajectory guide', 'Preview the actual spin, power, and player attributes.'], ['showFps', 'Performance monitor', 'Live frame rate, draw calls, and native render resolution.'], ['sound', 'Stadium sound', 'Crowd ambience, ball strikes, and the sound of the net.'], ['haptics', 'Haptic feedback', 'Feel each strike on supported Android devices.']].map(([key, title, detail]) => `<label class="setting-row"><span><strong>${title}</strong><small>${detail}</small></span><input type="checkbox" id="setting-${key}"/><span class="toggle" aria-hidden="true"></span></label>`).join('')}
+              ${[['music', 'Background music', 'Your custom songs, shuffled. Full volume in the menu, 75% in play and practice.'], ['guides', 'Trajectory guide', 'Preview the actual spin, power, and player attributes.'], ['showFps', 'Performance monitor', 'Live frame rate, draw calls, and native render resolution.'], ['sound', 'Stadium sound', 'Crowd ambience, ball strikes, and the sound of the net.'], ['haptics', 'Haptic feedback', 'Feel each strike on supported Android devices.']].map(([key, title, detail]) => `<label class="setting-row"><span><strong>${title}</strong><small>${detail}</small></span><input type="checkbox" id="setting-${key}"/><span class="toggle" aria-hidden="true"></span></label>`).join('')}
             </div>
             <p class="settings-note">High: 2048 px shadows and full athlete detail. Balanced: 1024 px shadows. Performance: no dynamic shadows and athletes switch to low detail sooner. Distant geometry is culled and athletes use level-of-detail in every mode.</p>
             <button id="photo-credits" class="text-link">Player photo credits &amp; licenses ${icon('ArrowUpRight')}</button>
@@ -216,6 +227,15 @@ export class GameApp {
 
   private bindUI() {
     // Menu
+    $('#music-previous').addEventListener('click', () => this.music.previous());
+    $('#music-next').addEventListener('click', () => this.music.next());
+    $('#music-toggle').addEventListener('click', () => {
+      if (this.settings.music && this.musicBlocked) { this.music.unlock(); return; }
+      this.settings.music = !this.settings.music;
+      this.music.setEnabled(this.settings.music);
+      $<HTMLInputElement>('#setting-music').checked = this.settings.music;
+      saveSettings(this.settings);
+    });
     $('#menu-play').addEventListener('click', () => this.showChallenges());
     $('#menu-practice').addEventListener('click', () => this.enterGame());
     $('#menu-players').addEventListener('click', () => this.showPlayers());
@@ -350,11 +370,19 @@ export class GameApp {
     });
     document.addEventListener('visibilitychange', () => this.setVisible(!document.hidden));
     window.addEventListener('blur', () => { this.powerPointer = null; this.arena?.cancelCharge(); });
-    document.addEventListener('pointerdown', () => { this.audio.unlock(); this.music.unlock(); }, { once: true });
+    const unlockAudio = (event: Event) => {
+      if (this.visible && !(this.view === 'game' && this.overlayOpen())) this.audio.unlock();
+      // The title button handles its own play/pause action, including blocked autoplay.
+      if (!(event.target instanceof Element && event.target.closest('#music-toggle'))) this.music.unlock();
+    };
+    document.addEventListener('pointerdown', unlockAudio, { passive: true });
+    document.addEventListener('pointerup', unlockAudio, { passive: true });
+    document.addEventListener('keydown', unlockAudio);
   }
 
   setVisible(visible: boolean) {
     this.visible = visible;
+    this.music.setVisible(visible);
     this.syncPause();
   }
 
@@ -596,21 +624,36 @@ export class GameApp {
     this.updateDisabled();
   }
 
+  private syncMusic(status: MusicStatus) {
+    this.musicBlocked = status.blocked;
+    const title = $('#music-title');
+    const text = status.title ?? 'No playable songs';
+    if (title.textContent !== text) title.textContent = text;
+    $('#music-state').textContent = !status.title ? 'SOUNDTRACK UNAVAILABLE' : !status.enabled ? 'MUSIC OFF' : status.blocked ? 'TAP OR PRESS A KEY TO PLAY' : status.playing ? 'NOW PLAYING · SHUFFLE' : 'SHUFFLED SOUNDTRACK';
+    $('#music-toggle').setAttribute('aria-label', `${status.enabled && !status.blocked ? 'Pause' : 'Play'} music: ${text}`);
+    $('#music-toggle').setAttribute('aria-pressed', String(status.enabled));
+    $('#music-toggle').title = text;
+  }
+
   private onPower(power: number) {
     const percent = Math.round(power * 100);
+    const overpowered = power > 0.85;
+    if (percent === this.lastPowerPercent && overpowered === this.lastOverpowered) return;
+    this.lastPowerPercent = percent;
+    this.lastOverpowered = overpowered;
     $('#power-value').textContent = String(percent);
     $('#power-fill').style.width = `${percent}%`;
     $('#power-meter').setAttribute('aria-valuenow', String(percent));
-    $('#power-meter').classList.toggle('overpowered', power > 0.85);
+    $('#power-meter').classList.toggle('overpowered', overpowered);
   }
 
   private onResult(result: ShotResult) {
     recordShot(this.session, result);
-    this.audio.result(result.outcome === 'goal', result.outcome === 'post');
+    if (result.outcome !== 'post') this.audio.result(result.outcome === 'goal');
     if (result.outcome === 'goal') this.haptic('success');
     const topBins = result.outcome === 'goal' && Math.abs(result.point.x) >= 2.36 && result.point.y >= 1.6;
     const copy = {
-      goal: [topBins ? 'ABSOLUTELY UNSAVEABLE.' : 'THAT’S HOW IT’S DONE.', topBins ? 'TOP BINS!' : 'WHAT A GOAL!', 'A little technique. A lot of satisfaction.'],
+      goal: [result.frameHits ? 'OFF THE WOODWORK. AND IN.' : topBins ? 'ABSOLUTELY UNSAVEABLE.' : 'THAT’S HOW IT’S DONE.', topBins ? 'TOP BINS!' : 'WHAT A GOAL!', 'A little technique. A lot of satisfaction.'],
       saved: ['A STRONG HAND.', 'DENIED.', 'Find the other corner. Give it a little more curve.'],
       wall: ['THE WALL HOLDS.', 'BLOCKED.', 'Try a wider aim, more lift, or a different contact point.'],
       post: ['INCHES IN IT.', 'WOODWORK.', 'So close. A small adjustment makes all the difference.'],
@@ -708,8 +751,8 @@ export class GameApp {
     if (!modal.open) this.modalReturnFocus = document.activeElement as HTMLElement;
     modal.className = `modal ${className}`;
     $('#modal-content').innerHTML = `<button class="modal-close icon-button" data-close aria-label="Close dialog">${icon('X')}</button>${content}`;
-    this.syncPause();
     if (!modal.open) modal.showModal();
+    this.syncPause();
     $('[data-close]').addEventListener('click', () => this.closeModal());
     drawIcons();
   }
@@ -735,6 +778,7 @@ export class GameApp {
   private overlayOpen() { return $<HTMLDialogElement>('#modal').open || this.settingsOpen(); }
   /** Single place that decides whether the 3D arena runs interactively. Menu backgrounds always animate. */
   private syncPause() {
+    $('#menu-music').hidden = this.view !== 'menu' || this.overlayOpen();
     const paused = !this.visible || (this.view === 'game' && this.overlayOpen());
     this.arena?.setPaused(paused);
     if (paused) this.audio.pause(); else this.audio.resume();

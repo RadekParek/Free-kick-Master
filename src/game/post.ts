@@ -37,8 +37,8 @@ const GradeShader = {
 };
 
 /**
- * Post stack. High: HDR composer with 4x MSAA, bloom, output transform, grade, SMAA.
- * Balanced: same without MSAA (SMAA covers edges). Low: no composer, direct render.
+ * HDR composer with configurable MSAA, bloom, output transform, grade and SMAA.
+ * All presets retain the same grading pipeline.
  */
 export class PostStack {
   private composer: EffectComposer | null = null;
@@ -46,6 +46,9 @@ export class PostStack {
   private grade: ShaderPass | null = null;
   private smaa: SMAAPass | null = null;
   private key = '';
+  private width = 0;
+  private height = 0;
+  private pixelRatio = 0;
 
   constructor(private readonly renderer: THREE.WebGLRenderer, private readonly scene: THREE.Scene, private readonly camera: THREE.Camera) {}
 
@@ -61,6 +64,7 @@ export class PostStack {
     this.key = key;
     const target = new THREE.WebGLRenderTarget(width, height, { type: THREE.HalfFloatType, samples: msaa });
     const composer = this.composer = new EffectComposer(this.renderer, target);
+    this.pixelRatio = this.renderer.getPixelRatio();
     composer.addPass(new RenderPass(this.scene, this.camera));
     if (bloom) {
       this.bloom = new UnrealBloomPass(new THREE.Vector2(width, height), quality === 'high' ? 0.16 : 0.1, 0.5, 0.92);
@@ -79,8 +83,13 @@ export class PostStack {
   setSize(width: number, height: number) {
     if (!this.composer) return;
     const pixelRatio = this.renderer.getPixelRatio();
-    this.composer.setPixelRatio(pixelRatio);
-    this.composer.setSize(width, height);
+    // ResizeObserver often reports unchanged bounds. Avoid walking/resizing every pass twice.
+    const ratioChanged = pixelRatio !== this.pixelRatio;
+    if (ratioChanged) this.composer.setPixelRatio(pixelRatio);
+    if (width !== this.width || height !== this.height) this.composer.setSize(width, height);
+    this.width = width;
+    this.height = height;
+    this.pixelRatio = pixelRatio;
   }
 
   render() {
@@ -89,7 +98,10 @@ export class PostStack {
   }
 
   dispose() {
+    // EffectComposer.dispose only frees its own targets, not the passes' render targets/materials.
+    for (const pass of this.composer?.passes ?? []) pass.dispose();
     this.composer?.dispose();
+    this.width = this.height = this.pixelRatio = 0;
     this.composer = null; this.bloom = null; this.grade = null; this.smaa = null; this.key = '';
   }
 }

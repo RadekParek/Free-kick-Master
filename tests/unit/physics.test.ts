@@ -15,7 +15,7 @@ function simulate(setup: ShotSetup, difficulty: Difficulty = 'rookie', count = 0
   const wall = getWall(setup.position, count);
   for (let i = 0; i < 800; i++) {
     const event = advanceShot(ball, keeper, wall, difficulty);
-    if (event) return { ...event, ball, keeper };
+    if (event && !event.continues) return { ...event, ball, keeper };
   }
   throw new Error('Shot did not resolve within the simulation time limit');
 }

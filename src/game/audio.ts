@@ -5,6 +5,7 @@ export class GameAudio {
   private volume: GainNode | null = null;
   private crowdSource: AudioBufferSourceNode | null = null;
   private crowdGain: GainNode | null = null;
+  private readonly noiseBuffers = new Map<number, AudioBuffer>();
 
   unlock() {
     if (!this.enabled) return;
@@ -26,9 +27,12 @@ export class GameAudio {
 
   private noise(seconds: number): AudioBuffer | null {
     if (!this.context) return null;
+    const cached = this.noiseBuffers.get(seconds);
+    if (cached) return cached;
     const buffer = this.context.createBuffer(1, this.context.sampleRate * seconds, this.context.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    this.noiseBuffers.set(seconds, buffer);
     return buffer;
   }
 
@@ -58,6 +62,7 @@ export class GameAudio {
     gain.gain.setValueAtTime(0.8, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
     osc.connect(gain).connect(this.volume!);
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); };
     osc.start();
     osc.stop(now + 0.2);
     this.noiseHit(0.08, 1000, 0.3);
@@ -74,6 +79,7 @@ export class GameAudio {
     gain.gain.setValueAtTime(level, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
     source.connect(filter).connect(gain).connect(this.volume!);
+    source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
     source.start();
   }
 
@@ -101,6 +107,7 @@ export class GameAudio {
     gain.gain.linearRampToValueAtTime(0.22, now + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
     osc.connect(gain).connect(this.volume!);
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); };
     osc.start(now);
     osc.stop(now + duration + 0.02);
   }

@@ -13,6 +13,7 @@ Open the Vite URL. The server binds to `0.0.0.0` and accepts Arena preview hosts
 
 ### Controls
 
+- **Music:** your three custom songs start in shuffled order. The main-menu song-title button toggles music, with previous/next beside it. Browsers that block autoplay start after a tap or keypress. Music pauses while the app is backgrounded. [Soundtrack details](src/soundtracks/README.md).
 - **Menu:** Play (five-kick challenges), Practice (free kicks), Players (the roster), Settings, and How to play. Practice fills the whole screen with only gameplay controls; **Back** returns to the menu.
 - **Settings:** a full-screen, scrolling screen with Pitch & Keeper and Visuals & Sound tabs. Open it from the Settings button (or **Escape**) during play; **Back to the pitch** returns to the shot. The fullscreen button hides browser chrome where permitted.
 - **Choose a player:** open Players from the menu, or press **T** in play. Search by name/nation, filter by foot or edition (standard or turquoise special), then select the card.
@@ -35,6 +36,8 @@ Keyboard/assistive activation of the shoot button also supports Enter to start c
 - **Floodlit night / golden hour / clear day**, native device-pixel resolution (no adaptive downscaling), distance-based LOD and culling, and a live performance monitor.
 - Movable free-kick positions across the attacking training half; roughly 18–55 m radial range, with closer wide-angle positions.
 - Regulation 7.32 × 2.44 m goal and a wall centred 9.15 m away, with 0–5 defenders.
+- **Live woodwork rebounds:** inside-post and crossbar deflections can still score; angle-based, energy-losing round-frame collisions replace the old special case. Only the final result counts.
+- **Richer animations:** head/elbow articulation, preparation, continuous follow-through, goal/miss reactions, keeper set-steps, varied reaches, landing and recovery.
 - Fixed 120 Hz flight: gravity, drag, spin-induced movement, high-power knuckle wake, turf bounces, swept wall/frame collisions, full-ball goal-line checks.
 - Five physically different keeper levels: reaction delay, lateral speed, reach, height, and anticipation—not a random save percentage.
 - Foot selection, animated run-up and keeper dives, two camera angles, slow-motion recorded replay, synthesized audio.
@@ -78,13 +81,13 @@ Browser tests use the npm-distributed headless Chromium on Linux; set `PLAYWRIGH
 
 ## What “FC-style” means here
 
-EA documents the **aim → contact/spin → hold/release power** loop and trajectory preview. [2](https://help.ea.com/en/articles/ea-sports-fc/free-kicks/) This game independently implements that interaction model with touch controls. **It does not claim identical FC27 physics, animation, AI, attributes, or graphics.** Those algorithms are not published in that guide. No EA code, official card artwork, player scans, official game kits, recordings, or ripped game assets are used. Player photos are independently licensed from Wikimedia Commons, with credits and dates in-game and in [photo notices](public/players/LICENSE.md). 3D avatars are original, approximate training-kit models, not scanned likenesses. Photograph copyright licenses do not grant athlete publicity or trademark rights for commercial distribution.
+EA documents the **aim → contact/spin → hold/release power** loop and trajectory preview. [2](https://help.ea.com/en/articles/ea-sports-fc/free-kicks/) This game independently implements that interaction model with touch controls. **It does not claim identical FC27 physics, animation, AI, attributes, or graphics.** Those algorithms are not published in that guide. No EA code, official card artwork, player scans, official game kits, or ripped game assets are used. Player photos are independently licensed from Wikimedia Commons, with credits and dates in-game and in [photo notices](public/players/LICENSE.md). 3D avatars are original, approximate training-kit models, not scanned likenesses. The custom soundtrack uses user-supplied recordings; see [soundtrack notes](src/soundtracks/README.md) for redistribution considerations. Photograph copyright licenses do not grant athlete publicity or trademark rights for commercial distribution.
 
 [Mechanics research and explicit approximations](docs/MECHANICS.md) · [Architecture](docs/ARCHITECTURE.md) · [Third-party notices](docs/THIRD_PARTY.md)
 
 ## Performance and roster expansion
 
-Static stadium pieces are batched by material; distant crowds use one baked mesh with a procedural fallback. Guide/trail GPU buffers and wall geometry are reused instead of reconstructed every frame. Idle rendering runs at 30 Hz and idle shadows update less often; active shots retain the display frame rate. Adaptive resolution is optional and trades pixel sharpness for smoother rendering when a device is slow. No physical-device frame-rate guarantee is made.
+Static stadium pieces are spatially batched by material with frozen transforms; distant crowds use one baked mesh with a procedural fallback. Guide/trail GPU buffers are reused, aim-preview updates are coalesced, invisible work is skipped, and paused scenes stop scheduling frames. Net deformation is cached and graphics changes rebuild only affected resources. Visible scenes retain the display frame rate; these optimizations do not change graphics preset values or add adaptive downscaling. See [the performance optimizations and verification notes](docs/PERFORMANCE.md). No physical-device frame-rate guarantee is made.
 
 The curated catalogue is in `src/players.ts`. To add a player, add a validated profile and a locally bundled, appropriately licensed portrait, then update attribution. Search, filtering, selection, foot, attributes, and kit colours automatically use the catalogue. **There is no authenticated/live FC27 card feed or official full-card import in this build.** Do not relabel these original ratings as EA data.
 

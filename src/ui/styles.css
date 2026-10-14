@@ -451,3 +451,19 @@ dialog::backdrop { background: #04080cc8; backdrop-filter: blur(3px); }
 .settings-tabs button { padding: 8px 0 6px; }
 
 .custom-graphics { border-top: 1px solid rgba(255,255,255,.08); margin-top: 6px; }
+
+/* A small, menu-only player; title doubles as the music on/off button. */
+.menu-music { margin-left: auto; display: flex; align-items: center; width: min(300px, 100%); min-width: 0; border: 1px solid #ffffff24; border-radius: 8px; background: #0d1620d9; }
+.menu-music > button { min-width: 40px; min-height: 44px; padding: 8px; border: 0; background: transparent; display: grid; place-content: center; }
+.menu-music > button:hover { color: var(--lime); }
+.menu-music svg { width: 16px; height: 16px; }
+.menu-music .music-track { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; gap: 3px; }
+.music-track small { font-size: 8px; letter-spacing: 1px; color: #9eb18d; }
+.music-track span { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+@media (max-width: 760px) {
+  .menu-bottom { gap: 10px 18px; }
+  .menu-music { width: 100%; margin-left: 0; }
+}
+@media (max-height: 500px) and (min-width: 761px) {
+  .menu-music { width: 260px; }
+}
