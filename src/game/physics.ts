@@ -32,8 +32,8 @@ export const GOAL_WIDTH = 7.32;
 export const GOAL_HEIGHT = 2.44;
 export const FIXED_DT = 1 / 120;
 export const GRAVITY = 9.81;
-/** Aim may leave the goal mouth (wide and high) so the aim reticle can reach every useful launch line. */
-export const AIM_LIMITS = { x: 14, yMin: 0.05, yMax: 7.5 } as const;
+/** Aim intentionally reaches well beyond the frame and below ground for low drives and misses. */
+export const AIM_LIMITS = { x: 22, yMin: -1.25, yMax: 10.5 } as const;
 const DRAG = 0.16;
 /** Distance from the kick to the defensive wall. Slightly further back than the 9.15 m law. */
 export const WALL_DISTANCE = 10.5;
@@ -74,7 +74,7 @@ export function distanceBounds(position: Position): { min: number; max: number }
 /** Aiming sets elevation for a reference power, NOT a homing target for the actual shot. */
 function referenceElevation(distance: number, height: number, speed: number): number {
   let low = -0.12;
-  let high = 1.05;
+  let high = 1.18;
   for (let i = 0; i < 22; i++) {
     const angle = (low + high) / 2;
     const vHorizontal = speed * Math.cos(angle);

@@ -1,8 +1,10 @@
 # Performance changes — 14 October 2026
 
-These changes remove redundant work, not image quality. Graphics preset values, render scale,
-shadow resolution, athlete geometry/LOD distances, crowd texture, bloom, anti-aliasing, and
-120 Hz shot physics are unchanged. Visible scenes still render at the display rate.
+The earlier passes remove redundant work without reducing scene detail. The mobile pass caps
+shadows at 1024 px, gives phones a lower-cost Balanced/Performance profile, and limits very high
+DPR rendering. Desktop settings, athlete geometry/LOD distances, crowd texture, and 120 Hz shot
+physics remain unchanged. Visible scenes still render at the display rate; only shadow refresh
+is half-rate.
 
 ## Ten optimizations
 
@@ -87,8 +89,38 @@ Eight further optimizations accompany the new woodwork physics/animations:
    Finished oscillator/source/filter/gain graphs explicitly disconnect instead of retaining
    one-shot audio connections across a long session.
 
-No graphics preset values, surface detail, texture resolution, shadow maps, post effects,
-LOD distances or visible-frame cadence were reduced. New head/elbow joints reuse the existing
-surfaces. The rebound solver is more capable and has a bounded four-contact loop per 120 Hz tick;
-that correctness work is not claimed as a speedup. Tests verify work/storage invariants, not a
-particular FPS improvement on a physical GPU.
+## Mobile interaction and resource pass
+
+1. **1024 px maximum shadow map.** The High preset keeps its render scale, MSAA, SMAA, and bloom,
+   but its maximum shadow size is now 1024 px. Balanced also tops out at 1024 px; Performance
+   still disables dynamic shadows. Older saved Custom values of 2048 migrate safely to 1024.
+2. **Half-rate shadow refresh.** Dynamic shadow maps update every other render frame (30 Hz on a
+   60 Hz display) while simulation, camera, and scene rendering keep their original cadence. The
+   first frame, a kick reset, and a shadow-quality change still mark the map dirty immediately.
+3. **Coalesced setup updates.** Multiple position/technique changes in one frame schedule one
+   Arena settings update, keeping the latest input and avoiding repeated resets/trajectory work.
+   Discrete transitions flush the pending update before a kick or view change.
+4. **Coalesced resize work.** ResizeObserver notifications and render-scale changes share one RAF
+   resize, avoiding redundant post-stack/render-target reallocations during mobile browser-chrome
+   and orientation changes.
+5. **Lazy optional Python dependency.** The Android art script imports Pillow only when its image
+   generation functions run; importing the utility itself does not eagerly load the package.
+   Python has no `lazy import` prefix keyword, so this uses a normal function-local import.
+6. **Phone render budget.** On phones, Balanced starts at 75% render scale, 512 px shadows and no
+   bloom; Performance uses half-scale, no dynamic shadows, SMAA or bloom. The device-pixel ratio
+   is capped at 2× before the selected scale, cutting high-DPI fill-rate while leaving desktop
+   pixel density alone. The resolution selector and performance monitor report the effective size.
+
+The stadium still uses atmosphere-dependent dynamic lighting. Its generated crowd atlas, player
+contact-shadow texture, and shared PMREM studio environment are already baked/cached assets; a
+single static scene lightmap would conflict with the three switchable lighting moods. These
+changes do not claim a device-specific FPS uplift; they reduce shadow memory/work and redundant
+CPU/GPU resource updates while preserving the scene's detail and visible-frame cadence.
+
+The earlier non-mobile optimizations leave scene geometry, texture detail, LOD distances, and
+visible-frame cadence unchanged. The phone profile deliberately reduces pixel workload, bloom
+and shadow cost while preserving the scene; moving shadows refresh every other render frame
+(about 30 Hz on a 60 Hz display). New head/elbow joints reuse existing surfaces. The rebound
+solver has a bounded four-contact loop per 120 Hz tick; that correctness work is not claimed as
+a speedup. Tests verify work/storage invariants, not a particular FPS improvement on a physical
+GPU.

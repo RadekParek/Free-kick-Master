@@ -57,6 +57,19 @@ describe('articulated animation', () => {
     expect(snapshot(r)).not.toEqual(low);
   });
 
+  it('animates alternating footwork while the undived keeper moves laterally', () => {
+    const standing = rig(), walking = rig();
+    const still = createKeeper(0), moving = createKeeper(0);
+    moving.reacted = true;
+    moving.targetX = moving.x + 1;
+    moving.velocityX = 2.4;
+    keeperPose(standing, still, 1);
+    keeperPose(walking, moving, 1);
+    expect(snapshot(walking)).not.toEqual(snapshot(standing));
+    expect(walking.leftShin.rotation.x).not.toBe(walking.rightShin.rotation.x);
+    expect(moving.velocityX).toBe(2.4);
+  });
+
   it('lands and recovers without changing keeper collision state, and resets all joints', () => {
     const r = rig(), k = createKeeper(0);
     k.dive = 0.85; k.direction = -1; k.glove.y = 1.8;

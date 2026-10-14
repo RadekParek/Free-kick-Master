@@ -20,7 +20,7 @@ That official source does **not** disclose exact launch equations, input curves,
 
 | Input/system | Free Kick Master implementation | Fidelity limit |
 | --- | --- | --- |
-| Aim | Drag the view, tap the goal plane, or use arrows. A goal-plane coordinate sets a reference launch angle. | Original mapping, not a copy of EA's controller code. |
+| Aim | Drag the view, tap the goal plane, or use arrows. A goal-plane coordinate sets a reference launch angle; the range extends beyond the posts and below ground for low drives. | Original mapping, not a copy of EA's controller code. |
 | Contact | A draggable 2D marker on a ball changes sidespin, topspin/backspin, and elevation. | Original coefficients and touch mapping. |
 | Foot | Left/right kicking animation and inside/outside curl naming. | Physical contact direction remains consistent. The selected player supplies original training attributes, not official EA traits. |
 | Power | Hold for up to 1.65 s to fill 0–100%; release. Over-holding releases automatically at 2.05 s. | Original timing and 16–37 m/s base speed, multiplied by the selected player’s power attribute. |
@@ -29,6 +29,8 @@ That official source does **not** disclose exact launch equations, input curves,
 | Wall | 0–5 defenders, 9.15 m centre distance, synchronized jump, swept expanded-box collisions. | Articulated visuals with simplified body collision volumes. |
 | Goal/frame | 7.32 m wide, 2.44 m high, ball radius 0.11 m, swept frame tests, full-ball goal-line crossing. | Post impacts are resolved as woodwork; subsequent ricochet goals are not modeled. |
 | Replay | Recorded ball and keeper states at 60 samples/s, played at 0.55×. | Visual replay, not a newly simulated second attempt. |
+
+The gameplay camera keeps roughly the same shot-local position but uses a narrower 35° landscape lens (40° on short landscape screens) so the goal and keeper read larger, with portrait framing retained. In-game left/right controls add a bounded orbit; releasing a shot restores the neutral camera for the attempt. This is presentation tuning inspired by broadcast-style football cameras, not a claim of FC27 camera equivalence.
 
 ## Flight model
 
@@ -64,11 +66,13 @@ Selecting a player changes preferred foot, initial contact side, shirt number/na
 | World class | 170 ms | 3.60 m/s | 1.00 m | 2.62 m | 0.70 |
 | Legend | 110 ms | 4.20 m/s | 1.12 m | 2.76 m | 0.90 |
 
-The keeper estimates an intersection after its reaction delay; it does not receive the precomputed trajectory. Saves require the ball to reach a body/arm/glove volume. Higher levels still have finite reach. Shots are reproducible for a given setup and release power.
+For ordinary free kicks, these base difficulty profiles remain unchanged. The keeper estimates a goal-line intersection after the profile reaction delay; it does not receive the precomputed trajectory. Saves require the ball to reach a body/arm/glove volume. Higher levels still have finite reach, and shots remain reproducible for a given setup and release power.
+
+Only penalty kicks receive the deliberate difficulty buff: reaction delay is reduced to at most 22% of the selected profile (capped at 75 ms), curve anticipation reaches 1.0, lateral speed and reach increase by 2.0× and 1.5×, and the keeper tracks higher shots. The dive begins earlier and the save volume receives a modest penalty-only expansion. This is an original challenge modifier, not FC27 tuning.
 
 ## Scope and honest limitations
 
-This is a playable stylized 3D training game, not a AAA football engine. It has no full match, official EA player/card database, imported motion capture, multiplayer, wind, teammate runs, free-kick passing, or exact FC controller compatibility. Four selectable real players use openly licensed portrait photos and original attributes; their 3D avatars are approximate, procedural models, not scanned faces. The playing area is the attacking training half, outside the penalty area—not unrestricted invalid free-kick positions. Collisions and animations are intentionally simplified for offline mobile performance.
+This is a playable stylized 3D training game, not a AAA football engine. It has no full match, official EA player/card database, imported motion capture, multiplayer, wind, teammate runs, free-kick passing, or exact FC controller compatibility. Four selectable real players use openly licensed portrait photos and original attributes; their 3D avatars are approximate, procedural models, not scanned faces. Free-kick placement is limited to the attacking training half, with a separate penalty-spot scenario; it is not unrestricted match play. Collisions and animations are intentionally simplified for offline mobile performance.
 
 The primary next calibration step is a **user-supplied gameplay capture and concrete control observations** from the desired FC27 mode/platform. That can help tune feel and presentation, but still cannot establish identical proprietary physics from the public guide alone.
 
@@ -99,8 +103,10 @@ Preparation adds a weight shift and downward glance; the run-up has elbow drive 
 support leg, then blends continuously from the exact contact pose into follow-through.
 Goal celebrations, ordinary misses and woodwork misses have separate arm/head reactions.
 
-The goalkeeper adds a pre-contact split-step, lateral adjustment, gaze tracking, low/high
-reaches, elbow extension, a landing/side-roll and a planted-knee recovery. Wall players brace
-with forearms and tuck their knees during a jump. Reactions start only after the final result,
-not at a still-live post contact. These are authored procedural poses, not motion capture or
-full inverse-kinematic glove contacts; keeper difficulty and collision reach are unchanged.
+The goalkeeper adds a pre-contact split-step, velocity-driven lateral footwork, gaze tracking,
+low/high reaches, elbow extension, a landing/side-roll and a planted-knee recovery. The footwork
+uses the same lateral velocity stored for replay, so the keeper steps while moving instead of
+sliding. Wall players brace with forearms and tuck their knees during a jump. Reactions start only
+after the final result, not at a still-live post contact. These are authored procedural poses, not
+motion capture or full inverse-kinematic glove contacts; ordinary free-kick collision reach is
+unchanged, with a separate penalty-only save boost.

@@ -19,6 +19,71 @@ async function shoot(page: Page, targetPower = 63) {
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'result');
 }
 
+test('practice cycles atmospheres and the in-game field map works without opening settings', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.addInitScript(() => localStorage.setItem('fkm.settings.v1', JSON.stringify({ atmosphere: 'night', quality: 'low', sound: false })));
+  await page.goto('/');
+  await expect(page.locator('#app')).toHaveClass('is-ready');
+  await page.locator('#menu-practice').click();
+  await expect(page.locator('#game-view')).toBeVisible();
+  const firstAtmosphere = await page.locator('#setting-atmosphere').inputValue();
+  expect(firstAtmosphere).not.toBe('night');
+  await expect(page.locator('#shoot-label')).toHaveText('Shoot!');
+  await expect(page.locator('#settings-view')).toBeHidden();
+
+  const mapButton = page.locator('#quick-map-button');
+  await mapButton.click();
+  await expect(page.locator('#quick-map-panel')).toBeVisible();
+  const before = await page.locator('#quick-map-readout').textContent();
+  await page.locator('#quick-pitch-map').click({ position: { x: 34, y: 95 } });
+  await expect(page.locator('#quick-map-readout')).not.toHaveText(before!);
+  await expect(page.locator('#settings-view')).toBeHidden();
+  await mapButton.click();
+  await expect(page.locator('#quick-map-panel')).toBeHidden();
+  await expect(mapButton).toHaveAttribute('aria-expanded', 'false');
+  await mapButton.click();
+  await expect(page.locator('#quick-map-panel')).toBeVisible();
+  await page.locator('#quick-map-close').click();
+  await expect(mapButton).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#camera-left')).toBeEnabled();
+  await expect(page.locator('#camera-right')).toBeEnabled();
+  await page.locator('#camera-left').click();
+  await page.locator('#camera-right').click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mapButton.click();
+  const mapBounds = await page.locator('#quick-map-panel').boundingBox();
+  expect(mapBounds).not.toBeNull();
+  expect(mapBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(mapBounds!.x + mapBounds!.width).toBeLessThanOrEqual(390);
+  expect(mapBounds!.y + mapBounds!.height).toBeLessThanOrEqual(844);
+  await page.locator('#quick-map-close').click();
+
+  await page.locator('#back-button').click();
+  await page.locator('#menu-practice').click();
+  const secondAtmosphere = await page.locator('#setting-atmosphere').inputValue();
+  expect(secondAtmosphere).not.toBe(firstAtmosphere);
+});
+
+test('uses the phone graphics budget and caps high-DPI rendering on a mobile device', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const page = await context.newPage();
+  await page.addInitScript(() => localStorage.setItem('fkm.settings.v1', JSON.stringify({ sound: false, showFps: true })));
+  await page.goto('/');
+  await expect(page.locator('#app')).toHaveClass('is-ready');
+  await page.locator('#menu-settings').click();
+  await page.locator('[data-settings-tab="graphics"]').click();
+  await expect(page.locator('#setting-preset')).toHaveValue('balanced');
+  await page.locator('#setting-preset').selectOption('custom');
+  await expect(page.locator('#gfx-resolution')).toHaveValue('0.75');
+  await expect(page.locator('#gfx-bloom')).not.toBeChecked();
+  await expect(page.locator('#gfx-shadows')).toHaveValue('512');
+  await page.locator('#settings-back').click();
+  await page.locator('#menu-practice').click();
+  await expect(page.locator('#performance')).toBeVisible();
+  await expect(page.locator('#performance')).toHaveText(/RENDER 1\.5×/);
+  await context.close();
+});
+
 test('loads actual WebGL full-screen, adjusts pitch, contact, difficulty and remembers preferences', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

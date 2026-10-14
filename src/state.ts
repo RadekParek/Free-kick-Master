@@ -5,18 +5,47 @@ import { DIFFICULTIES, type Difficulty } from './game/keeper';
 export type Quality = 'high' | 'balanced' | 'low';
 export type Preset = 'high' | 'balanced' | 'performance' | 'custom';
 export type RenderScale = 1 | 0.75 | 0.5;
-export type ShadowSize = 0 | 512 | 1024 | 2048;
+export type ShadowSize = 0 | 512 | 1024;
 /** Graphics options. Presets fill these in; Custom lets each one be changed. */
 export interface GraphicsOptions { preset: Preset; resolution: RenderScale; msaa: 0 | 2; smaa: boolean; bloom: boolean; shadows: ShadowSize }
 export const GRAPHICS_PRESETS: Record<Exclude<Preset, 'custom'>, Omit<GraphicsOptions, 'preset'>> = {
-  // High renders at 75% of the native pixels and uses 2x MSAA; the screen scales the result back up.
-  high: { resolution: 0.75, msaa: 2, smaa: true, bloom: true, shadows: 2048 },
+  // The high preset keeps its existing render scale and smoothing, but caps mobile-friendly shadows at 1024 px.
+  high: { resolution: 0.75, msaa: 2, smaa: true, bloom: true, shadows: 1024 },
   balanced: { resolution: 1, msaa: 0, smaa: true, bloom: true, shadows: 1024 },
   performance: { resolution: 1, msaa: 0, smaa: false, bloom: false, shadows: 0 },
 };
+const MOBILE_PRESETS: Partial<Record<Exclude<Preset, 'custom'>, Omit<GraphicsOptions, 'preset'>>> = {
+  balanced: { resolution: 0.75, msaa: 0, smaa: true, bloom: false, shadows: 512 },
+  performance: { resolution: 0.5, msaa: 0, smaa: false, bloom: false, shadows: 0 },
+};
+export const MOBILE_DEVICE_PIXEL_RATIO_CAP = 2;
+
+export function isMobileDevice(): boolean {
+  return typeof window !== 'undefined' && (window.innerWidth < 800 || window.matchMedia('(pointer: coarse)').matches);
+}
+
+/** Cap high-DPI phone rendering before applying the user's quality scale; desktops stay native. */
+export function effectivePixelRatio(devicePixelRatio: number, resolution: RenderScale, mobile: boolean): number {
+  const dpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
+  return Math.min(dpr, mobile ? MOBILE_DEVICE_PIXEL_RATIO_CAP : Number.POSITIVE_INFINITY) * resolution;
+}
+
+export function graphicsForPreset(preset: Exclude<Preset, 'custom'>, mobile = isMobileDevice()): GraphicsOptions {
+  return { preset, ...(mobile ? MOBILE_PRESETS[preset] ?? GRAPHICS_PRESETS[preset] : GRAPHICS_PRESETS[preset]) };
+}
+
 /** Internal detail tier (grass density, athlete detail) derived from the graphics options. */
-export const tierOf = (g: Omit<GraphicsOptions, 'preset'>): Quality => (g.shadows === 0 ? 'low' : g.shadows >= 2048 && g.msaa > 0 ? 'high' : 'balanced');
+export const tierOf = (g: Omit<GraphicsOptions, 'preset'>): Quality => (g.shadows === 0 ? 'low' : g.msaa > 0 ? 'high' : 'balanced');
 export type Atmosphere = 'night' | 'sunset' | 'day';
+export const ATMOSPHERES: readonly Atmosphere[] = ['night', 'sunset', 'day'];
+
+/** Return a different stadium mood for a fresh practice launch, while remaining easy to test. */
+export function nextPracticeAtmosphere(current: Atmosphere, random = Math.random): Atmosphere {
+  const choices = ATMOSPHERES.filter(atmosphere => atmosphere !== current);
+  const sample = random();
+  const index = Math.min(choices.length - 1, Math.max(0, Math.floor((Number.isFinite(sample) ? sample : 0) * choices.length)));
+  return choices[index];
+}
 export interface Settings {
   playerId: string;
   atmosphere: Atmosphere;
@@ -67,10 +96,8 @@ export const DEFAULT_SETTINGS: Settings = {
   quality: 'high',
   graphics: { preset: 'high', ...GRAPHICS_PRESETS.high },
 };
-// Phones and touch screens start on Balanced; desktops start on High.
-if (typeof window !== 'undefined' && (window.innerWidth < 800 || window.matchMedia('(pointer: coarse)').matches)) {
-  DEFAULT_SETTINGS.graphics = { preset: 'balanced', ...GRAPHICS_PRESETS.balanced };
-}
+// Phones and touch screens start on a lower-cost Balanced profile; desktops start on High.
+if (isMobileDevice()) DEFAULT_SETTINGS.graphics = graphicsForPreset('balanced');
 DEFAULT_SETTINGS.quality = tierOf(DEFAULT_SETTINGS.graphics);
 export const emptySession = (): Session => ({ attempts: 0, goals: 0, streak: 0, bestStreak: 0, history: [] });
 const KEY = 'fkm.settings.v1';
@@ -94,12 +121,12 @@ export function loadSettings(): Settings {
       const g = saved.graphics;
       const preset = pick<Preset>(g.preset, ['high', 'balanced', 'performance', 'custom'], defaults.graphics.preset);
       defaults.graphics = preset === 'custom'
-        ? { preset, resolution: pick<RenderScale>(g.resolution, [1, 0.75, 0.5], 1), msaa: pick<0 | 2>(g.msaa, [0, 2], 0), smaa: typeof g.smaa === 'boolean' ? g.smaa : true, bloom: typeof g.bloom === 'boolean' ? g.bloom : true, shadows: pick<ShadowSize>(g.shadows, [0, 512, 1024, 2048], 1024) }
-        : { preset, ...GRAPHICS_PRESETS[preset as Exclude<Preset, 'custom'>] };
+        ? { preset, resolution: pick<RenderScale>(g.resolution, [1, 0.75, 0.5], 1), msaa: pick<0 | 2>(g.msaa, [0, 2], 0), smaa: typeof g.smaa === 'boolean' ? g.smaa : true, bloom: typeof g.bloom === 'boolean' ? g.bloom : true, shadows: pick<ShadowSize>(g.shadows, [0, 512, 1024], 1024) }
+        : graphicsForPreset(preset as Exclude<Preset, 'custom'>);
     } else if (['high', 'balanced', 'low'].includes(saved.quality)) {
       // Settings saved before the graphics options existed.
-      const preset: Preset = saved.quality === 'low' ? 'performance' : saved.quality;
-      defaults.graphics = { preset, ...GRAPHICS_PRESETS[preset as Exclude<Preset, 'custom'>] };
+      const preset: Exclude<Preset, 'custom'> = saved.quality === 'low' ? 'performance' : saved.quality;
+      defaults.graphics = graphicsForPreset(preset);
     }
     defaults.quality = tierOf(defaults.graphics);
     for (const key of ['sound', 'guides', 'haptics', 'showFps', 'music'] as const) {

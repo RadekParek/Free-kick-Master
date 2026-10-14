@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BALL_RADIUS, FIXED_DT, GOAL_HEIGHT, GOAL_WIDTH, classifyGoalCrossing, cloneBall,
+  AIM_LIMITS, BALL_RADIUS, FIXED_DT, GOAL_HEIGHT, GOAL_WIDTH, PENALTY_SPOT, classifyGoalCrossing, cloneBall,
   constrainPosition, crossingAtZ, distanceBounds, distanceToGoal, getWall, hitsWall, integrateBall,
   intersectsFrame, launchBall, previewShot, recommendedPower, shotSpeed, strikeName,
   wallJump, type ShotSetup,
@@ -9,12 +9,12 @@ import { createKeeper, DIFFICULTIES, KEEPER_PROFILES, keeperSaves, updateKeeper,
 import { advanceShot } from '../../src/game/simulation';
 
 const base: ShotSetup = { position: { x: -6, z: 24 }, aim: { x: 1.9, y: 1.9 }, contact: { x: -0.43, y: 0.02 }, foot: 'right', power: 0.628 };
-function simulate(setup: ShotSetup, difficulty: Difficulty = 'rookie', count = 0) {
+function simulate(setup: ShotSetup, difficulty: Difficulty = 'rookie', count = 0, penalty = false) {
   const ball = launchBall(setup);
   const keeper = createKeeper(setup.position.x);
   const wall = getWall(setup.position, count);
   for (let i = 0; i < 800; i++) {
-    const event = advanceShot(ball, keeper, wall, difficulty);
+    const event = advanceShot(ball, keeper, wall, difficulty, undefined, penalty);
     if (event && !event.continues) return { ...event, ball, keeper };
   }
   throw new Error('Shot did not resolve within the simulation time limit');
@@ -30,6 +30,13 @@ describe('aim, contact, and power', () => {
     const low = landing({ ...base, power: 0.35 });
     const high = landing({ ...base, power: 0.85 });
     expect(Math.abs(low.y - high.y)).toBeGreaterThan(0.8);
+  });
+  it('allows wider, lower and higher aim while clamping extreme input safely', () => {
+    expect(AIM_LIMITS.x).toBeGreaterThan(14);
+    expect(AIM_LIMITS.yMin).toBeLessThan(0);
+    expect(AIM_LIMITS.yMax).toBeGreaterThan(7.5);
+    expect(launchBall({ ...base, aim: { x: -100, y: -100 } })).toEqual(launchBall({ ...base, aim: { x: -AIM_LIMITS.x, y: AIM_LIMITS.yMin } }));
+    expect(launchBall({ ...base, aim: { x: 100, y: 100 } })).toEqual(launchBall({ ...base, aim: { x: AIM_LIMITS.x, y: AIM_LIMITS.yMax } }));
   });
   it('opposite contact points create opposite lateral curve', () => {
     const straight: ShotSetup = { ...base, position: { x: 0, z: 24 }, aim: { x: 0, y: 1.5 }, contact: { x: 0, y: 0 }, power: 0.62 };
@@ -193,6 +200,22 @@ describe('a goalkeeper that reacts, not a random success roll', () => {
     const keeper = createKeeper(0);
     expect(keeperSaves({ x: keeper.x, y: 1, z: 0.7 }, keeper)).toBe(true);
     expect(keeperSaves({ x: -3.3, y: 2.1, z: 0.7 }, keeper)).toBe(false);
+  });
+  it('gives penalty kicks a much earlier, faster predictive read and extra save reach', () => {
+    const setup = { ...base, position: PENALTY_SPOT, aim: { x: 2.2, y: 1.5 } };
+    const ball = launchBall(setup);
+    ball.time = 0.1;
+    const normal = createKeeper(0), penalty = createKeeper(0);
+    updateKeeper(normal, ball, 'rookie', FIXED_DT);
+    updateKeeper(penalty, ball, 'rookie', FIXED_DT, true);
+    expect(normal.reacted).toBe(false);
+    expect(penalty.reacted).toBe(true);
+    expect(penalty.dive).toBeGreaterThan(0);
+    expect(Math.abs(penalty.velocityX)).toBeGreaterThan(0);
+    expect(simulate(setup, 'rookie', 0, true).keeper.reacted).toBe(true);
+    const justWideOfBody = { x: penalty.x + 0.52, y: 1, z: 0.7 };
+    expect(keeperSaves(justWideOfBody, penalty)).toBe(false);
+    expect(keeperSaves(justWideOfBody, penalty, true)).toBe(true);
   });
   it('produces both scoreable shots and saves with the real simulation', () => {
     const outcomes = new Set<string>();

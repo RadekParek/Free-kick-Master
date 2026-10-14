@@ -42,14 +42,15 @@ Flight and goal/save decisions are deterministic for a captured setup and wall l
 
 ## Mobile/performance
 
-A single WebGL renderer is resized with `ResizeObserver`. Render scale comes from the selected graphics preset or custom settings; there is no adaptive downscaling. High uses 2048 px shadow maps, Balanced uses 1024 px, and Performance disables dynamic shadows. Material programs are invalidated when shadow quality changes.
+A single WebGL renderer is resized with `ResizeObserver`; resize bursts are coalesced into one animation frame. Render scale comes from the selected graphics preset or custom settings; there is no adaptive downscaling. High and Balanced cap shadow maps at 1024 px, while Performance disables dynamic shadows. Dynamic shadow maps refresh at 30 Hz while the scene itself remains at the display rate. Material programs are invalidated only when shadow quality changes.
 
 - Static stadium geometry is merged per shared material/shadow state. Rigid player parts are batched per articulated bone/material.
 - Distant crowds use a generated texture on upright row strips merged into one mesh. Procedural instanced spectators remain an asset-load fallback, not a second visible crowd.
 - The trajectory guide and shot trace reuse bounded typed-array GPU buffers. Defensive-wall positions are cached rather than allocated on every physics tick.
 - Visible scenes render at the display rate. Paused gameplay overlays and backgrounding cancel animation-frame scheduling; the visible menu background remains animated.
-- Rendering uses device pixel ratio multiplied by the selected render scale; these optimizations do not change that scale. Performance comes from batching, distance-based LOD (high/low athlete rigs), spatial batching of stands, and culling. The on-screen monitor reports measured FPS, draw calls and the native pixel ratio.
-- The shot-local camera and taker positioning handle wide angles and portrait phones without cropping the entire kicker out of view.
+- Desktop rendering uses device pixel ratio multiplied by the selected render scale. Phones cap device pixel ratio at 2× before scaling; their Balanced preset renders at 75%, uses 512 px shadows and skips bloom, while Performance renders at 50% with no shadows or post AA/bloom. The settings and FPS monitor show the effective render size/ratio. Performance also comes from batching, distance-based LOD (high/low athlete rigs), spatial batching of stands, and culling.
+- The shot-local camera and taker positioning handle wide angles and portrait phones without cropping the entire kicker out of view. Landscape uses a narrower broadcast lens for a larger keeper at the same approximate camera distance; optional left/right orbit controls reset to centre when a shot is released.
+- An in-game field-map popover shares the settings pitch map and can reposition the free kick without opening Settings. High-frequency map/slider changes update the arena once per frame.
 - Goal-net deformation runs only briefly after a goal. All fonts, portraits, crowd imagery, scripts, and audio generation are local/offline assets. Android haptics tolerate unsupported hardware.
 
 See [ten additional optimizations and regression checks](PERFORMANCE.md), including frozen stadium transforms, coalesced previews, cached net waves, and post-processing resource cleanup.

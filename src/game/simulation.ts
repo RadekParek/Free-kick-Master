@@ -12,11 +12,11 @@ export const createShotScratch = (): ShotScratch => ({ previous: { x: 0, y: 0, z
 /** The exact same fixed-step rules run in the renderer and in headless tests.
  * Semi-implicit forces run once at 120 Hz; swept contacts consume the remaining linear motion.
  */
-export function advanceShot(ball: BallState, keeper: KeeperState, wall: WallPlayer[], difficulty: Difficulty, scratch = createShotScratch()): ShotEvent | null {
+export function advanceShot(ball: BallState, keeper: KeeperState, wall: WallPlayer[], difficulty: Difficulty, scratch = createShotScratch(), penalty = false): ShotEvent | null {
   const previous = scratch.previous, end = scratch.end;
   previous.x = ball.position.x; previous.y = ball.position.y; previous.z = ball.position.z;
   integrateBall(ball);
-  updateKeeper(keeper, ball, difficulty, FIXED_DT);
+  updateKeeper(keeper, ball, difficulty, FIXED_DT, penalty);
   let remaining = FIXED_DT;
   let frameImpact: Vec3 | undefined;
   // A corner can contact both members in one tick. Bound the solver, not the rebound velocity.
@@ -29,7 +29,7 @@ export function advanceShot(ball: BallState, keeper: KeeperState, wall: WallPlay
       return { outcome: 'wall', point: { ...end }, frameImpact };
     }
     const atKeeper = crossingAtZ(previous, end, KEEPER_Z) ?? (ball.frameHits ? crossingAtZ(end, previous, KEEPER_Z) : null);
-    if (atKeeper && keeperSaves(atKeeper, keeper)) {
+    if (atKeeper && keeperSaves(atKeeper, keeper, penalty)) {
       ball.velocity.z = Math.abs(ball.velocity.z) * 0.22;
       ball.velocity.x = keeper.direction * 2.4;
       ball.velocity.y = 1.3;

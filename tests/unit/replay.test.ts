@@ -25,15 +25,15 @@ describe('allocation-free preview and replay paths', () => {
 
   it('records without state aliases and samples in place with smoothly interpolated keeper motion', () => {
     const replay = new ReplayBuffer(3), ball = launchBall(setup), keeper = createKeeper(0);
-    ball.position.x = 1; ball.time = 0.1; keeper.x = 0; keeper.dive = 0.2; keeper.glove.y = 1;
+    ball.position.x = 1; ball.time = 0.1; keeper.x = 0; keeper.dive = 0.2; keeper.glove.y = 1; keeper.velocityX = 1;
     replay.record(ball, keeper);
-    ball.position.x = 3; ball.time = 0.2; keeper.x = 2; keeper.dive = 0.4; keeper.glove.y = 2;
+    ball.position.x = 3; ball.time = 0.2; keeper.x = 2; keeper.dive = 0.4; keeper.glove.y = 2; keeper.velocityX = 3;
     replay.record(ball, keeper);
     const position = ball.position, velocity = ball.velocity, glove = keeper.glove;
     replay.sample(0.5, ball, keeper);
     expect(ball.position).toBe(position); expect(ball.velocity).toBe(velocity); expect(keeper.glove).toBe(glove);
     expect(ball.position.x).toBe(2); expect(ball.time).toBeCloseTo(0.15);
-    expect(keeper.x).toBe(1); expect(keeper.dive).toBeCloseTo(0.3); expect(keeper.glove.y).toBe(1.5);
+    expect(keeper.x).toBe(1); expect(keeper.dive).toBeCloseTo(0.3); expect(keeper.glove.y).toBe(1.5); expect(keeper.velocityX).toBe(2);
     replay.sample(0, ball, keeper);
     expect(ball.position.x).toBe(1);
     replay.sample(99, ball, keeper);

@@ -17,11 +17,14 @@ import { applyStudioLight, studioEnvironment } from './pbr';
 import { advanceShot, createShotScratch } from './simulation';
 import { ReplayBuffer } from './replay';
 import { getPlayer } from '../players';
-import type { Settings, ShotResult } from '../state';
+import { effectivePixelRatio, isMobileDevice, type Settings, type ShotResult } from '../state';
 
 /** Real penalty run-ups take about 1.2 to 1.4 s; the taker reaches the ball at this run progress. */
 const RUNUP_SECONDS = 1.3;
 const RUNUP_PROGRESS_END = 0.9;
+const CAMERA_ROTATION_STEP = Math.PI / 18;
+const CAMERA_ROTATION_LIMIT = Math.PI / 3;
+const SHADOW_REFRESH_EVERY = 2;
 
 export type Phase = 'ready' | 'charging' | 'runup' | 'flight' | 'result' | 'replay';
 export interface ArenaEvents {
@@ -38,7 +41,7 @@ export class Arena {
   readonly renderer: THREE.WebGLRenderer;
   private readonly post: PostStack;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(39, 1, 0.05, 450);
+  readonly camera = new THREE.PerspectiveCamera(35, 1, 0.05, 450);
   phase: Phase = 'ready';
   paused = false;
   power = 0;
@@ -60,6 +63,9 @@ export class Arena {
   private tracePointCount = 0;
   private wallGap = -1;
   private shift = 0;
+  private cameraYawOffset = 0;
+  private shadowFrame = 0;
+  private resizeFrame = 0;
   private traceGeometry = new LineGeometry();
   private traceMaterial = new LineMaterial({ color: 0x2d9cff, linewidth: 4.5, transparent: true, opacity: 0.85, depthWrite: false });
   private readonly guidePositions = new Float32Array(512 * 3);
@@ -110,7 +116,7 @@ export class Arena {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = settings.graphics.shadows > 0;
-    this.renderer.shadowMap.type = settings.graphics.shadows >= 2048 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
     this.post = new PostStack(this.renderer, this.scene, this.camera);
     this.renderer.setClearColor('#b9cfc6');
@@ -150,7 +156,7 @@ export class Arena {
     this.trace = new Line2(this.traceGeometry, this.traceMaterial);
     this.trace.frustumCulled = false;
     this.scene.add(this.trace);
-    this.observer = new ResizeObserver(() => this.resize());
+    this.observer = new ResizeObserver(() => this.queueResize());
     this.observer.observe(container);
     this.bindInput();
     this.renderer.domElement.addEventListener('webglcontextlost', event => {
@@ -192,7 +198,7 @@ export class Arena {
     if (qualityChanged) this.stadium.setQuality(settings.quality);
     if (g.shadows !== previous.shadows) {
       this.renderer.shadowMap.enabled = g.shadows > 0;
-      this.renderer.shadowMap.type = g.shadows >= 2048 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       // Only a shadow-mode change requires shadow shader invalidation.
       this.scene.traverse(object => {
         if (object instanceof THREE.Mesh) for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.needsUpdate = true;
@@ -203,7 +209,7 @@ export class Arena {
       this.stadium.sun.shadow.map = null;
       this.renderer.shadowMap.needsUpdate = true;
     }
-    if (g.resolution !== previous.resolution) this.resize();
+    if (g.resolution !== previous.resolution) this.queueResize();
     else if (qualityChanged || g.msaa !== previous.msaa || g.smaa !== previous.smaa || g.bloom !== previous.bloom) {
       this.post.configure(this.postOptions(), this.width, this.height);
     }
@@ -225,20 +231,32 @@ export class Arena {
     return { msaa: g.msaa, smaa: g.smaa, bloom: g.bloom, quality: this.settings.quality };
   }
 
+  private queueResize() {
+    // ResizeObserver can fire repeatedly during rotation, toolbars, and browser chrome changes.
+    // One RAF performs the final renderer/post-stack resize for the whole burst.
+    if (this.resizeFrame) return;
+    this.resizeFrame = requestAnimationFrame(() => {
+      this.resizeFrame = 0;
+      this.resize();
+    });
+  }
+
   private resize() {
     const bounds = this.container.getBoundingClientRect();
     this.width = Math.max(1, bounds.width);
     this.height = Math.max(1, bounds.height);
-    this.renderer.setPixelRatio((window.devicePixelRatio || 1) * this.settings.graphics.resolution);
+    this.renderer.setPixelRatio(effectivePixelRatio(window.devicePixelRatio || 1, this.settings.graphics.resolution, isMobileDevice()));
     this.renderer.setSize(this.width, this.height, false);
     this.traceMaterial.resolution.set(this.width, this.height);
     this.post.configure(this.postOptions(), this.width, this.height);
     this.camera.aspect = this.width / this.height;
-    this.camera.fov = this.width < this.height ? 50 : this.height < 500 ? 44 : 39;
+    // A narrower broadcast lens makes the keeper feel larger without moving the kick-local camera.
+    this.camera.fov = this.width < this.height ? 50 : this.height < 500 ? 40 : 35;
     this.camera.updateProjectionMatrix();
   }
 
   reset() {
+    this.cameraYawOffset = 0;
     this.keeperModel.yaw = keeperYaw(this.settings.position);
     this.power = 0;
     this.chargeTime = 0;
@@ -280,6 +298,8 @@ export class Arena {
 
   release() {
     if (this.phase !== 'charging') return;
+    // Every attempt leaves the next camera view at the familiar broadcast angle.
+    this.cameraYawOffset = 0;
     this.power = clamp(this.power, 0.06, 1);
     this.shotSetup = this.setup(this.power);
     this.guide.visible = false;
@@ -325,6 +345,7 @@ export class Arena {
 
   setAttract(on: boolean) {
     this.attract = on;
+    this.cameraYawOffset = 0;
     this.cancelCharge();
     this.lastTick = 0;
     this.pointer = null;
@@ -335,6 +356,15 @@ export class Arena {
     if (this.phase !== 'ready') return;
     this.setAim({ x: this.settings.aim.x + dx, y: this.settings.aim.y + dy });
   }
+
+  /** Orbit the shot camera in small, repeatable steps without altering the aim or physics. */
+  rotateCamera(direction: -1 | 1): number {
+    if (this.attract || !['ready', 'charging', 'result'].includes(this.phase)) return this.cameraYawOffset;
+    this.cameraYawOffset = clamp(this.cameraYawOffset + direction * CAMERA_ROTATION_STEP, -CAMERA_ROTATION_LIMIT, CAMERA_ROTATION_LIMIT);
+    return this.cameraYawOffset;
+  }
+
+  resetCameraRotation() { this.cameraYawOffset = 0; }
 
   private setAim(aim: Aim) {
     this.settings.aim = { x: clamp(aim.x, -AIM_LIMITS.x, AIM_LIMITS.x), y: clamp(aim.y, AIM_LIMITS.yMin, AIM_LIMITS.yMax) };
@@ -355,8 +385,8 @@ export class Arena {
       const dx = event.clientX - this.pointer.x;
       const dy = event.clientY - this.pointer.y;
       if (Math.hypot(dx, dy) > 3) this.pointer.moved = true;
-      // A wider drag range than v2: a full screen width is 24 m of aim, a full height is 9 m.
-      this.setAim({ x: this.pointer.aim.x + dx / this.width * 24, y: this.pointer.aim.y - dy / this.height * 9 });
+      // Full-screen drags now cover a wider horizontal and vertical aiming range.
+      this.setAim({ x: this.pointer.aim.x + dx / this.width * 30, y: this.pointer.aim.y - dy / this.height * 13 });
     });
     el.addEventListener('pointerup', event => {
       if (!this.pointer || event.pointerId !== this.pointer.id) return;
@@ -496,7 +526,7 @@ export class Arena {
     (this.ballShadow.material as THREE.MeshBasicMaterial).opacity = Math.max(0.05, 0.32 - this.ball.position.y * 0.055);
     this.stadium.update(this.time);
     this.updateCamera(dt);
-    this.renderer.shadowMap.needsUpdate = true;
+    this.refreshDynamicShadows();
     if (this.traceDirty) this.setTrace();
     this.renderer.info.reset();
     this.post.render();
@@ -509,8 +539,15 @@ export class Arena {
     }
   };
 
+  private refreshDynamicShadows() {
+    if (!this.renderer.shadowMap.enabled) return;
+    // Render remains at the display rate; half-rate shadow maps have no visible impact on pose or physics.
+    this.shadowFrame++;
+    if (this.shadowFrame % SHADOW_REFRESH_EVERY === 0) this.renderer.shadowMap.needsUpdate = true;
+  }
+
   private stepShot() {
-    const event = advanceShot(this.ball, this.keeper, this.wall, this.settings.difficulty, this.shotScratch);
+    const event = advanceShot(this.ball, this.keeper, this.wall, this.settings.difficulty, this.shotScratch, inPenaltyBox(this.shotSetup.position));
     this.recordFrame();
     if (!event) return;
     if (event.frameImpact) this.events.woodwork?.();
@@ -640,6 +677,13 @@ export class Arena {
         this.desiredCamera.y += Math.sin(this.time * 0.93) * 0.02;
       }
     }
+    if (!this.attract && this.cameraYawOffset !== 0) {
+      const dx = this.desiredCamera.x - this.desiredLook.x;
+      const dz = this.desiredCamera.z - this.desiredLook.z;
+      const cosine = Math.cos(this.cameraYawOffset), sine = Math.sin(this.cameraYawOffset);
+      this.desiredCamera.x = this.desiredLook.x + dx * cosine + dz * sine;
+      this.desiredCamera.z = this.desiredLook.z - dx * sine + dz * cosine;
+    }
     const blend = snap ? 1 : 1 - Math.exp(-dt * 4.5);
     this.camera.position.lerp(this.desiredCamera, blend);
     this.lookAt.lerp(this.desiredLook, blend);
@@ -648,6 +692,8 @@ export class Arena {
 
   dispose() {
     cancelAnimationFrame(this.raf);
+    if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
+    this.resizeFrame = 0;
     this.observer.disconnect();
     this.scene.traverse(object => {
       if (object instanceof THREE.Mesh || object instanceof THREE.Line) {
