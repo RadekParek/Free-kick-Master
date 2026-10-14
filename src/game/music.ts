@@ -5,9 +5,6 @@
 export const PLAYLIST: readonly { file: string; title: string }[] = [
   { file: '01-feet-dont-fail-me-now.mp3', title: "Feet Don't Fail Me Now" },
   { file: '02-haya-haya.mp3', title: 'Haya Haya' },
-  { file: '03-dai-dai.mp3', title: 'Dai Dai' },
-  { file: '04-behind-the-sun.mp3', title: 'Behind the Sun' },
-  { file: '05-big-talk.mp3', title: 'Big Talk' },
   { file: '06-ai-seu-te-pego.mp3', title: 'Ai Seu Te Pego' },
 ];
 
