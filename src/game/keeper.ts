@@ -32,15 +32,25 @@ export function createKeeper(ballX: number): KeeperState {
   const x = ballX <= 0 ? 0.72 : -0.72;
   return { x, targetX: x, targetY: 1.2, dive: 0, direction: 1, glove: { x, y: 1.2, z: KEEPER_Z }, reacted: false };
 }
+/** Body yaw for the keeper: he turns part of the way toward the shot's angle, so the stance follows the spot. */
+export function keeperYaw(spot: { x: number; z: number }): number {
+  // Yaw that faces the spot from the keeper: the model's forward is (-sin yaw, -cos yaw).
+  const full = Math.atan2(-spot.x, -(spot.z - KEEPER_Z));
+  let delta = full - Math.PI;
+  delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+  return Math.PI + Math.max(-0.6, Math.min(0.6, delta * 0.8));
+}
 export function cloneKeeper(k: KeeperState): KeeperState { return { ...k, glove: { ...k.glove } }; }
 
 export function updateKeeper(k: KeeperState, ball: BallState, difficulty: Difficulty, dt: number): void {
   const p = KEEPER_PROFILES[difficulty];
-  if (ball.time < p.reaction || ball.velocity.z >= -0.1) return;
+  // A knuckle ball adds a little hesitation; the keeper also under-reads the curve on a knuckle.
+  const confusion = ball.knuckle ? 0.06 : 0;
+  if (ball.time < p.reaction + confusion || ball.velocity.z >= -0.1) return;
   k.reacted = true;
   const remaining = clamp((KEEPER_Z - ball.position.z) / ball.velocity.z, 0, 2.5);
   // Reads current flight after its reaction delay, rather than knowing the future path.
-  const predictedX = ball.position.x + ball.velocity.x * remaining + 0.5 * SIDE_MAGNUS * ball.sideSpin * -ball.velocity.z * remaining ** 2 * p.anticipation;
+  const predictedX = ball.position.x + ball.velocity.x * remaining + 0.5 * SIDE_MAGNUS * ball.sideSpin * -ball.velocity.z * remaining ** 2 * p.anticipation * (ball.knuckle ? 0.85 : 1);
   const predictedY = ball.position.y + ball.velocity.y * remaining - 4.905 * remaining ** 2;
   k.targetX = clamp(predictedX, -3.45, 3.45);
   k.targetY = clamp(predictedY, 0.3, p.maxHeight);

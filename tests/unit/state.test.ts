@@ -18,14 +18,14 @@ describe('local preferences and session statistics', () => {
     const loaded = loadSettings();
     expect(loaded.position).toEqual(DEFAULT_SETTINGS.position);
     expect(loaded.wall).toBe(4);
-    expect(loaded.difficulty).toBe('pro');
+    expect(loaded.difficulty).toBe('amateur');
     expect(loaded.sound).toBe(false);
   });
   it('persists a selected player and video options, and rejects invalid replacements', () => {
-    saveSettings({ ...DEFAULT_SETTINGS, playerId: 'messi', foot: 'left', atmosphere: 'sunset', adaptiveResolution: false, showFps: true });
-    expect(loadSettings()).toMatchObject({ playerId: 'messi', foot: 'left', atmosphere: 'sunset', adaptiveResolution: false, showFps: true });
-    store.set('fkm.settings.v1', JSON.stringify({ playerId: 'unknown', atmosphere: 'storm', adaptiveResolution: 'yes', showFps: null }));
-    expect(loadSettings()).toMatchObject({ playerId: 'ronaldo', atmosphere: 'night', adaptiveResolution: true, showFps: false });
+    saveSettings({ ...DEFAULT_SETTINGS, playerId: 'messi', foot: 'left', atmosphere: 'sunset', showFps: true });
+    expect(loadSettings()).toMatchObject({ playerId: 'messi', foot: 'left', atmosphere: 'sunset', showFps: true });
+    store.set('fkm.settings.v1', JSON.stringify({ playerId: 'unknown', atmosphere: 'storm', showFps: null }));
+    expect(loadSettings()).toMatchObject({ playerId: 'ronaldo', atmosphere: 'night', showFps: false });
   });
   it('safely ignores broken JSON', () => {
     store.set('fkm.settings.v1', '{broken');

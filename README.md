@@ -13,8 +13,9 @@ Open the Vite URL. The server binds to `0.0.0.0` and accepts Arena preview hosts
 
 ### Controls
 
-- **Settings:** the game fills the viewport. Open the Settings button (or **Escape**) for the pitch/keeper drawer and Visuals & Sound tab. The separate fullscreen button hides browser chrome where permitted.
-- **Choose a player:** click the player card or press **T**. Search by name/nation or filter by foot, then select **Take the kick**.
+- **Menu:** Play (five-kick challenges), Practice (free kicks), Players (the roster), Settings, and How to play. Practice fills the whole screen with only gameplay controls; **Back** returns to the menu.
+- **Settings:** a full-screen, scrolling screen with Pitch & Keeper and Visuals & Sound tabs. Open it from the Settings button (or **Escape**) during play; **Back to the pitch** returns to the shot. The fullscreen button hides browser chrome where permitted.
+- **Choose a player:** open Players from the menu, or press **T** in play. Search by name/nation, filter by foot or edition (standard or turquoise special), then select the card.
 - **Set your spot:** in Settings, tap/drag the mini pitch or choose a flank; use the distance slider. Arrow keys work when the mini pitch is focused. Direct kicks stay outside the penalty area.
 - **Aim:** drag the 3D pitch, tap near the goal, or use the arrow keys. Aim is a launch direction, not a guaranteed destination.
 - **Contact:** drag the marker on the ball. Left/right contact adds opposite sidespin. Lower contact adds lift/backspin; higher contact lowers the launch and adds topspin. Curl, knuckleball, and driven presets are starting points.
@@ -27,10 +28,11 @@ Keyboard/assistive activation of the shoot button also supports Enter to start c
 ## Features
 
 - A fully rendered 3D stadium: smoother articulated athletes, batched architecture, photographic-style baked crowd, procedural turf/ball, pitch markings, shadows, LED boards, goal frame, and animated net.
-- **Fullscreen pitch-first HUD**, off-pitch setup drawer, and a searchable four-player card selector.
-- **Ronaldo, Messi, Mbappé, and Salah**, with credited real June/July 2026 photos, original cards, and distinct power/curve/knuckle/control attributes. These are fan-made training ratings, not official FC27 cards or a complete/live Ultimate Team database.
+- **Main menu** in the style of modern football-game menus, with a full-screen gameplay view and a full-screen, scrollable settings screen.
+- **30 roster cards:** 15 players, each with a turquoise special (higher ratings, turquoise foil, handwritten name). The ratings and attributes are placeholder fan-made values, not EA or FC27 data.
+- **Ronaldo, Messi, Mbappé, and Salah** with credited real June/July 2026 photos. The other players use generated monogram art. All cards carry fan-made training ratings, not official FC27 cards or a complete or live database.
 - **36% stronger base curl** and a visibly stronger, low-frequency knuckle wake with repeatable late changes of direction.
-- **Floodlit night / golden hour / clear day**, optional adaptive resolution, and a live performance monitor.
+- **Floodlit night / golden hour / clear day**, native device-pixel resolution (no adaptive downscaling), distance-based LOD and culling, and a live performance monitor.
 - Movable free-kick positions across the attacking training half; roughly 18–55 m radial range, with closer wide-angle positions.
 - Regulation 7.32 × 2.44 m goal and a wall centred 9.15 m away, with 0–5 defenders.
 - Fixed 120 Hz flight: gravity, drag, spin-induced movement, high-power knuckle wake, turf bounces, swept wall/frame collisions, full-ball goal-line checks.

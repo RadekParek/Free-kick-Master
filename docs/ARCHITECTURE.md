@@ -4,19 +4,20 @@
 src/
   main.ts                Browser entry and native lifecycle bridge
   state.ts               Validated local preferences, session statistics
-  players.ts             Four curated player identities, original attributes, photo provenance
+  players.ts             15 placeholder roster players plus 15 turquoise specials; photo provenance for four
   game/
     physics.ts           Deterministic SI-unit ball flight, aiming, walls, geometry tests
     keeper.ts            Five profiles, delayed anticipation, physical reach volumes
     simulation.ts        Shared live/test collision + outcome stepper
-    stadium.ts           Pitch, net, three atmospheres, batched stands and baked crowd
-    player.ts            Articulated original player meshes and run/dive animation
+    stadium.ts           Pitch, net, three atmospheres, batched stands, Mexican-wave crowd energy, flags and confetti
+    player.ts            Articulated athletes at high and low detail under THREE.LOD (switch at 30 m)
     arena.ts             Three.js rendering, state machine, pointer aim, replay
     audio.ts             User-gesture-unlocked synthesized local audio
   ui/
-    app.ts               Accessible DOM controls, settings/help/challenges, statistics
-    styles.css           Full-viewport HUD, drawer, portrait and compact landscape layouts
-    player-card.ts        Original collectible-style card and compact HUD markup
+    app.ts               Screen router: menu, full-screen game, full-screen settings, modal roster/challenges/help
+    styles.css           Menu, full-screen HUD, scrolling settings, roster modal, portrait and landscape layouts
+    player-card.ts       Collectible-style card (standard and turquoise special) and compact HUD markup
+    brand.ts / svg.ts    Original FK logo and pitch/contact SVG graphics
 public/players/          Licensed offline WebP portraits and attribution
 public/textures/         Generated anonymous crowd texture
 android/                 Native offline Capacitor host and Gradle wrapper
@@ -44,7 +45,7 @@ A single WebGL renderer is resized with `ResizeObserver`. Base DPR caps are 1.5 
 - Distant crowds use a generated texture on upright row strips merged into one mesh. Procedural instanced spectators remain an asset-load fallback, not a second visible crowd.
 - The trajectory guide and shot trace reuse bounded typed-array GPU buffers. Defensive-wall positions are cached rather than allocated on every physics tick.
 - Idle ready/settled-result scenes render at 30 Hz; active shots render at the display rate. Idle shadow refresh is throttled. Dialogs and backgrounding pause rendering/simulation.
-- Optional adaptive resolution samples actual rendering throughput. Three slow sampling windows lower the scale in 10% steps to a minimum of 65%; eight fast windows recover 5% at a time. It does not change the shot equations. The on-screen monitor reports measured FPS/draw calls/scale, not a fabricated target rate.
+- Rendering always uses the native device pixel ratio; there is no adaptive downscaling. Performance comes from batching, distance-based LOD (high/low athlete rigs), spatial batching of stands, and culling. The on-screen monitor reports measured FPS, draw calls and the native pixel ratio.
 - The shot-local camera and taker positioning handle wide angles and portrait phones without cropping the entire kicker out of view.
 - Goal-net deformation runs only briefly after a goal. All fonts, portraits, crowd imagery, scripts, and audio generation are local/offline assets. Android haptics tolerate unsupported hardware.
 
@@ -52,7 +53,7 @@ Software-WebGL test-worker throughput is not representative of an Android GPU. H
 
 ## Data
 
-Only preferences (including player, atmosphere and adaptive resolution), personal-best streak, and per-challenge personal bests are stored in localStorage. Malformed/missing storage is ignored. Session attempts are in memory. There is no database, telemetry, remote API, account, or payment flow.
+Only preferences (including player, atmosphere and sound), personal-best streak, and per-challenge personal bests are stored in localStorage. Malformed/missing storage is ignored. Session attempts are in memory. There is no database, telemetry, remote API, account, or payment flow.
 
 ## Testing
 
