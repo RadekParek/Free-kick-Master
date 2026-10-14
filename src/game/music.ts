@@ -15,9 +15,9 @@ export const PLAYLIST: readonly { file: string; title: string }[] = [
 const SOUNDTRACKS = import.meta.glob('../soundtracks/*.{mp3,ogg,m4a,wav}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 const urlFor = (file: string): string | undefined => Object.entries(SOUNDTRACKS).find(([path]) => path.endsWith(`/${file}`))?.[1];
 
-/** Menu is full volume; gameplay and practice sit at 65%. */
+/** Menu is full volume; gameplay and practice sit at 75%. */
 export const MENU_VOLUME = 1;
-export const PLAY_VOLUME = 0.65;
+export const PLAY_VOLUME = 0.75;
 
 export class MusicPlayer {
   /** Called with the current title, or null when no track can play (files missing). */
