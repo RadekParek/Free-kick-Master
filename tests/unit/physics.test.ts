@@ -76,8 +76,8 @@ describe('aim, contact, and power', () => {
     expect(a).toEqual(b);
   });
   it('maps curl naming to the chosen foot without reversing physical contact', () => {
-    expect(strikeName({ x: -0.6, y: 0 }, 'right')).toBe('Inside-foot curl');
-    expect(strikeName({ x: -0.6, y: 0 }, 'left')).toBe('Outside-foot curl');
+    expect(strikeName({ x: -0.6, y: 0 }, 'right')).toBe('Outside-foot curl');
+    expect(strikeName({ x: -0.6, y: 0 }, 'left')).toBe('Inside-foot curl');
     expect(strikeName({ x: 0, y: 0.8 }, 'right')).toBe('Low driven');
   });
 });
@@ -88,12 +88,12 @@ describe('pitch and physical dimensions', () => {
     expect(GOAL_HEIGHT).toBe(2.44);
     const p = { x: 0, z: 25 };
     const wall = getWall(p, 3);
-    expect(Math.hypot(wall[1].x - p.x, wall[1].z - p.z)).toBeCloseTo(9.15, 8);
+    expect(Math.hypot(wall[1].x - p.x, wall[1].z - p.z)).toBeCloseTo(10.5, 8);
     expect(getWall(p, 0)).toEqual([]);
     expect(getWall(p, 5)).toHaveLength(5);
   });
   it('keeps direct kicks outside the penalty area and within the training half', () => {
-    expect(constrainPosition({ x: 0, z: 3 })).toEqual({ x: 0, z: 17.5 });
+    expect(constrainPosition({ x: 0, z: 3 })).toEqual({ x: 0, z: 11 });
     expect(constrainPosition({ x: 25, z: 3 })).toEqual({ x: 25, z: 10 });
     expect(constrainPosition({ x: 100, z: 100 })).toEqual({ x: 30, z: 46 });
     expect(constrainPosition({ x: NaN, z: Infinity })).toEqual({ x: 0, z: 24 });

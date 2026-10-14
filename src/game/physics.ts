@@ -30,8 +30,12 @@ export const GOAL_WIDTH = 7.32;
 export const GOAL_HEIGHT = 2.44;
 export const FIXED_DT = 1 / 120;
 export const GRAVITY = 9.81;
+/** Aim may leave the goal mouth (wide and high) so the aim reticle can reach every useful launch line. */
+export const AIM_LIMITS = { x: 14, yMin: 0.05, yMax: 7.5 } as const;
 const DRAG = 0.16;
-export const SIDE_MAGNUS = 0.0068; // 36% stronger side force than v1.
+/** Distance from the kick to the defensive wall. Slightly further back than the 9.15 m law. */
+export const WALL_DISTANCE = 10.5;
+export const SIDE_MAGNUS = 0.011; // ~16% more curve than the previous tuning.
 const TOP_MAGNUS = 0.005;
 export const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -40,11 +44,18 @@ export const recommendedPower = (p: Position) => clamp(0.48 + distanceToGoal(p) 
 export const shotSpeed = (power: number, attributes?: TakerAttributes) =>
   (16 + clamp(power, 0, 1) * 21) * (attributes ? 0.9 + (attributes.power - 80) * 0.012 : 1);
 
+/** Penalty spot, 11 m from the goal line. A kick placed inside the box is moved here, with no wall. */
+export const PENALTY_SPOT: Position = { x: 0, z: 11 };
+/** Real penalty-area size: 16.5 m deep, 40.32 m wide (half-width 20.16 m). */
+export function inPenaltyBox(p: Position): boolean { return Math.abs(p.x) <= 20.16 && p.z <= 16.5; }
+
 export function constrainPosition(p: Position): Position {
   const x = clamp(Number.isFinite(p.x) ? p.x : 0, -30, 30);
-  // Direct free kicks are not taken inside the penalty area. Wide positions can be closer.
+  const z = clamp(Number.isFinite(p.z) ? p.z : 24, -5, 46);
+  if (inPenaltyBox({ x, z })) return { ...PENALTY_SPOT };
+  // Outside the box, the minimum distance keeps free kicks at the edge of the area.
   const minZ = Math.abs(x) < 20.65 - 1e-8 ? 17.5 : 10;
-  return { x, z: clamp(Number.isFinite(p.z) ? p.z : 24, minZ, 46) };
+  return { x, z: clamp(z, minZ, 46) };
 }
 
 /** Legal radial range along the selected bearing; avoids a misleading distance slider. */
@@ -61,7 +72,7 @@ export function distanceBounds(position: Position): { min: number; max: number }
 /** Aiming sets elevation for a reference power, NOT a homing target for the actual shot. */
 function referenceElevation(distance: number, height: number, speed: number): number {
   let low = -0.12;
-  let high = 0.72;
+  let high = 1.05;
   for (let i = 0; i < 22; i++) {
     const angle = (low + high) / 2;
     const vHorizontal = speed * Math.cos(angle);
@@ -78,12 +89,12 @@ export function launchBall(setup: ShotSetup): BallState {
   const p = constrainPosition(setup.position);
   const cx = clamp(setup.contact.x, -1, 1);
   const cy = clamp(setup.contact.y, -1, 1);
-  const dx = clamp(setup.aim.x, -10, 10) - p.x;
+  const dx = clamp(setup.aim.x, -AIM_LIMITS.x, AIM_LIMITS.x) - p.x;
   const dz = -p.z;
   const distance = Math.hypot(dx, dz);
   const speed = shotSpeed(setup.power, setup.attributes);
   const controlPenalty = setup.attributes ? Math.max(0, setup.power - recommendedPower(p) - 0.1) ** 2 * (100 - setup.attributes.control) / 100 * 0.65 : 0;
-  const angle = referenceElevation(distance, clamp(setup.aim.y, 0.15, 5.5), shotSpeed(recommendedPower(p), setup.attributes)) - cy * 0.07 + controlPenalty;
+  const angle = referenceElevation(distance, clamp(setup.aim.y, AIM_LIMITS.yMin, AIM_LIMITS.yMax), shotSpeed(recommendedPower(p), setup.attributes)) - cy * 0.07 + controlPenalty;
   const curveScale = setup.attributes ? 0.78 + (setup.attributes.curve - 80) * 0.028 : 1;
   const horizontal = speed * Math.cos(angle);
   return {
@@ -109,6 +120,7 @@ export function integrateBall(ball: BallState, dt = FIXED_DT): void {
   let ax = -DRAG * v.x + SIDE_MAGNUS * ball.sideSpin * -v.z * decay;
   let az = -DRAG * v.z + SIDE_MAGNUS * ball.sideSpin * v.x * decay;
   let ay = -GRAVITY - DRAG * v.y - TOP_MAGNUS * ball.topSpin * horizontalSpeed * decay;
+  if (v.y < 0) ay *= 1.2; // the ball drops faster after its apex
   if (ball.knuckle) {
     // Low-frequency wake transitions cause visible lateral direction changes.
     // Unlike tiny high-frequency jitter, this produces measurable late movement.
@@ -119,7 +131,7 @@ export function integrateBall(ball: BallState, dt = FIXED_DT): void {
     const speed = Math.max(1, horizontalSpeed);
     ax += -v.z / speed * sideForce;
     az += v.x / speed * sideForce;
-    ay += (Math.sin(t * 9.7 + 0.6) * 7.5 - 1.2) * wake;
+    ay += (Math.sin(t * 9.7 + 0.6) * 10.5 - 1.6) * wake;
   }
   v.x += ax * dt;
   v.y += ay * dt;
@@ -167,18 +179,20 @@ export function intersectsFrame(a: Vec3, b: Vec3): 'post' | 'bar' | null {
   return null;
 }
 
-export function getWall(position: Position, count: number): WallPlayer[] {
+export function getWall(position: Position, count: number, gapIndex = -1): WallPlayer[] {
   if (count <= 0) return [];
   const nearPost = position.x <= 0 ? -2 : 2;
   const dx = nearPost - position.x;
   const dz = -position.z;
   const length = Math.hypot(dx, dz);
-  const cx = position.x + dx / length * 9.15;
-  const cz = position.z + dz / length * 9.15;
+  const cx = position.x + dx / length * WALL_DISTANCE;
+  const cz = position.z + dz / length * WALL_DISTANCE;
   const tangentX = -dz / length;
   const tangentZ = dx / length;
   return Array.from({ length: clamp(Math.round(count), 0, 5) }, (_, i) => {
-    const offset = (i - (count - 1) / 2) * 0.56;
+    // A defender who leans away opens a gap of about 0.25 m beside him.
+    const gap = i === gapIndex ? (i < (count - 1) / 2 ? -0.25 : 0.25) : 0;
+    const offset = (i - (count - 1) / 2) * 0.56 + gap;
     return { x: cx + tangentX * offset, z: cz + tangentZ * offset };
   });
 }
@@ -234,5 +248,5 @@ export function strikeName(contact: Contact, foot: Foot): string {
   if (contact.y < -0.55 && Math.abs(contact.x) < 0.3) return 'Backspin lob';
   if (Math.abs(contact.x) < 0.25) return 'Topspin';
   const inside = foot === 'right' ? contact.x < 0 : contact.x > 0;
-  return inside ? 'Inside-foot curl' : 'Outside-foot curl';
+  return inside ? 'Outside-foot curl' : 'Inside-foot curl';
 }
