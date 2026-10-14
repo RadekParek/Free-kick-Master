@@ -83,6 +83,25 @@ kbd { font: 600 9px 'Manrope', sans-serif; border: 1px solid #ffffff40; padding:
 .icon-button:hover { color: var(--lime); border-color: var(--lime); }
 .icon-button.is-labelled { width: auto; padding: 0 14px; gap: 8px; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
 .icon-button.muted { color: #7b8a94; }
+.camera-turn { position: absolute; z-index: 4; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 46px; height: 56px; border: 1px solid #ffffff2a; border-radius: 5px; color: #e8f0f1; background: #0b131cb8; backdrop-filter: blur(5px); }
+.camera-turn-left { left: max(14px, env(safe-area-inset-left)); }
+.camera-turn-right { right: max(14px, env(safe-area-inset-right)); }
+.camera-turn svg { width: 22px; height: 22px; }
+.camera-turn:not(:disabled):hover { color: var(--lime); border-color: var(--lime); background: #0b131ce8; }
+.camera-turn:disabled { opacity: .3; }
+.quick-map-access { position: absolute; z-index: 6; top: clamp(88px, 26vh, 220px); right: max(14px, env(safe-area-inset-right)); }
+.quick-map-button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 44px; height: 46px; border: 1px solid #ffffff2a; border-radius: 5px; color: #e8f0f1; background: #0b131cdb; backdrop-filter: blur(5px); }
+.quick-map-button svg { width: 18px; height: 18px; color: var(--lime); }
+.quick-map-button span { font-size: 7px; font-weight: 800; letter-spacing: 1px; }
+.quick-map-button:hover, .quick-map-button[aria-expanded='true'] { border-color: var(--lime); color: var(--lime); }
+.quick-map-panel { position: absolute; top: 0; right: calc(100% + 9px); width: min(320px, calc(100vw - 72px)); max-height: min(75dvh, 360px); overflow-y: auto; padding: 12px; border: 1px solid #ffffff30; border-radius: 6px; background: #0b131cf2; box-shadow: 0 12px 36px #0008; backdrop-filter: blur(12px); }
+.quick-map-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+.quick-map-panel > header > div { display: flex; flex-direction: column; gap: 3px; }
+.quick-map-panel > header strong { font: 600 20px/1 var(--condensed); }
+.quick-map-panel .icon-button { width: 32px; height: 32px; min-width: 32px; }
+.quick-map-panel .icon-button svg { width: 16px; height: 16px; }
+.quick-pitch-map { aspect-ratio: 300 / 188; }
+.quick-map-panel > p { margin-top: 8px; color: #aebdc6; font-size: 9px; line-height: 1.5; }
 .game-stats { position: absolute; top: calc(max(14px, env(safe-area-inset-top)) + 58px); left: max(14px, env(safe-area-inset-left)); display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .score-line { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: #0b121dc4; border-left: 3px solid var(--lime); border-radius: 3px; }
 .score-line > div { display: flex; align-items: center; gap: 8px; }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETTINGS, emptySession, loadSettings, recordShot, saveSettings, type ShotResult } from '../../src/state';
+import { DEFAULT_SETTINGS, GRAPHICS_PRESETS, effectivePixelRatio, emptySession, graphicsForPreset, loadSettings, nextPracticeAtmosphere, recordShot, saveSettings, type ShotResult } from '../../src/state';
 
 let store: Map<string, string>;
 beforeEach(() => {
@@ -30,6 +30,29 @@ describe('local preferences and session statistics', () => {
   it('safely ignores broken JSON', () => {
     store.set('fkm.settings.v1', '{broken');
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
+  });
+  it('caps every preset and legacy custom shadow setting at 1024 px', () => {
+    expect(GRAPHICS_PRESETS.high.shadows).toBe(1024);
+    expect(GRAPHICS_PRESETS.balanced.shadows).toBe(1024);
+    store.set('fkm.settings.v1', JSON.stringify({ graphics: { preset: 'custom', resolution: 1, msaa: 0, smaa: true, bloom: true, shadows: 2048 } }));
+    expect(loadSettings().graphics.shadows).toBe(1024);
+  });
+  it('uses lighter phone presets and caps high-DPI rendering without affecting desktop', () => {
+    const balanced = graphicsForPreset('balanced', true);
+    const performance = graphicsForPreset('performance', true);
+    expect(balanced).toMatchObject({ resolution: 0.75, bloom: false, shadows: 512 });
+    expect(performance).toMatchObject({ resolution: 0.5, bloom: false, shadows: 0 });
+    expect(effectivePixelRatio(3, 1, true)).toBe(2);
+    expect(effectivePixelRatio(3, 0.75, true)).toBe(1.5);
+    expect(effectivePixelRatio(3, 0.75, false)).toBe(2.25);
+  });
+  it('chooses a new atmosphere for every practice launch', () => {
+    expect(nextPracticeAtmosphere('night', () => 0)).toBe('sunset');
+    expect(nextPracticeAtmosphere('night', () => 0.99)).toBe('day');
+    for (const atmosphere of ['night', 'sunset', 'day'] as const) {
+      expect(['night', 'sunset', 'day']).toContain(nextPracticeAtmosphere(atmosphere));
+      expect(nextPracticeAtmosphere(atmosphere)).not.toBe(atmosphere);
+    }
   });
   it('round-trips supported preferences and constrains illegal saved positions', () => {
     saveSettings({ ...DEFAULT_SETTINGS, position: { x: 100, z: 2 }, difficulty: 'legend', foot: 'left' });

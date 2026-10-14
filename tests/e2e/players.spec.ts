@@ -79,12 +79,13 @@ test('visual controls persist atmosphere, guides and the performance monitor wit
   await page.locator('#resume-button').click();
   await expect(page.locator('#atmosphere-label')).toHaveText('GOLDEN HOUR');
   await expect(page.locator('#performance')).toBeVisible();
-  await expect(page.locator('#performance')).toHaveText(/\d+ FPS · \d+ DRAWS · NATIVE [\d.]+×/);
+  await expect(page.locator('#performance')).toHaveText(/\d+ FPS · \d+ DRAWS · RENDER [\d.]+×/);
   await expect(page.locator('#stage-distance')).toHaveText(distance!);
   await page.reload();
   await expect(page.locator('#app')).toHaveClass('is-ready');
   await page.locator('#menu-practice').click();
-  await expect(page.locator('#atmosphere-label')).toHaveText('GOLDEN HOUR');
+  const relaunchedAtmosphere = await page.locator('#setting-atmosphere').inputValue();
+  expect(relaunchedAtmosphere).not.toBe('sunset');
   await page.locator('#settings-button').click();
   await page.locator('[data-settings-tab="graphics"]').click();
   await expect(page.locator('#setting-guides')).not.toBeChecked();

@@ -20,7 +20,7 @@ function previewFixture() {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('performance invariants (without reducing visual settings)', () => {
+describe('performance invariants (preserving detail, with the mobile shadow cap)', () => {
   it('coalesces input bursts into one trajectory calculation with the latest aim', () => {
     const arena = previewFixture();
     const setup = vi.spyOn(arena, 'setup');
@@ -114,6 +114,66 @@ describe('performance invariants (without reducing visual settings)', () => {
     arena.updateSettings(settings);
     expect(map.dispose).toHaveBeenCalledOnce();
     expect(arena.stadium.sun.shadow.mapSize.x).toBe(settings.graphics.shadows);
+  });
+
+  it('refreshes dynamic shadow maps every other display frame and skips them when disabled', () => {
+    const arena = Object.assign(Object.create(Arena.prototype), {
+      settings: { graphics: { shadows: 1024 } }, shadowFrame: 0,
+      renderer: { shadowMap: { enabled: true, needsUpdate: false } },
+    });
+    const refresh = (arena as unknown as { refreshDynamicShadows(): void }).refreshDynamicShadows.bind(arena);
+    refresh();
+    expect(arena.renderer.shadowMap.needsUpdate).toBe(false);
+    refresh();
+    expect(arena.renderer.shadowMap.needsUpdate).toBe(true);
+    arena.renderer.shadowMap.needsUpdate = false;
+    refresh();
+    expect(arena.renderer.shadowMap.needsUpdate).toBe(false);
+    arena.renderer.shadowMap.enabled = false;
+    const frame = arena.shadowFrame;
+    refresh();
+    expect(arena.shadowFrame).toBe(frame);
+  });
+
+  it('coalesces resize bursts to one render-target resize', () => {
+    const callbacks: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callbacks.push(callback); return callbacks.length; });
+    const arena = Object.assign(Object.create(Arena.prototype), { resizeFrame: 0, resize: vi.fn() });
+    const queueResize = (arena as unknown as { queueResize(): void }).queueResize.bind(arena);
+    queueResize(); queueResize(); queueResize();
+    expect(callbacks).toHaveLength(1);
+    expect(arena.resize).not.toHaveBeenCalled();
+    callbacks[0](0);
+    expect(arena.resize).toHaveBeenCalledOnce();
+    expect(arena.resizeFrame).toBe(0);
+  });
+
+  it('orbits the camera within bounds and restores the default view for a new shot', () => {
+    const arena = Object.assign(Object.create(Arena.prototype), { cameraYawOffset: 0, phase: 'ready', attract: false });
+    for (let i = 0; i < 20; i++) arena.rotateCamera(1);
+    const limit = arena.cameraYawOffset;
+    expect(limit).toBeLessThanOrEqual(Math.PI / 3);
+    expect(limit).toBeGreaterThan(0);
+    arena.phase = 'flight';
+    expect(arena.rotateCamera(-1)).toBe(limit);
+    arena.resetCameraRotation();
+    expect(arena.cameraYawOffset).toBe(0);
+  });
+
+  it('returns the camera to neutral as soon as a charged shot is released', () => {
+    const arena = Object.assign(Object.create(Arena.prototype), {
+      phase: 'charging', cameraYawOffset: 0.4, phaseTime: 0, power: 0.6,
+      setup: vi.fn(() => ({})), settings: structuredClone(DEFAULT_SETTINGS),
+      guide: { visible: true }, ring: { visible: true },
+      replayFrames: { clear: vi.fn() }, resultBallTime: 0, lastResult: { outcome: 'goal' },
+      tracePointCount: 10, traceUploadedCount: 8, setTrace: vi.fn(),
+      events: { phase: vi.fn() },
+    });
+    arena.release();
+    expect(arena.cameraYawOffset).toBe(0);
+    expect(arena.phase).toBe('runup');
+    expect(arena.guide.visible).toBe(false);
+    expect(arena.ring.visible).toBe(false);
   });
 
   it('avoids duplicate post resizes and disposes every owned pass', () => {

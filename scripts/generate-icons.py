@@ -1,12 +1,25 @@
 """Regenerate the original Android launcher/splash art. Requires Pillow (pip install pillow)."""
 from pathlib import Path
-from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 RES = ROOT / "android/app/src/main/res"
+_PILLOW = None
+
+
+def _pillow():
+    """Load the optional image library only when this asset-generation tool is used."""
+    global _PILLOW
+    if _PILLOW is None:
+        try:
+            from PIL import Image, ImageDraw
+        except ImportError as exc:
+            raise SystemExit("Pillow is required to regenerate icons (pip install pillow).") from exc
+        _PILLOW = (Image, ImageDraw)
+    return _PILLOW
 
 
 def icon(size, foreground=False):
+    Image, ImageDraw = _pillow()
     scale = 4
     img = Image.new("RGBA", (size * scale, size * scale), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -23,19 +36,25 @@ def icon(size, foreground=False):
     return img.resize((size, size), Image.Resampling.LANCZOS)
 
 
-for density, size in {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}.items():
-    folder = RES / f"mipmap-{density}"
-    folder.mkdir(parents=True, exist_ok=True)
-    icon(size).save(folder / "ic_launcher.png")
-    icon(size).save(folder / "ic_launcher_round.png")
-    icon(round(size * 2.25), foreground=True).save(folder / "ic_launcher_foreground.png")
+def main():
+    Image, _ = _pillow()
+    for density, size in {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}.items():
+        folder = RES / f"mipmap-{density}"
+        folder.mkdir(parents=True, exist_ok=True)
+        icon(size).save(folder / "ic_launcher.png")
+        icon(size).save(folder / "ic_launcher_round.png")
+        icon(round(size * 2.25), foreground=True).save(folder / "ic_launcher_foreground.png")
 
-for path in RES.glob("drawable*/splash.png"):
-    original = Image.open(path)
-    w, h = original.size
-    img = Image.new("RGB", (w, h), "#111713")
-    mark = icon(min(w, h) // 4)
-    img.paste(mark, ((w - mark.width) // 2, (h - mark.height) // 2), mark)
-    img.save(path)
+    for path in RES.glob("drawable*/splash.png"):
+        original = Image.open(path)
+        w, h = original.size
+        img = Image.new("RGB", (w, h), "#111713")
+        mark = icon(min(w, h) // 4)
+        img.paste(mark, ((w - mark.width) // 2, (h - mark.height) // 2), mark)
+        img.save(path)
 
-print("Updated launcher icons and splash art.")
+    print("Updated launcher icons and splash art.")
+
+
+if __name__ == "__main__":
+    main()

@@ -170,21 +170,27 @@ export function keeperPose(rig: MotionRig, k: KeeperState, time: number, prepara
     rig.leftLeg.rotation.x = k.dive * 0.2;
     rig.rightLeg.rotation.x = -k.dive * 0.3;
   } else {
-    // Split-step timed to contact, followed by small lateral adjustment steps.
+    // Split-step and real alternating footwork follow the simulated lateral velocity,
+    // so the keeper no longer glides across the line before committing to a dive.
     const setStep = Math.sin(clamp(preparation, 0, 1) * Math.PI);
     const shuffle = k.reacted ? Math.sin(time * 15) * clamp(Math.abs(k.targetX - k.x), 0, 0.5) : Math.sin(time * 3) * 0.02;
-    rig.body.position.y = -0.065 + Math.sin(time * 3) * 0.012 + setStep * 0.035;
+    const walkAmount = clamp(Math.abs(k.velocityX) / 3.6, 0, 1);
+    const walkPhase = time * (7 + walkAmount * 4) * (k.velocityX < 0 ? -1 : 1);
+    const stride = Math.sin(walkPhase) * walkAmount;
+    const kneeLift = Math.max(0, Math.cos(walkPhase)) * walkAmount;
+    rig.body.position.y = -0.065 + Math.sin(time * 3) * 0.012 + setStep * 0.035 + kneeLift * 0.018;
     rig.body.position.x = shuffle * 0.025;
-    rig.leftLeg.rotation.z = -0.07 - shuffle * 0.12;
-    rig.rightLeg.rotation.z = 0.07 - shuffle * 0.12;
-    rig.leftLeg.rotation.x = -0.18;
-    rig.rightLeg.rotation.x = -0.18;
-    rig.leftShin.rotation.x = 0.18;
-    rig.rightShin.rotation.x = 0.18;
-    rig.leftArm.rotation.z = -0.5;
-    rig.rightArm.rotation.z = 0.5;
-    rig.leftArm.rotation.x = 0.35;
-    rig.rightArm.rotation.x = 0.35;
+    rig.body.rotation.y = stride * 0.025;
+    rig.leftLeg.rotation.z = -0.07 - shuffle * 0.12 - stride * 0.14;
+    rig.rightLeg.rotation.z = 0.07 - shuffle * 0.12 + stride * 0.14;
+    rig.leftLeg.rotation.x = -0.18 + stride * 0.16;
+    rig.rightLeg.rotation.x = -0.18 - stride * 0.16;
+    rig.leftShin.rotation.x = 0.18 + Math.max(0, -stride) * 0.38 + kneeLift * 0.14;
+    rig.rightShin.rotation.x = 0.18 + Math.max(0, stride) * 0.38 + kneeLift * 0.14;
+    rig.leftArm.rotation.z = -0.5 - stride * 0.08;
+    rig.rightArm.rotation.z = 0.5 - stride * 0.08;
+    rig.leftArm.rotation.x = 0.35 + stride * 0.16;
+    rig.rightArm.rotation.x = 0.35 - stride * 0.16;
   }
 }
 

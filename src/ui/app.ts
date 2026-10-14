@@ -8,9 +8,9 @@ import { GameAudio } from '../game/audio';
 import { MusicPlayer, type MusicStatus } from '../game/music';
 import { inPenaltyBox, clamp, constrainPosition, distanceBounds, distanceToGoal, recommendedPower, strikeName, type Position } from '../game/physics';
 import { DIFFICULTIES, KEEPER_PROFILES, type Difficulty } from '../game/keeper';
-import { DEFAULT_SETTINGS, GRAPHICS_PRESETS, emptySession, loadSettings, recordShot, saveSettings, tierOf, type GraphicsOptions, type Preset, type RenderScale, type Settings, type ShotResult, type ShadowSize } from '../state';
+import { DEFAULT_SETTINGS, effectivePixelRatio, emptySession, graphicsForPreset, isMobileDevice, loadSettings, nextPracticeAtmosphere, recordShot, saveSettings, tierOf, type GraphicsOptions, type Preset, type RenderScale, type Settings, type ShotResult, type ShadowSize } from '../state';
 import { fkLogo, brandSymbol } from './brand';
-import { CONTACT_BALL_SVG, PITCH_MAP_SVG } from './svg';
+import { CONTACT_BALL_SVG, PITCH_MAP_SVG, QUICK_PITCH_MAP_SVG } from './svg';
 
 const icons = { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, AudioLines, Check, ChevronDown, Crosshair, Dumbbell, Flame, Focus, HelpCircle, Maximize, Minus, MousePointer2, Move, Plus, RotateCcw, Settings2, Shield, Smartphone, Sparkles, Trophy, Users, Volume2, VolumeX, X, Zap };
 const icon = (name: string, className = '') => `<i data-lucide="${name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()}" class="${className}" aria-hidden="true"></i>`;
@@ -50,6 +50,8 @@ export class GameApp {
   private view: View = 'menu';
   private settingsOrigin: SettingsOrigin | null = null;
   private toastTimer = 0;
+  private arenaSettingsFrame = 0;
+  private quickMapOpen = false;
   private challenge: { definition: Challenge; attempts: number; hits: number; results: boolean[] } | null = null;
   private practiceSettings: Settings | null = null;
   private modalReturnFocus: HTMLElement | null = null;
@@ -80,7 +82,7 @@ export class GameApp {
         performance: stats => {
           if (!this.settings.showFps) return;
           const monitor = $('#performance');
-          monitor.textContent = `${stats.fps} FPS · ${stats.calls} DRAWS · NATIVE ${stats.pixelRatio}×`;
+          monitor.textContent = `${stats.fps} FPS · ${stats.calls} DRAWS · RENDER ${stats.pixelRatio}×`;
           monitor.dataset.drawCalls = String(stats.calls);
           monitor.dataset.triangles = String(stats.triangles);
         },
@@ -131,6 +133,16 @@ export class GameApp {
             <button class="icon-button is-labelled" id="settings-button" aria-label="Settings">${icon('Settings2')}<span>SETTINGS</span></button>
           </div>
         </header>
+        <button class="camera-turn camera-turn-left" id="camera-left" aria-label="Rotate camera left" title="Rotate camera left" disabled>${icon('ArrowLeft')}</button>
+        <button class="camera-turn camera-turn-right" id="camera-right" aria-label="Rotate camera right" title="Rotate camera right" disabled>${icon('ArrowRight')}</button>
+        <div class="quick-map-access">
+          <button class="quick-map-button" id="quick-map-button" aria-label="Open field map" aria-expanded="false" aria-controls="quick-map-panel" title="Open field map">${icon('Crosshair')}<span>MAP</span></button>
+          <section class="quick-map-panel" id="quick-map-panel" aria-label="Live field map" hidden>
+            <header><div><span class="hud-eyebrow">LIVE FIELD MAP</span><strong id="quick-map-readout">24.7 M · LEFT</strong></div><button id="quick-map-close" class="icon-button" aria-label="Close field map">${icon('X')}</button></header>
+            <div class="pitch-map quick-pitch-map" id="quick-pitch-map" role="slider" tabindex="0" aria-label="Quick field map. Tap or drag to move the kick position." aria-valuemin="10" aria-valuemax="55" aria-valuenow="24.7" aria-valuetext="24.7 metres, left of centre">${QUICK_PITCH_MAP_SVG}</div>
+            <p id="quick-map-hint">Tap or drag to move the ball. The new distance updates live.</p>
+          </section>
+        </div>
         <div class="game-stats">
           <div class="score-line"><div><span>GOALS</span><strong id="stat-goals">0</strong></div><div hidden><strong id="stat-attempts">0</strong><span>ATTEMPTS</span></div><div hidden><span>STREAK</span><strong id="streak-label"><b>0</b></strong></div></div>
           <button id="position-button" class="setup-chip" hidden aria-label="Change kick position, distance and goalkeeper">${icon('Crosshair')}<strong id="stage-distance">24.7<span>m</span></strong><span id="keeper-hud">PRO · 4-MAN WALL</span></button>
@@ -151,7 +163,7 @@ export class GameApp {
             </div>
             <div class="shot-actions">
               <button class="replay-button" id="replay-button" disabled aria-label="Replay last shot (R)" title="Replay last shot (R)">${icon('RotateCcw')}</button>
-              <button class="shoot-button" id="shoot-button" disabled><span class="shoot-copy"><strong id="shoot-label">HOLD TO SHOOT</strong><small id="shoot-caption">Release to strike</small></span></button>
+              <button class="shoot-button" id="shoot-button" aria-label="Hold to charge, release to shoot" disabled><span class="shoot-copy"><strong id="shoot-label">Shoot!</strong><small class="sr-only" id="shoot-caption">Hold to build power, then release to strike.</small></span></button>
             </div>
           </section>
           <section class="contact-dock" aria-label="Shape your shot">
@@ -202,18 +214,18 @@ export class GameApp {
           </div>
           <div id="graphics-settings" role="tabpanel" hidden>
             <div class="settings-list">
-              <label class="setting-row"><span><strong>Graphics preset</strong><small>High, balanced, or performance. Custom lets you change each option.</small></span><select id="setting-preset" aria-label="Graphics preset"><option value="high">High</option><option value="balanced">Balanced</option><option value="performance">Performance</option><option value="custom">Custom</option></select></label>
+              <label class="setting-row"><span><strong>Graphics preset</strong><small>Phones use a lower-cost Balanced profile; Performance cuts resolution further.</small></span><select id="setting-preset" aria-label="Graphics preset"><option value="high">High</option><option value="balanced">Balanced</option><option value="performance">Performance</option><option value="custom">Custom</option></select></label>
               <div id="custom-graphics" class="custom-graphics" hidden>
-                <label class="setting-row"><span><strong>Render resolution</strong><small>Pixels rendered before the screen scales them. Native is the sharpest.</small></span><select id="gfx-resolution" aria-label="Render resolution"></select></label>
+                <label class="setting-row"><span><strong>Render resolution</strong><small>Pixels rendered before scaling. Phones cap device pixel ratio at 2× for lower GPU load.</small></span><select id="gfx-resolution" aria-label="Render resolution"></select></label>
                 <label class="setting-row"><span><strong>Multisample anti-aliasing</strong><small>Smooths geometry edges. Costs GPU time.</small></span><select id="gfx-msaa" aria-label="Multisample anti-aliasing"><option value="0">Off</option><option value="2">2x</option></select></label>
                 <label class="setting-row"><span><strong>SMAA</strong><small>Cheap edge smoothing on the final image.</small></span><input type="checkbox" id="gfx-smaa"/><span class="toggle" aria-hidden="true"></span></label>
                 <label class="setting-row"><span><strong>Bloom</strong><small>Glow from the floodlights and the ball.</small></span><input type="checkbox" id="gfx-bloom"/><span class="toggle" aria-hidden="true"></span></label>
-                <label class="setting-row"><span><strong>Shadows</strong><small>Shadow map size. Off removes dynamic shadows.</small></span><select id="gfx-shadows" aria-label="Shadow map size"><option value="0">Off</option><option value="512">512</option><option value="1024">1024</option><option value="2048">2048</option></select></label>
+                <label class="setting-row"><span><strong>Shadows</strong><small>Shadow map size. Off removes dynamic shadows.</small></span><select id="gfx-shadows" aria-label="Shadow map size"><option value="0">Off</option><option value="512">512</option><option value="1024">1024 (max)</option></select></label>
               </div>
               <label class="setting-row"><span><strong>Stadium atmosphere</strong><small>A new light on the beautiful game</small></span><select id="setting-atmosphere" aria-label="Stadium atmosphere"><option value="night">Floodlit night</option><option value="sunset">Golden hour</option><option value="day">Clear day</option></select></label>
-              ${[['music', 'Background music', 'Your custom songs, shuffled. Full volume in the menu, 75% in play and practice.'], ['guides', 'Trajectory guide', 'Preview the actual spin, power, and player attributes.'], ['showFps', 'Performance monitor', 'Live frame rate, draw calls, and native render resolution.'], ['sound', 'Stadium sound', 'Crowd ambience, ball strikes, and the sound of the net.'], ['haptics', 'Haptic feedback', 'Feel each strike on supported Android devices.']].map(([key, title, detail]) => `<label class="setting-row"><span><strong>${title}</strong><small>${detail}</small></span><input type="checkbox" id="setting-${key}"/><span class="toggle" aria-hidden="true"></span></label>`).join('')}
+              ${[['music', 'Background music', 'Your custom songs, shuffled. Full volume in the menu, 75% in play and practice.'], ['guides', 'Trajectory guide', 'Preview the actual spin, power, and player attributes.'], ['showFps', 'Performance monitor', 'Live frame rate, draw calls, and effective render pixel ratio.'], ['sound', 'Stadium sound', 'Crowd ambience, ball strikes, and the sound of the net.'], ['haptics', 'Haptic feedback', 'Feel each strike on supported Android devices.']].map(([key, title, detail]) => `<label class="setting-row"><span><strong>${title}</strong><small>${detail}</small></span><input type="checkbox" id="setting-${key}"/><span class="toggle" aria-hidden="true"></span></label>`).join('')}
             </div>
-            <p class="settings-note">High: 2048 px shadows and full athlete detail. Balanced: 1024 px shadows. Performance: no dynamic shadows and athletes switch to low detail sooner. Distant geometry is culled and athletes use level-of-detail in every mode.</p>
+            <p class="settings-note">High and Balanced: up to 1024 px shadows. Performance: no dynamic shadows and athletes switch to low detail sooner. Distant geometry is culled and athletes use level-of-detail in every mode.</p>
             <button id="photo-credits" class="text-link">Player photo credits &amp; licenses ${icon('ArrowUpRight')}</button>
           </div>
         </div>
@@ -247,6 +259,10 @@ export class GameApp {
     $('#settings-button').addEventListener('click', () => this.showSettings('game'));
     $('#position-button').addEventListener('click', () => this.showSettings('game', 'training'));
     $('#taker-button').addEventListener('click', () => this.showPlayers());
+    $('#camera-left').addEventListener('click', () => this.arena?.rotateCamera(-1));
+    $('#camera-right').addEventListener('click', () => this.arena?.rotateCamera(1));
+    $('#quick-map-button').addEventListener('click', () => this.setQuickMapOpen(!this.quickMapOpen));
+    $('#quick-map-close').addEventListener('click', () => this.setQuickMapOpen(false));
     $('#fullscreen-button').addEventListener('click', async () => {
       try {
         if (document.fullscreenElement) await document.exitFullscreen();
@@ -270,7 +286,7 @@ export class GameApp {
     }
     $('#setting-preset').addEventListener('change', event => {
       const preset = (event.target as HTMLSelectElement).value as Preset;
-      this.settings.graphics = preset === 'custom' ? { ...this.settings.graphics, preset } : { preset, ...GRAPHICS_PRESETS[preset] };
+      this.settings.graphics = preset === 'custom' ? { ...this.settings.graphics, preset } : graphicsForPreset(preset);
       this.settings.quality = tierOf(this.settings.graphics);
       this.applySettings();
     });
@@ -290,7 +306,8 @@ export class GameApp {
       this.applySettings();
     });
     this.bindContactPad();
-    this.bindPitchMap();
+    this.bindPitchMap('#pitch-map');
+    this.bindPitchMap('#quick-pitch-map');
     $$<HTMLButtonElement>('[data-foot]').forEach(button => button.addEventListener('click', () => {
       if (!this.canSetup()) return;
       const foot = button.dataset.foot as 'left' | 'right';
@@ -389,6 +406,7 @@ export class GameApp {
   handleBack() {
     if ($<HTMLDialogElement>('#modal').open) this.closeModal();
     else if (this.settingsOpen()) this.closeSettings();
+    else if (this.quickMapOpen) this.setQuickMapOpen(false);
     else if (this.view === 'game') this.leaveGame();
   }
 
@@ -408,9 +426,14 @@ export class GameApp {
         event.preventDefault();
         const amount = event.shiftKey ? 0.3 : 0.12;
         this.arena?.adjustAim(event.code === 'ArrowLeft' ? -amount : event.code === 'ArrowRight' ? amount : 0, event.code === 'ArrowUp' ? amount : event.code === 'ArrowDown' ? -amount : 0);
-      } else if (event.code === 'KeyR' && !event.repeat) this.arena?.replay();
+      } else if (event.code === 'KeyQ') this.arena?.rotateCamera(-1);
+      else if (event.code === 'KeyE') this.arena?.rotateCamera(1);
+      else if (event.code === 'KeyR' && !event.repeat) this.arena?.replay();
       else if (event.code === 'KeyT' && !event.repeat) this.showPlayers();
-      else if (event.code === 'Escape') this.showSettings('game');
+      else if (event.code === 'Escape') {
+        if (this.quickMapOpen) this.setQuickMapOpen(false);
+        else this.showSettings('game');
+      }
     });
     document.addEventListener('keyup', event => {
       if (event.code === 'Space' && this.currentPhase === 'charging') {
@@ -450,10 +473,11 @@ export class GameApp {
     });
   }
 
-  private bindPitchMap() {
-    const map = $('#pitch-map');
+  private bindPitchMap(selector: string) {
+    const map = $(selector);
     let pointer: number | null = null;
     const fromPointer = (event: PointerEvent) => {
+      if (!this.canSetup() || this.challenge) return;
       const rect = map.getBoundingClientRect();
       const x = (event.clientX - rect.left) / rect.width * 300;
       const y = (event.clientY - rect.top) / rect.height * 188;
@@ -479,11 +503,38 @@ export class GameApp {
     });
   }
 
+  private setQuickMapOpen(open: boolean, restoreFocus = true) {
+    if (open && this.view !== 'game') return;
+    this.quickMapOpen = open;
+    const button = $<HTMLButtonElement>('#quick-map-button');
+    button.setAttribute('aria-expanded', String(open));
+    button.setAttribute('aria-label', open ? 'Close field map' : 'Open field map');
+    button.title = open ? 'Close field map' : 'Open field map';
+    $('#quick-map-panel').hidden = !open;
+    if (open) $('#quick-pitch-map').focus({ preventScroll: true });
+    else if (restoreFocus) button.focus({ preventScroll: true });
+  }
+
   private canSetup() { return this.currentPhase === 'ready' || this.currentPhase === 'result'; }
   private applySettings() {
-    this.arena?.updateSettings(this.settings);
+    this.scheduleArenaSettings();
     this.syncUI();
     saveSettings(this.settings);
+  }
+
+  private scheduleArenaSettings() {
+    if (!this.arena || this.arenaSettingsFrame) return;
+    this.arenaSettingsFrame = requestAnimationFrame(() => {
+      this.arenaSettingsFrame = 0;
+      this.arena?.updateSettings(this.settings);
+    });
+  }
+
+  private flushArenaSettings() {
+    if (!this.arenaSettingsFrame) return;
+    cancelAnimationFrame(this.arenaSettingsFrame);
+    this.arenaSettingsFrame = 0;
+    this.arena?.updateSettings(this.settings);
   }
 
   private syncUI() {
@@ -498,17 +549,22 @@ export class GameApp {
       $('#showcase').dataset.player = s.playerId;
       $('#showcase-name').textContent = player.name;
     }
-    $('#keeper-hud').textContent = `${KEEPER_PROFILES[s.difficulty].label.toUpperCase()} · ${s.wall ? `${s.wall}-MAN WALL` : 'NO WALL'}`;
+    const penaltySpot = inPenaltyBox(s.position);
+    $('#keeper-hud').textContent = penaltySpot ? 'PENALTY · BUFFED KEEPER' : `${KEEPER_PROFILES[s.difficulty].label.toUpperCase()} · ${s.wall ? `${s.wall}-MAN WALL` : 'NO WALL'}`;
     $('#atmosphere-label').textContent = { night: 'FLOODLIT NIGHT', sunset: 'GOLDEN HOUR', day: 'CLEAR DAY' }[s.atmosphere];
     $('#performance').hidden = !s.showFps;
     const g = s.graphics;
     $<HTMLSelectElement>('#setting-preset').value = g.preset;
     $('#custom-graphics').hidden = g.preset !== 'custom';
-    // Each option shows the real pixel size it renders at on this screen.
+    // Each option shows its effective pixel size after the phone DPR cap and selected scale.
     const dpr = window.devicePixelRatio || 1;
+    const mobile = isMobileDevice();
     const resolution = $<HTMLSelectElement>('#gfx-resolution');
-    resolution.innerHTML = ([[1, 'Native'], [0.75, '75%'], [0.5, 'Half']] as const)
-      .map(([scale, label]) => `<option value="${scale}">${label} · ${Math.round(innerWidth * dpr * scale)} × ${Math.round(innerHeight * dpr * scale)}</option>`).join('');
+    resolution.innerHTML = ([[1, mobile ? 'Phone max' : 'Native'], [0.75, '75%'], [0.5, 'Half']] as const)
+      .map(([scale, label]) => {
+        const ratio = effectivePixelRatio(dpr, scale, mobile);
+        return `<option value="${scale}">${label} · ${Math.round(innerWidth * ratio)} × ${Math.round(innerHeight * ratio)}</option>`;
+      }).join('');
     resolution.value = String(g.resolution);
     $<HTMLSelectElement>('#gfx-msaa').value = String(g.msaa);
     $<HTMLInputElement>('#gfx-smaa').checked = g.smaa;
@@ -531,23 +587,27 @@ export class GameApp {
     $('#max-distance-label').textContent = `${bounds.max.toFixed(1)} m`;
     const mapX = 150 + s.position.x / 34 * 129;
     const mapY = 19 + s.position.z * 3.35;
-    document.querySelector('#map-marker')!.setAttribute('transform', `translate(${mapX} ${mapY})`);
-    document.querySelector('#map-aimline')!.setAttribute('d', `M${mapX} ${mapY}L150 19`);
-    $('#pitch-map').setAttribute('aria-valuenow', distance.toFixed(1));
-    $('#pitch-map').setAttribute('aria-valuetext', `${distance.toFixed(1)} metres, ${Math.abs(s.position.x) < 1 ? 'central' : s.position.x < 0 ? 'left' : 'right'}`);
+    const mapValue = `${distance.toFixed(1)} metres, ${Math.abs(s.position.x) < 1 ? 'central' : s.position.x < 0 ? 'left' : 'right'}`;
+    $$('.pitch-map').forEach(map => {
+      map.querySelector<SVGGElement>('[data-map-marker]')?.setAttribute('transform', `translate(${mapX} ${mapY})`);
+      map.querySelector<SVGPathElement>('[data-map-aimline]')?.setAttribute('d', `M${mapX} ${mapY}L150 19`);
+      map.setAttribute('aria-valuenow', distance.toFixed(1));
+      map.setAttribute('aria-valuetext', mapValue);
+    });
+    $('#quick-map-readout').textContent = penaltySpot ? '11.0 M · PENALTY SPOT' : `${distance.toFixed(1)} M · ${Math.abs(s.position.x) < 1 ? 'CENTRE' : s.position.x < 0 ? 'LEFT' : 'RIGHT'}`;
     $$('[data-spot]').forEach(button => button.classList.toggle('selected', button.dataset.spot === (s.position.x < -8 ? 'left' : s.position.x > 8 ? 'right' : Math.abs(s.position.x) < 1 ? 'central' : 'none')));
     this.syncContact();
     const profile = KEEPER_PROFILES[s.difficulty];
     const level = DIFFICULTIES.indexOf(s.difficulty);
     $('#difficulty-name').textContent = profile.label;
     $('#difficulty-level').textContent = `LVL 0${level + 1}`;
-    $('#keeper-description').textContent = profile.description;
+    $('#keeper-description').textContent = penaltySpot ? `${profile.description} Penalty mode adds earlier reads and extra reach.` : profile.description;
     $$('[data-difficulty]').forEach((button, i) => {
       button.classList.toggle('filled', i <= level);
       button.classList.toggle('selected', i === level);
       button.setAttribute('aria-pressed', String(i === level));
     });
-    $('#wall-count').textContent = String(s.wall);
+    $('#wall-count').textContent = String(penaltySpot ? 0 : s.wall);
     const power = recommendedPower(s.position);
     $('#recommended-power').textContent = `${Math.round(power * 100)}%`;
     $('#power-sweetspot').style.left = `${power * 100 - 3}%`;
@@ -584,8 +644,12 @@ export class GameApp {
     $<HTMLInputElement>('#distance-slider').disabled = locked || !!this.challenge;
     $<HTMLButtonElement>('#wall-minus').disabled = locked || !!this.challenge || this.settings.wall === 0 || inPenaltyBox(this.settings.position);
     $<HTMLButtonElement>('#wall-plus').disabled = locked || !!this.challenge || this.settings.wall === 5 || inPenaltyBox(this.settings.position);
-    $('#pitch-map').classList.toggle('locked', locked || !!this.challenge);
-    $('#pitch-map').setAttribute('aria-disabled', String(locked || !!this.challenge));
+    const mapLocked = locked || !!this.challenge;
+    $$('.pitch-map').forEach(map => {
+      map.classList.toggle('locked', mapLocked);
+      map.setAttribute('aria-disabled', String(mapLocked));
+    });
+    $('#quick-map-hint').textContent = this.challenge ? 'Challenge position is locked for this round.' : locked ? 'Finish the shot before changing the kick spot.' : 'Tap or drag to move the ball. The new distance updates live.';
     $('#contact-pad').setAttribute('aria-disabled', String(locked));
     $<HTMLButtonElement>('#reset-session').disabled = locked;
   }
@@ -600,17 +664,25 @@ export class GameApp {
 
   private onPhase(phase: Phase) {
     this.currentPhase = phase;
+    if (phase === 'charging' && this.quickMapOpen) this.setQuickMapOpen(false, false);
     const active = phase === 'runup' || phase === 'flight' || phase === 'replay';
     $<HTMLButtonElement>('#shoot-button').disabled = active || !this.arena || this.view !== 'game';
+    const cameraCanRotate = !active && this.view === 'game' && !!this.arena;
+    $<HTMLButtonElement>('#camera-left').disabled = !cameraCanRotate;
+    $<HTMLButtonElement>('#camera-right').disabled = !cameraCanRotate;
     $('#shoot-button').classList.toggle('charging', phase === 'charging');
     $('#shoot-button').classList.toggle('next-kick', phase === 'result');
-    const labels: Record<Phase, [string, string]> = {
-      ready: ['HOLD TO SHOOT', 'Release to strike'], charging: ['RELEASE TO STRIKE', 'Find your sweet spot'],
-      runup: ['MAKE IT COUNT.', 'Eyes on the ball'], flight: ['ON ITS WAY…', 'Watch the flight'],
-      result: [this.challenge?.attempts === 5 ? 'VIEW RESULTS' : 'NEXT FREE KICK', 'Another chance. A better finish.'], replay: ['INSTANT REPLAY', 'A different perspective'],
+    const labels: Record<Phase, [string, string, string]> = {
+      ready: ['Shoot!', 'Hold to build power, then release to strike.', 'Hold to charge, release to shoot'],
+      charging: ['Shoot!', 'Release when the power looks right.', 'Release to shoot'],
+      runup: ['Shoot!', 'The taker is approaching the ball.', 'Shot starting'],
+      flight: ['Shoot!', 'The ball is in flight.', 'Shot in flight'],
+      result: [this.challenge?.attempts === 5 ? 'VIEW RESULTS' : 'NEXT KICK', 'Take another kick.', this.challenge?.attempts === 5 ? 'View challenge results' : 'Start the next kick'],
+      replay: ['Shoot!', 'Replay in progress.', 'Replay in progress'],
     };
     $('#shoot-label').textContent = labels[phase][0];
     $('#shoot-caption').textContent = labels[phase][1];
+    $('#shoot-button').setAttribute('aria-label', labels[phase][2]);
     $<HTMLButtonElement>('#replay-button').disabled = phase !== 'result';
     $('#shot-result').hidden = phase !== 'result';
     $('#replay-label').hidden = phase !== 'replay';
@@ -676,6 +748,7 @@ export class GameApp {
       if (this.challenge.attempts === 5) {
         $('#shoot-label').textContent = 'VIEW RESULTS';
         $('#shoot-caption').textContent = `${this.challenge.hits} of 5 targets completed`;
+        $('#shoot-button').setAttribute('aria-label', 'View challenge results');
         this.saveChallengeBest();
       }
     }
@@ -698,8 +771,9 @@ export class GameApp {
     if (this.challenge?.attempts === 5) { this.showChallengeResult(); return; }
     if (this.challenge) {
       this.settings.position = this.challenge.definition.positions[this.challenge.attempts];
-      this.arena.reset();
       this.applySettings();
+      this.flushArenaSettings();
+      this.arena.reset();
       this.updateMode();
     } else this.arena.reset();
   }
@@ -720,15 +794,24 @@ export class GameApp {
       if (this.practiceSettings) this.settings = structuredClone(this.practiceSettings);
       this.practiceSettings = null;
     }
+    this.setQuickMapOpen(false, false);
+    this.applySettings();
+    this.flushArenaSettings();
     this.arena?.setAttract(true);
     this.arena?.reset();
-    this.applySettings();
     this.updateMode();
     this.setView('menu');
   }
 
   private enterGame() {
     this.closeModal();
+    this.setQuickMapOpen(false, false);
+    // Free practice cycles to a different stadium mood every time it is launched.
+    if (!this.challenge) {
+      this.settings.atmosphere = nextPracticeAtmosphere(this.settings.atmosphere);
+      this.applySettings();
+    }
+    this.flushArenaSettings();
     this.setView('game');
     this.arena?.setAttract(false);
     this.arena?.reset();
@@ -737,6 +820,7 @@ export class GameApp {
   }
 
   private setView(view: View) {
+    if (view !== 'game' && this.quickMapOpen) this.setQuickMapOpen(false, false);
     this.view = view;
     $('#app').dataset.view = view;
     $('#menu-view').hidden = view !== 'menu';
@@ -766,10 +850,10 @@ export class GameApp {
   private showHelp() {
     this.openModal(`<span class="modal-eyebrow">A GAME OF SMALL ADJUSTMENTS</span><h2 id="modal-title">Own the dead ball.</h2><p class="modal-intro">The goal is simple. The perfect free kick takes a little practice.</p>
       <div class="help-steps">
-        <div><span>01</span><div><h3>Find your angle.</h3><p>Tap the setup chip to place the ball on the mini pitch and set the distance. Drag the stadium to aim, or tap a point near the goal. Aim now reaches wide and high.</p></div>${icon('MousePointer2')}</div>
+        <div><span>01</span><div><h3>Find your angle.</h3><p>Open the field-map button to place the ball without leaving the pitch. Drag the stadium or use the arrow keys to aim wider, higher, or lower.</p></div>${icon('MousePointer2')}</div>
         <div><span>02</span><div><h3>Make it bend.</h3><p>Move the contact marker on the ball. Strike its left side to curl right; its right side to curl left. Low contact adds lift. High contact drives it down.</p></div>${icon('Sparkles')}</div>
         <div><span>03</span><div><h3>Hold. Then let it fly.</h3><p>Hold the shoot button to build power. Release to strike. The lime mark suggests a starting power, not a guaranteed goal. The guide updates as you charge.</p></div>${icon('Zap')}</div>
-      </div><div class="keyboard-guide"><span><kbd>SPACE</kbd> Hold &amp; release</span><span><kbd>↑ ↓ ← →</kbd> Aim</span><span><kbd>R</kbd> Replay</span><span><kbd>V</kbd> Camera</span><span><kbd>ESC</kbd> Settings</span></div>
+      </div><div class="keyboard-guide"><span><kbd>SPACE</kbd> Hold &amp; release</span><span><kbd>↑ ↓ ← →</kbd> Aim</span><span><kbd>Q / E</kbd> Rotate camera</span><span><kbd>R</kbd> Replay</span><span><kbd>ESC</kbd> Close map / settings</span></div>
       <p class="modal-footnote">Aim sets your launch direction; spin and power change where the ball actually goes. This is an original simulator inspired by the documented EA SPORTS FC control loop, not an EA product or an exact copy of its physics.</p><button class="primary-button full-width" id="help-play">LET’S FIND THE TOP CORNER ${icon('ArrowRight')}</button>`, 'help-modal');
     $('#help-play').addEventListener('click', () => this.closeModal());
   }
@@ -792,6 +876,7 @@ export class GameApp {
   }
   private showSettings(origin: SettingsOrigin, tab = 'training') {
     if (this.overlayOpen() && !this.settingsOpen()) return;
+    if (origin === 'game') this.setQuickMapOpen(false, false);
     this.settingsOrigin = origin;
     this.settingsTab(tab);
     this.syncUI();
@@ -803,6 +888,7 @@ export class GameApp {
   private closeSettings() {
     if (!this.settingsOpen()) return;
     $('#settings-view').hidden = true;
+    this.flushArenaSettings();
     this.syncPause();
     const focus = this.settingsOrigin === 'game' ? $('#settings-button') : $('#menu-settings');
     focus.focus({ preventScroll: true });
@@ -935,8 +1021,9 @@ export class GameApp {
     this.challenge = null;
     if (this.practiceSettings) this.settings = structuredClone(this.practiceSettings);
     this.practiceSettings = null;
-    this.arena?.reset();
     this.applySettings();
+    this.flushArenaSettings();
+    this.arena?.reset();
     this.updateMode();
     this.closeModal();
     this.toast('Back to free practice. No limits.');
