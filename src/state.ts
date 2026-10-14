@@ -35,6 +35,7 @@ export interface Settings {
   graphics: GraphicsOptions;
 }
 export interface ShotResult {
+  frameHits?: number;
   outcome: Outcome;
   distance: number;
   speed: number;

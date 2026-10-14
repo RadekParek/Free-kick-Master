@@ -1,6 +1,10 @@
 # Third-party notices and asset provenance
 
-The stadium geometry, procedural turf/ball, training kits, articulated 3D avatars, UI/card layout, logo, launcher art, and synthesized sound routines are original. No EA code, official FC card artwork, ripped player scans, game textures, commercial stadium models, or music recording is bundled. The presentation is FC-inspired, not an EA/FIFA product or endorsement.
+The stadium geometry, procedural turf/ball, training kits, articulated 3D avatars, UI/card layout, logo, launcher art, and synthesized sound routines are original. No EA code, official FC card artwork, ripped player scans, game textures, or commercial stadium models are bundled. The presentation is FC-inspired, not an EA/FIFA product or endorsement.
+
+## Custom soundtrack
+
+The three recordings in `src/soundtracks/` were supplied in this repository and are bundled for offline playback. No redistribution license for these recordings is established here. Obtain the appropriate rights before distributing builds containing them, or replace them with licensed tracks. See [soundtrack filenames and playback behavior](../src/soundtracks/README.md).
 
 ## Real player photographs
 

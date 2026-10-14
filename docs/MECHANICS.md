@@ -71,3 +71,36 @@ The keeper estimates an intersection after its reaction delay; it does not recei
 This is a playable stylized 3D training game, not a AAA football engine. It has no full match, official EA player/card database, imported motion capture, multiplayer, wind, teammate runs, free-kick passing, or exact FC controller compatibility. Four selectable real players use openly licensed portrait photos and original attributes; their 3D avatars are approximate, procedural models, not scanned faces. The playing area is the attacking training half, outside the penalty area—not unrestricted invalid free-kick positions. Collisions and animations are intentionally simplified for offline mobile performance.
 
 The primary next calibration step is a **user-supplied gameplay capture and concrete control observations** from the desired FC27 mode/platform. That can help tune feel and presentation, but still cannot establish identical proprietary physics from the public guide alone.
+
+## Live woodwork rebounds
+
+Posts and the crossbar use swept-sphere contact against round, finite frame members with the
+same 6 cm radius as the rendered goal. The first time of contact determines a surface normal;
+velocity reflects about that normal with normal restitution 0.68 and tangential retention 0.97.
+Spin is damped on impact. These are original, plausible gameplay coefficients, not measured
+FC27 values or a full deformable-ball/contact-friction model.
+
+The solver consumes the remaining motion in the tick and checks the goal line again, so an
+inside glance, crossbar deflection, multiple frame contacts or a bounce on the grass can still
+score. Outside-face/head-on strikes are not steered into the goal. There is no probability roll
+or arbitrary minimum speed for a post-and-in. A continuing woodwork event triggers impact sound
+without ending/counting the attempt; the eventual result is counted once. The complete ball
+must cross the existing goal plane between the posts and below the bar. Clear outward rebounds,
+settled balls and a bounded eight-second live-rebound window terminate as woodwork misses.
+
+Tests include mirrored posts, outside misses, slow and fast contacts, contact and goal in the
+same tick, crossbar-ground-goal, multiple posts on the line, corner stability and non-increasing
+impact kinetic energy. A browser regression verifies the actual score/HUD and replay accounting.
+
+## Procedural animation additions
+
+Athletes now have articulated head and elbow pivots without removing existing geometry.
+Preparation adds a weight shift and downward glance; the run-up has elbow drive and a planted
+support leg, then blends continuously from the exact contact pose into follow-through.
+Goal celebrations, ordinary misses and woodwork misses have separate arm/head reactions.
+
+The goalkeeper adds a pre-contact split-step, lateral adjustment, gaze tracking, low/high
+reaches, elbow extension, a landing/side-roll and a planted-knee recovery. Wall players brace
+with forearms and tuck their knees during a jump. Reactions start only after the final result,
+not at a still-live post contact. These are authored procedural poses, not motion capture or
+full inverse-kinematic glove contacts; keeper difficulty and collision reach are unchanged.

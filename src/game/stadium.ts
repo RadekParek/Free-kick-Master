@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Atmosphere, Quality } from '../state';
-import { GOAL_HEIGHT, GOAL_WIDTH } from './physics';
+import { GOAL_HEIGHT, GOAL_WIDTH, POST_RADIUS } from './physics';
 
 const standard = (color: THREE.ColorRepresentation, roughness = 0.85) => new THREE.MeshStandardMaterial({ color, roughness });
 const up = new THREE.Vector3(0, 1, 0);
@@ -83,6 +83,7 @@ class Confetti {
     this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.09, 0.05), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false }), this.count);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
     const palette = ['#b4ff37', '#2fd8c8', '#ffffff', '#ffd166', '#ef476f'].map(color => new THREE.Color(color));
     for (let i = 0; i < this.count; i++) {
       this.mesh.setColorAt(i, palette[i % palette.length]);
@@ -102,6 +103,7 @@ class Confetti {
       this.spin[i] = (Math.random() - 0.5) * 12;
     }
     this.active = true;
+    this.mesh.visible = true;
   }
 
   update(dt: number, time: number) {
@@ -129,7 +131,7 @@ class Confetti {
       this.mesh.setMatrixAt(i, this.dummy.matrix);
     }
     this.mesh.instanceMatrix.needsUpdate = true;
-    if (alive === 0) this.active = false;
+    if (alive === 0) { this.active = false; this.mesh.visible = false; }
   }
 }
 
@@ -137,8 +139,11 @@ export class Stadium {
   readonly group = new THREE.Group();
   readonly net: THREE.LineSegments;
   private readonly netRest: Float32Array;
-  private impact = new THREE.Vector3();
   private impactTime = -10;
+  private readonly netEdge: Float32Array;
+  private readonly netWave: Float32Array;
+  private readonly netAmplitude: Float32Array;
+  private netActive = false;
   readonly sun: THREE.DirectionalLight;
   readonly crowd: THREE.Group;
   private crowdHeads!: THREE.Group;
@@ -187,6 +192,16 @@ export class Stadium {
     this.makePitch();
     this.net = this.makeGoal();
     this.netRest = (this.net.geometry.attributes.position.array as Float32Array).slice();
+    (this.net.geometry.attributes.position as THREE.BufferAttribute).setUsage(THREE.DynamicDrawUsage);
+    this.netEdge = new Float32Array(this.netRest.length / 3);
+    this.netWave = new Float32Array(this.netEdge.length);
+    this.netAmplitude = new Float32Array(this.netEdge.length);
+    for (let i = 0; i < this.netEdge.length; i++) {
+      this.netEdge[i] = Math.sin((this.netRest[i * 3] + GOAL_WIDTH / 2) / GOAL_WIDTH * Math.PI) * Math.sin(this.netRest[i * 3 + 1] / GOAL_HEIGHT * Math.PI);
+    }
+    // Culling bounds include the maximum net displacement; they never need a per-frame rebuild.
+    this.net.geometry.computeBoundingSphere();
+    this.net.geometry.boundingSphere!.radius += 0.5;
     this.crowd = this.makeStands();
     this.makeBoards();
     this.makeDetails();
@@ -195,6 +210,13 @@ export class Stadium {
     this.confetti = new Confetti(this.group);
     this.batchStaticGeometry();
     this.setAtmosphere('night');
+    // Stadium transforms are fixed. Crowd/grass/flags animate in shaders, the net in its buffer,
+    // and confetti via instance matrices; none needs Object3D matrix recomposition each frame.
+    this.group.updateMatrixWorld(true);
+    this.group.traverse(object => {
+      object.matrixAutoUpdate = false;
+      object.matrixWorldAutoUpdate = false;
+    });
   }
 
   private box(w: number, h: number, d: number, x: number, y: number, z: number, material: THREE.Material, shadow = false) {
@@ -295,7 +317,7 @@ export class Stadium {
   private makeGoal(): THREE.LineSegments {
     const frame = standard('#f2f4ea', 0.3);
     const half = GOAL_WIDTH / 2;
-    const pole = (a: number[], b: number[], radius = 0.06) => {
+    const pole = (a: number[], b: number[], radius = POST_RADIUS) => {
       const mesh = cylinderBetween(new THREE.Vector3(...a), new THREE.Vector3(...b), radius, frame, 12);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -639,8 +661,13 @@ export class Stadium {
   }
 
   ripple(point: THREE.Vector3, time: number) {
-    this.impact.copy(point);
     this.impactTime = time;
+    this.netActive = true;
+    for (let i = 0; i < this.netEdge.length; i++) {
+      const distance = Math.hypot(this.netRest[i * 3] - point.x, this.netRest[i * 3 + 1] - point.y);
+      this.netWave[i] = distance * 2.5;
+      this.netAmplitude[i] = Math.exp(-distance * 0.5) * 0.5 * this.netEdge[i];
+    }
   }
 
   /** Crowd reaction: a goal sends the stands up and fires confetti; a near miss only gets a louder roar. */
@@ -659,17 +686,20 @@ export class Stadium {
     const cheer = time - this.cheerStart;
     this.crowdEnergy.value = cheer < 6 ? Math.exp(-cheer / 2.2) * this.cheerStrength : 0;
     this.confetti.update(dt, time);
+    if (!this.netActive) return;
     const elapsed = time - this.impactTime;
-    if (elapsed > 3) return;
-    const vertices = this.net.geometry.attributes.position.array as Float32Array;
-    for (let i = 0; i < vertices.length; i += 3) {
-      const x = this.netRest[i];
-      const y = this.netRest[i + 1];
-      const z = this.netRest[i + 2];
-      const distance = Math.hypot(x - this.impact.x, y - this.impact.y);
-      const edgeDamping = Math.sin((x + GOAL_WIDTH / 2) / GOAL_WIDTH * Math.PI) * Math.sin(y / GOAL_HEIGHT * Math.PI);
-      vertices[i + 2] = z - Math.sin(elapsed * 17 - distance * 2.5) * Math.exp(-elapsed * 2.2 - distance * 0.5) * 0.5 * edgeDamping;
+    const attribute = this.net.geometry.attributes.position as THREE.BufferAttribute;
+    const vertices = attribute.array as Float32Array;
+    if (elapsed > 3) {
+      vertices.set(this.netRest);
+      this.netActive = false;
+    } else {
+      const decay = Math.exp(-elapsed * 2.2), phase = elapsed * 17;
+      for (let i = 0; i < this.netEdge.length; i++) {
+        const z = i * 3 + 2;
+        vertices[z] = this.netRest[z] - Math.sin(phase - this.netWave[i]) * decay * this.netAmplitude[i];
+      }
     }
-    this.net.geometry.attributes.position.needsUpdate = true;
+    attribute.needsUpdate = true;
   }
 }

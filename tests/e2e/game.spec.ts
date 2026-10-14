@@ -105,7 +105,7 @@ test('cancels charge safely when settings open and does not create a phantom att
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'ready');
   await page.locator('[data-settings-tab="graphics"]').click();
   await page.locator('#setting-guides').uncheck();
-  await page.locator('#setting-quality').selectOption('balanced');
+  await page.locator('#setting-preset').selectOption('balanced');
   await page.locator('#resume-button').click();
   await expect(page.locator('#settings-view')).toBeHidden();
   await expect(page.locator('#stat-attempts')).toHaveText('0');

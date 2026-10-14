@@ -4,7 +4,7 @@ const initSettings = () => {
   if (!localStorage.getItem('fkm.settings.v1')) localStorage.setItem('fkm.settings.v1', JSON.stringify({ quality: 'low', sound: false }));
 };
 
-test('menu opens the full roster with 30 cards, searches real players, switches the taker and persists the selection', async ({ page }) => {
+test('menu opens the full roster with 38 cards, searches real players, switches the taker and persists the selection', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' || message.type() === 'warning') errors.push(message.text()); });
@@ -22,7 +22,7 @@ test('menu opens the full roster with 30 cards, searches real players, switches 
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('.card-portrait')].every(image => image.complete && image.naturalWidth > 0));
   expect(await page.locator('.card-portrait').evaluateAll(images => images.every(image => new URL((image as HTMLImageElement).src).origin === location.origin))).toBe(true);
   await page.locator('#player-search').fill('argentina');
-  await expect(page.locator('.player-card[data-player]:visible')).toHaveCount(1);
+  await expect(page.locator('.player-card[data-player]:visible')).toHaveCount(3);
   await expect(page.locator('[data-player="messi"]')).toBeVisible();
   await page.locator('#player-search').fill('not-a-footballer');
   await expect(page.locator('#roster-empty')).toBeVisible();
@@ -90,12 +90,12 @@ test('visual controls persist atmosphere, guides and the performance monitor wit
   await expect(page.locator('#setting-guides')).not.toBeChecked();
   await expect(page.locator('#setting-showFps')).toBeChecked();
   await page.locator('#setting-atmosphere').selectOption('day');
-  await page.locator('#setting-quality').selectOption('balanced');
+  await page.locator('#setting-preset').selectOption('balanced');
   await page.locator('#resume-button').click();
   await expect(page.locator('#atmosphere-label')).toHaveText('CLEAR DAY');
   await page.locator('#settings-button').click();
   await page.locator('[data-settings-tab="graphics"]').click();
-  await page.locator('#setting-quality').selectOption('low');
+  await page.locator('#setting-preset').selectOption('performance');
   await page.locator('#resume-button').click();
   expect(errors).toEqual([]);
 });

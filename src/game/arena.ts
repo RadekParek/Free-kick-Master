@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import {
   AIM_LIMITS, BALL_RADIUS, FIXED_DT, GOAL_HEIGHT, GOAL_WIDTH, clamp, cloneBall,
   distanceToGoal, getWall, integrateBall, launchBall,
-  lerp, previewShot, recommendedPower, shotSpeed, strikeName, wallJump,
-  type Aim, type BallState, type Outcome, type ShotSetup, type Vec3, type WallPlayer,
+  lerp, previewShotInto, recommendedPower, shotSpeed, strikeName, wallJump,
+  type Aim, type BallState, type Outcome, type ShotSetup, type WallPlayer,
 } from './physics';
 import { inPenaltyBox } from './physics';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
@@ -14,7 +14,8 @@ import { Player, makeFootball } from './player';
 import { Stadium } from './stadium';
 import { PostStack, type PostOptions } from './post';
 import { applyStudioLight, studioEnvironment } from './pbr';
-import { advanceShot } from './simulation';
+import { advanceShot, createShotScratch } from './simulation';
+import { ReplayBuffer } from './replay';
 import { getPlayer } from '../players';
 import type { Settings, ShotResult } from '../state';
 
@@ -29,9 +30,9 @@ export interface ArenaEvents {
   result: (result: ShotResult) => void;
   aim: (aim: Aim) => void;
   error: (message: string) => void;
+  woodwork?: () => void;
   performance?: (stats: { fps: number; calls: number; triangles: number; pixelRatio: number }) => void;
 }
-interface ReplayFrame { ball: Vec3; keeper: KeeperState; time: number }
 
 export class Arena {
   readonly renderer: THREE.WebGLRenderer;
@@ -54,18 +55,17 @@ export class Arena {
   private keeper: KeeperState;
   private ring: THREE.Mesh;
   private guide: THREE.Line;
-  private dots: THREE.InstancedMesh;
   private trace: Line2;
   private readonly tracePositions = new Float32Array(720);
   private tracePointCount = 0;
   private wallGap = -1;
-  private traceDirty = false;
   private shift = 0;
   private traceGeometry = new LineGeometry();
   private traceMaterial = new LineMaterial({ color: 0x2d9cff, linewidth: 4.5, transparent: true, opacity: 0.85, depthWrite: false });
   private readonly guidePositions = new Float32Array(512 * 3);
-  private readonly guideDistances = new Float32Array(512);
-  private readonly scratchObject = new THREE.Object3D();
+  private previewDirty = false;
+  private readonly traceSegments = new Float32Array(239 * 6);
+  private readonly traceBuffer = new THREE.InstancedInterleavedBuffer(this.traceSegments, 6).setUsage(THREE.DynamicDrawUsage);
   private wall: WallPlayer[] = [];
   private metricsStart = 0;
   private metricsFrames = 0;
@@ -81,7 +81,11 @@ export class Arena {
   private height = 1;
   private previewPower = -1;
   private shotSetup: ShotSetup;
-  private replayFrames: ReplayFrame[] = [];
+  private readonly replayFrames = new ReplayBuffer();
+  private resultBallTime = Infinity;
+  private readonly shotScratch = createShotScratch();
+  private traceDirty = false;
+  private traceUploadedCount = 0;
   private replayClock = 0;
   private savedBall: BallState | null = null;
   private savedKeeper: KeeperState | null = null;
@@ -101,6 +105,7 @@ export class Arena {
     // Native resolution is always used; MSAA is only needed on low-density screens.
     // Canvas MSAA is off: anti-aliasing comes from the post pipeline so the settings can change it live.
     this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'high-performance' });
+    this.renderer.info.autoReset = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
@@ -136,13 +141,12 @@ export class Arena {
     this.ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.14, 20), new THREE.MeshBasicMaterial({ color: '#183420', transparent: true, opacity: 0.3, depthWrite: false }));
     this.ballShadow.rotation.x = -Math.PI / 2;
     this.scene.add(this.ballShadow);
-    this.guide = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(this.guidePositions, 3).setUsage(THREE.DynamicDrawUsage)).setAttribute('lineDistance', new THREE.BufferAttribute(this.guideDistances, 1).setUsage(THREE.DynamicDrawUsage)), new THREE.LineBasicMaterial({ color: '#2d9cff', transparent: true, opacity: 0.95, depthWrite: false }));
+    this.guide = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(this.guidePositions, 3).setUsage(THREE.DynamicDrawUsage)), new THREE.LineBasicMaterial({ color: '#2d9cff', transparent: true, opacity: 0.95, depthWrite: false }));
     this.guide.frustumCulled = false;
     this.scene.add(this.guide);
-    this.dots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.043, 6, 4), new THREE.MeshBasicMaterial({ color: '#d4ffa0' }), 100);
-    this.dots.frustumCulled = false;
-    this.dots.visible = false; // single blue line only, no waypoint dots
-    this.scene.add(this.dots);
+    this.traceGeometry.setAttribute('instanceStart', new THREE.InterleavedBufferAttribute(this.traceBuffer, 3, 0));
+    this.traceGeometry.setAttribute('instanceEnd', new THREE.InterleavedBufferAttribute(this.traceBuffer, 3, 3));
+    this.traceGeometry.instanceCount = 0;
     this.trace = new Line2(this.traceGeometry, this.traceMaterial);
     this.trace.frustumCulled = false;
     this.scene.add(this.trace);
@@ -151,7 +155,7 @@ export class Arena {
     this.bindInput();
     this.renderer.domElement.addEventListener('webglcontextlost', event => {
       event.preventDefault();
-      this.paused = true;
+      this.setPaused(true);
       this.events.error('The graphics context was interrupted. Reload the arena to continue.');
     });
     this.resize();
@@ -184,27 +188,28 @@ export class Arena {
     if (inPenaltyBox(this.settings.position)) this.settings.wall = 0;
     if (playerChanged) this.taker.setProfile(getPlayer(settings.playerId));
     if (settings.atmosphere !== old.atmosphere) this.stadium.setAtmosphere(settings.atmosphere);
-    const graphicsChanged = JSON.stringify(settings.graphics) !== JSON.stringify(old.graphics);
-    if (qualityChanged || graphicsChanged) {
-      this.stadium.setQuality(settings.quality);
-      this.renderer.shadowMap.enabled = settings.graphics.shadows > 0;
-      this.renderer.shadowMap.type = settings.graphics.shadows >= 2048 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    const g = settings.graphics, previous = old.graphics;
+    if (qualityChanged) this.stadium.setQuality(settings.quality);
+    if (g.shadows !== previous.shadows) {
+      this.renderer.shadowMap.enabled = g.shadows > 0;
+      this.renderer.shadowMap.type = g.shadows >= 2048 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+      // Only a shadow-mode change requires shadow shader invalidation.
       this.scene.traverse(object => {
         if (object instanceof THREE.Mesh) for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.needsUpdate = true;
       });
-      const size = settings.graphics.shadows || 512;
+      const size = g.shadows || 512;
       this.stadium.sun.shadow.mapSize.set(size, size);
       this.stadium.sun.shadow.map?.dispose();
       this.stadium.sun.shadow.map = null;
-      this.resize();
+      this.renderer.shadowMap.needsUpdate = true;
+    }
+    if (g.resolution !== previous.resolution) this.resize();
+    else if (qualityChanged || g.msaa !== previous.msaa || g.smaa !== previous.smaa || g.bloom !== previous.bloom) {
+      this.post.configure(this.postOptions(), this.width, this.height);
     }
     if (moved || playerChanged || (this.phase === 'result' && gameplayChanged)) this.reset();
-    else if (this.phase === 'ready' || this.phase === 'charging') this.updatePreview(true);
+    else if (this.phase === 'ready' || this.phase === 'charging') this.previewDirty = true;
     this.trace.visible = this.settings.guides && this.tracePointCount > 1 && (this.phase === 'flight' || this.phase === 'result');
-    if (this.traceDirty && this.tracePointCount > 1) {
-      this.traceGeometry.setPositions(this.tracePositions.subarray(0, this.tracePointCount * 3));
-      this.traceDirty = false;
-    }
   }
 
   /** Horizontal lens shift: moves the menu subject to the right of centre without moving the camera. */
@@ -258,6 +263,7 @@ export class Arena {
     this.positionTaker(0);
     this.keeperModel.keeperPose(this.keeper, this.time);
     this.tracePointCount = 0;
+    this.traceUploadedCount = 0;
     this.setTrace();
     this.setPhase('ready');
     this.updatePreview(true);
@@ -278,9 +284,11 @@ export class Arena {
     this.shotSetup = this.setup(this.power);
     this.guide.visible = false;
     this.ring.visible = false;
-    this.replayFrames = [];
+    this.replayFrames.clear();
+    this.resultBallTime = Infinity;
     this.lastResult = null;
     this.tracePointCount = 0;
+    this.traceUploadedCount = 0;
     this.setTrace();
     this.setPhase('runup');
   }
@@ -306,8 +314,13 @@ export class Arena {
 
   setPaused(paused: boolean) {
     if (paused) this.cancelCharge();
+    if (this.paused === paused) return;
     this.paused = paused;
     this.lastTick = 0;
+    this.metricsStart = 0;
+    this.metricsFrames = 0;
+    if (paused) { cancelAnimationFrame(this.raf); this.raf = 0; }
+    else if (!this.raf) this.raf = requestAnimationFrame(this.tick);
   }
 
   setAttract(on: boolean) {
@@ -326,7 +339,7 @@ export class Arena {
   private setAim(aim: Aim) {
     this.settings.aim = { x: clamp(aim.x, -AIM_LIMITS.x, AIM_LIMITS.x), y: clamp(aim.y, AIM_LIMITS.yMin, AIM_LIMITS.yMax) };
     this.events.aim({ ...this.settings.aim });
-    this.updatePreview(true);
+    this.previewDirty = true;
   }
 
   private bindInput() {
@@ -389,30 +402,20 @@ export class Arena {
   }
 
   private updatePreview(force = false) {
-    const power = this.phase === 'charging' ? this.power : recommendedPower(this.settings.position);
-    if (!force && Math.abs(power - this.previewPower) < 0.025) return;
-    this.previewPower = power;
-    const points = previewShot(this.setup(power));
-    const count = Math.min(points.length, 512);
-    let travelled = 0;
-    let dot = 0;
-    const object = this.scratchObject;
-    for (let i = 0; i < count; i++) {
-      const p = points[i];
-      this.guidePositions.set([p.x, p.y, p.z], i * 3);
-      if (i) travelled += Math.hypot(p.x - points[i - 1].x, p.y - points[i - 1].y, p.z - points[i - 1].z);
-      this.guideDistances[i] = travelled;
-      if (i % 3 === 0 && dot < 100) {
-        object.position.set(p.x, p.y, p.z); object.updateMatrix(); this.dots.setMatrixAt(dot++, object.matrix);
-      }
-    }
-    this.guide.geometry.setDrawRange(0, count);
-    this.guide.geometry.attributes.position.needsUpdate = true;
-    this.guide.geometry.attributes.lineDistance.needsUpdate = true;
-    this.dots.count = dot;
-    this.dots.instanceMatrix.needsUpdate = true;
     this.guide.visible = this.settings.guides && (this.phase === 'ready' || this.phase === 'charging');
     this.ring.visible = true;
+    // Keep invalidation pending while hidden; regenerate with current settings when shown.
+    if (!this.guide.visible) { this.previewDirty = true; return; }
+    const power = this.phase === 'charging' ? this.power : recommendedPower(this.settings.position);
+    if (!force && !this.previewDirty && Math.abs(power - this.previewPower) < 0.025) return;
+    this.previewDirty = false;
+    this.previewPower = power;
+    const count = previewShotInto(this.setup(power), this.guidePositions);
+    this.guide.geometry.setDrawRange(0, count);
+    const attribute = this.guide.geometry.attributes.position as THREE.BufferAttribute;
+    attribute.clearUpdateRanges();
+    attribute.addUpdateRange(0, count * 3);
+    attribute.needsUpdate = true;
   }
 
   private readonly frustum = new THREE.Frustum();
@@ -420,21 +423,24 @@ export class Arena {
   private readonly viewSphere = new THREE.Sphere(new THREE.Vector3(), 1.4);
   /** Smart culling: an athlete outside the camera view skips its per-frame pose math. Its pose is recomputed from the clock when it returns, so nothing changes on screen. */
   private inView(object: THREE.Object3D): boolean {
+    if (!object.visible) return false;
     this.viewSphere.center.setFromMatrixPosition(object.matrixWorld);
     this.viewSphere.center.y = 1;
     return this.frustum.intersectsSphere(this.viewSphere);
   }
 
   private tick = (timestamp: number) => {
+    this.raf = 0;
+    if (this.paused) return;
     this.raf = requestAnimationFrame(this.tick);
     this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.viewProjection);
-    if (this.paused) { this.metricsStart = timestamp; this.metricsFrames = 0; return; }
     // Every frame renders at the display rate, idle included: no throttling, so no catch-up spikes.
     const dt = this.lastTick ? Math.min((timestamp - this.lastTick) / 1000, 0.1) : 1 / 60;
     this.lastTick = timestamp;
     this.time += dt;
     this.phaseTime += dt;
+    if (this.previewDirty && this.phase === 'ready') this.updatePreview();
     if (this.phase === 'charging') {
       this.chargeTime += dt;
       this.power = Math.min(1, this.chargeTime / 1.65);
@@ -443,13 +449,15 @@ export class Arena {
       if (this.chargeTime >= 2.05) this.release();
     }
     if (this.phase === 'ready' || this.phase === 'charging') {
-      this.taker.idle(this.time);
+      if (this.phase === 'charging') this.taker.prepare(this.time, this.power);
+      else this.taker.idle(this.time);
       this.keeperModel.keeperPose(this.keeper, this.time);
       this.wallModels.forEach((p, i) => { if (this.inView(p.group)) p.wallPose(0, this.time + i * 0.7); });
     } else if (this.phase === 'runup') {
       const progress = Math.min(1, this.phaseTime / RUNUP_SECONDS);
       this.positionTaker(progress);
       this.taker.run(progress, this.settings.foot);
+      this.keeperModel.keeperPose(this.keeper, this.time, Math.max(0, (progress - 0.55) / 0.45));
       if (progress >= 1) {
         this.ball = launchBall(this.shotSetup);
         this.frameCounter = 0;
@@ -463,7 +471,8 @@ export class Arena {
         this.accumulator -= FIXED_DT;
       }
       this.taker.followThrough(this.ball.time, this.settings.foot);
-      this.wallModels.forEach(p => { if (this.inView(p.group)) p.wallPose(wallJump(this.ball.time), this.time); });
+      const jump = wallJump(this.ball.time);
+      this.wallModels.forEach(p => { if (this.inView(p.group)) p.wallPose(jump, this.ball.time); });
       this.keeperModel.keeperPose(this.keeper, this.time);
     } else if (this.phase === 'result') {
       if (this.phaseTime < 1.8) {
@@ -473,9 +482,9 @@ export class Arena {
           this.accumulator -= FIXED_DT;
         }
       }
-      this.taker.followThrough(this.ball.time, this.settings.foot);
+      this.taker.react(this.lastResult!.outcome, this.phaseTime, this.ball.time, this.settings.foot);
       this.wallModels.forEach(p => { if (this.inView(p.group)) p.wallPose(0, this.time); });
-      this.keeperModel.keeperPose(this.keeper, this.time);
+      this.keeperModel.keeperRecover(this.keeper, this.time, this.phaseTime, this.lastResult!.outcome);
     } else if (this.phase === 'replay') this.stepReplay(dt);
     this.football.position.set(this.ball.position.x, this.ball.position.y, this.ball.position.z);
     if (this.phase === 'flight' || this.phase === 'result' || this.phase === 'replay') {
@@ -488,6 +497,8 @@ export class Arena {
     this.stadium.update(this.time);
     this.updateCamera(dt);
     this.renderer.shadowMap.needsUpdate = true;
+    if (this.traceDirty) this.setTrace();
+    this.renderer.info.reset();
     this.post.render();
     this.metricsFrames++;
     if (!this.metricsStart) this.metricsStart = timestamp;
@@ -499,12 +510,13 @@ export class Arena {
   };
 
   private stepShot() {
-    const event = advanceShot(this.ball, this.keeper, this.wall, this.settings.difficulty);
+    const event = advanceShot(this.ball, this.keeper, this.wall, this.settings.difficulty, this.shotScratch);
     this.recordFrame();
     if (!event) return;
+    if (event.frameImpact) this.events.woodwork?.();
     const impact = new THREE.Vector3(event.point.x, event.point.y, -1.6);
     if (event.outcome === 'goal') this.stadium.ripple(impact, this.time);
-    if (event.outcome === 'goal' || event.outcome === 'post') this.stadium.celebrate(impact, this.time, event.outcome === 'goal');
+    if (event.outcome === 'goal' || event.frameImpact) this.stadium.celebrate(impact, this.time, event.outcome === 'goal');
     if (event.continues) return;
     this.resolve(event.outcome, event.point);
   }
@@ -524,32 +536,46 @@ export class Arena {
       this.ball.position.y = Math.min(this.ball.position.y, GOAL_HEIGHT - 0.1);
       this.ball.velocity.x *= 0.98;
     }
-    if (this.phaseTime < 0.9) this.recordFrame();
+    this.recordFrame();
   }
 
   private recordFrame() {
     this.frameCounter++;
     if (this.frameCounter % 2 !== 0) return;
-    if (this.replayFrames.length < 480) this.replayFrames.push({ ball: { ...this.ball.position }, keeper: cloneKeeper(this.keeper), time: this.ball.time });
+    this.replayFrames.record(this.ball, this.keeper);
     if (this.tracePointCount >= 240) this.tracePositions.copyWithin(0, 3);
     else this.tracePointCount++;
     const i = (this.tracePointCount - 1) * 3;
     this.tracePositions[i] = this.ball.position.x;
     this.tracePositions[i + 1] = this.ball.position.y;
-    this.traceDirty = true;
     this.tracePositions[i + 2] = this.ball.position.z;
-    this.setTrace();
+    this.traceDirty = true;
   }
 
   private setTrace() {
-    this.trace.geometry.setDrawRange(0, this.tracePointCount);
-    this.trace.geometry.attributes.position.needsUpdate = true;
-    this.trace.visible = this.tracePointCount > 1 && this.settings.guides;
+    const count = Math.max(0, this.tracePointCount - 1);
+    // Persistent Line2 segment storage: no setPositions allocations during flight.
+    const start = count === 239 ? 0 : Math.min(this.traceUploadedCount || 0, count);
+    for (let i = start; i < count; i++) {
+      const point = i * 3, segment = i * 6;
+      for (let j = 0; j < 6; j++) this.traceSegments[segment + j] = this.tracePositions[point + j];
+    }
+    this.traceGeometry.instanceCount = count;
+    if (count > start) {
+      this.traceBuffer.clearUpdateRanges();
+      this.traceBuffer.addUpdateRange(start * 6, (count - start) * 6);
+      this.traceBuffer.needsUpdate = true;
+    }
+    this.trace.visible = this.tracePointCount > 1 && this.settings.guides && this.phase !== 'replay';
+    this.traceUploadedCount = count;
+    this.traceDirty = false;
   }
 
   private resolve(outcome: Outcome, point = this.ball.position) {
+    this.resultBallTime = this.ball.time;
     this.lastResult = {
       outcome,
+      frameHits: this.ball.frameHits,
       distance: distanceToGoal(this.shotSetup.position),
       speed: shotSpeed(this.shotSetup.power, this.shotSetup.attributes) * 3.6,
       power: this.shotSetup.power,
@@ -563,15 +589,17 @@ export class Arena {
   private stepReplay(dt: number) {
     this.replayClock += dt * 0.55;
     const index = Math.floor(this.replayClock * 60);
-    const a = this.replayFrames[Math.min(index, this.replayFrames.length - 1)];
-    const b = this.replayFrames[Math.min(index + 1, this.replayFrames.length - 1)];
-    if (a && b) {
-      const fraction = this.replayClock * 60 - index;
-      this.ball.position = { x: lerp(a.ball.x, b.ball.x, fraction), y: lerp(a.ball.y, b.ball.y, fraction), z: lerp(a.ball.z, b.ball.z, fraction) };
-      this.keeper = cloneKeeper(a.keeper);
-      this.keeperModel.keeperPose(this.keeper, this.time);
-      this.wallModels.forEach(p => p.wallPose(wallJump(a.time), this.time));
-      this.taker.followThrough(a.time, this.settings.foot);
+    if (this.replayFrames.sample(this.replayClock * 60, this.ball, this.keeper)) {
+      const elapsed = this.ball.time - this.resultBallTime;
+      if (elapsed >= 0 && this.lastResult) {
+        this.keeperModel.keeperRecover(this.keeper, this.ball.time, elapsed, this.lastResult.outcome);
+        this.taker.react(this.lastResult.outcome, elapsed, this.ball.time, this.settings.foot);
+      } else {
+        this.keeperModel.keeperPose(this.keeper, this.ball.time);
+        this.taker.followThrough(this.ball.time, this.settings.foot);
+      }
+      const jump = wallJump(this.ball.time);
+      this.wallModels.forEach(p => { if (p.group.visible) p.wallPose(jump, this.ball.time); });
     }
     if (index >= this.replayFrames.length + 15) {
       if (this.savedBall) this.ball = this.savedBall;
@@ -628,6 +656,7 @@ export class Arena {
         for (const mat of materials) mat.dispose();
       }
     });
+    this.post.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

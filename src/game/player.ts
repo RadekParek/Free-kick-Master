@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { normalMapFromCanvas } from './pbr';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { KeeperState } from './keeper';
-import type { Foot } from './physics';
+import type { Foot, Outcome } from './physics';
+import { idlePose, preparePose, runPose, followThroughPose, reactionPose, wallPose, keeperPose, keeperRecoveryPose, type PlayerRole } from './animation';
+export type { PlayerRole } from './animation';
 import type { TakerProfile } from '../players';
 
-export type PlayerRole = 'taker' | 'wall' | 'keeper';
 export type Detail = 'high' | 'low';
 
 /** Beyond this camera distance (m) the athlete switches to its low-detail rig. */
@@ -78,6 +79,10 @@ class Athlete {
   readonly rightShin = new THREE.Group();
   readonly leftArm = new THREE.Group();
   readonly rightArm = new THREE.Group();
+  readonly head = new THREE.Group();
+  readonly leftForearm = new THREE.Group();
+  readonly rightForearm = new THREE.Group();
+  private readonly animated: THREE.Object3D[];
   readonly torso: THREE.Mesh;
   readonly beard: THREE.Mesh;
   readonly numberPlate: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
@@ -184,6 +189,22 @@ class Athlete {
       if (hi && !keeperHand) sphere(skin, arm, side * .034, -.478, -.062, .017, .03, .015, 10);
       if (hi && keeperHand) for (let f = 0; f < 4; f++) mesh(new THREE.CapsuleGeometry(.012, .05, 2, 6), glove, arm, (f - 1.5) * .03, -.575, -.05);
     }
+    this.head.position.y = 1.49;
+    for (const child of [...this.body.children]) {
+      if (child instanceof THREE.Mesh && child.position.y > 1.52) {
+        child.position.y -= 1.49;
+        this.head.add(child);
+      }
+    }
+    this.body.add(this.head);
+    // Elbows carry the existing forearm/glove geometry; no extra surface detail is removed.
+    for (const [arm, forearm] of [[this.leftArm, this.leftForearm], [this.rightArm, this.rightForearm]]) {
+      forearm.position.y = -0.17;
+      for (const child of [...arm.children]) {
+        if (child.position.y < -0.17) { child.position.y += 0.17; forearm.add(child); }
+      }
+      arm.add(forearm);
+    }
     this.numberPlate = new THREE.Mesh(
       new THREE.PlaneGeometry(.30, .33),
       new THREE.MeshStandardMaterial({ map: numberTexture(number, role === 'taker' ? 'MASTER' : role === 'keeper' ? 'KEEPER' : 'UNITED', role === 'wall' ? '#15253a' : '#f8f1db'), transparent: true, depthWrite: false, roughness: .9 }),
@@ -208,6 +229,13 @@ class Athlete {
         geometries.forEach(geometry => geometry.dispose());
       }
     });
+    this.animated = [this.body, this.head, this.torso, this.leftLeg, this.rightLeg, this.leftShin, this.rightShin, this.leftArm, this.rightArm, this.leftForearm, this.rightForearm];
+    // Rigid surfaces never change their local transforms; only their parent joints animate.
+    this.root.traverse(object => {
+      if (object instanceof THREE.Mesh && object !== this.torso) {
+        object.updateMatrix(); object.matrixAutoUpdate = false;
+      }
+    });
     this.idle(0);
   }
 
@@ -221,116 +249,30 @@ class Athlete {
     this.numberPlate.material.needsUpdate = true;
   }
 
-  idle(time: number) {
-    this.body.position.set(0, Math.sin(time * 2.2) * 0.007, 0);
-    this.body.rotation.set(0, 0, 0);
-    this.leftLeg.rotation.set(0.03, 0, -0.03);
-    this.rightLeg.rotation.set(-0.04, 0, 0.03);
-    // Subtle weight shift and toe tap keep standing athletes alive without any extra meshes.
-    this.leftShin.rotation.x = Math.max(0, Math.sin(time * 2.6)) * 0.035;
-    this.rightShin.rotation.x = Math.max(0, Math.sin(time * 2.6 + Math.PI)) * 0.035;
-    this.leftArm.rotation.set(-0.12 + Math.sin(time * 1.7) * 0.04, 0, -0.16);
-    this.rightArm.rotation.set(0.07 + Math.sin(time * 1.7 + 1) * 0.04, 0, 0.16);
-    if (this.role === 'wall') {
-      this.leftArm.rotation.x = -0.25;
-      this.rightArm.rotation.x = -0.25;
-      this.leftArm.rotation.z = -0.32;
-      this.rightArm.rotation.z = 0.32;
-    }
-    this.torso.rotation.z = Math.sin(time * 1.4) * 0.012;
-  }
+  idle(time: number) { idlePose(this, time, this.role); }
+  prepare(time: number, charge: number) { preparePose(this, time, charge); }
+  run(phase: number, foot: Foot) { runPose(this, phase, foot); }
+  followThrough(time: number, foot: Foot) { followThroughPose(this, time, foot); }
+  react(outcome: Outcome, elapsed: number, shotTime: number, foot: Foot) { reactionPose(this, outcome, elapsed, shotTime, foot); }
+  wallPose(jump: number, time: number) { wallPose(this, jump, time); }
+  keeperPose(k: KeeperState, time: number, preparation = 0) { keeperPose(this, k, time, preparation); }
+  keeperRecover(k: KeeperState, time: number, elapsed: number, outcome: Outcome) { keeperRecoveryPose(this, k, time, elapsed, outcome); }
 
-  run(phase: number, foot: Foot) {
-    // Approach: the stride quickens and the body leans over the ball; the strike is a
-    // backswing with a flexed knee, a hip turn, and a whip through the ball.
-    const kickStart = 0.7;
-    const approach = Math.min(phase, kickStart) / kickStart;
-    // Cadence rises through the run: about five steps from the start to the plant.
-    const stride = Math.PI * 2 * (2.1 * phase + 0.6 * phase * phase);
-    const swing = Math.sin(stride);
-    const amp = 0.32 + 0.4 * approach;
-    const sign = foot === 'right' ? 1 : -1;
-    const striking = foot === 'right' ? this.rightLeg : this.leftLeg;
-    const strikingShin = foot === 'right' ? this.rightShin : this.leftShin;
-    const support = foot === 'right' ? this.leftLeg : this.rightLeg;
-    const supportShin = foot === 'right' ? this.leftShin : this.rightShin;
-    const armForward = foot === 'right' ? this.leftArm : this.rightArm;
-    const armBack = foot === 'right' ? this.rightArm : this.leftArm;
-    const smooth = (x: number) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
-
-    this.body.position.y = Math.abs(swing) * 0.05 * (0.5 + approach);
-    this.body.rotation.set(-0.06 - 0.14 * approach, -sign * 0.06 * approach, 0);
-    this.leftLeg.rotation.set(swing * amp, 0, 0);
-    this.rightLeg.rotation.set(-swing * amp, 0, 0);
-    this.leftShin.rotation.x = Math.min(0, -swing) * 1.0 * (0.4 + approach);
-    this.rightShin.rotation.x = Math.min(0, swing) * 1.0 * (0.4 + approach);
-    this.leftArm.rotation.set(-swing * 0.9 * (0.5 + approach), 0, -0.25 - 0.15 * approach);
-    this.rightArm.rotation.set(swing * 0.9 * (0.5 + approach), 0, 0.25 + 0.15 * approach);
-
-    if (phase > kickStart) {
-      const k = (phase - kickStart) / (1 - kickStart);
-      const back = smooth(k / 0.55);
-      const whip = smooth((k - 0.55) / 0.25);
-      const leg = whip > 0 ? -1.35 + (1.7 + 1.35) * whip : -0.95 - 0.4 * back;
-      const knee = -1.4 * (whip > 0 ? 1 - whip : back);
-      striking.rotation.set(leg, 0, sign * -0.1 * (1 - whip));
-      strikingShin.rotation.x = knee;
-      support.rotation.set(-0.14 - 0.06 * whip, 0, -sign * 0.1);
-      supportShin.rotation.x = -0.2;
-      armForward.rotation.set(-0.7 - 0.5 * whip, 0, foot === 'right' ? -0.95 : 0.95);
-      armBack.rotation.set(0.6 + 0.4 * back, 0, foot === 'right' ? 0.95 : -0.95);
-      this.body.rotation.x = -0.2 - 0.1 * whip;
-      this.body.rotation.y = sign * (0.25 * whip - 0.12 * back);
-      this.body.rotation.z = sign * (0.14 * back - 0.08 * whip);
+  /** Math is evaluated on the high rig once. Copy the identical pose to the alternate LOD. */
+  copyPose(source: Athlete) {
+    for (let i = 0; i < this.animated.length; i++) {
+      const from = source.animated[i], to = this.animated[i];
+      to.position.copy(from.position);
+      to.quaternion.copy(from.quaternion);
     }
   }
 
-  followThrough(time: number, foot: Foot) {
-    const settle = Math.max(0, 1 - time * 1.8);
-    this.idle(time);
-    const strikingLeg = foot === 'right' ? this.rightLeg : this.leftLeg;
-    strikingLeg.rotation.x = settle * 1.7 - 0.2;
-    this.leftArm.rotation.z = -0.16 - settle * 1.0;
-    this.rightArm.rotation.z = 0.16 + settle * 0.8;
-    this.body.rotation.x = -0.22 * settle;
-  }
-
-  wallPose(jump: number, time: number) {
-    this.idle(time);
-    this.body.position.y = jump;
-    this.leftArm.rotation.x = -0.35;
-    this.rightArm.rotation.x = -0.35;
-  }
-
-  keeperPose(k: KeeperState, time: number) {
-    this.idle(time);
-    if (k.dive > 0) {
-      const angle = k.direction * k.dive * 0.94;
-      this.body.rotation.z = angle;
-      this.body.position.set(Math.sin(angle), 0.9 + (k.glove.y - 1.1) * 0.35 - Math.cos(angle), 0);
-      this.leftArm.rotation.z = -k.direction * 2.3;
-      this.rightArm.rotation.z = -k.direction * 2.15;
-      this.leftLeg.rotation.z = -0.22;
-      this.rightLeg.rotation.z = 0.26;
-      this.leftLeg.rotation.x = k.dive * 0.2;
-      this.rightLeg.rotation.x = -k.dive * 0.3;
-    } else {
-      this.body.position.y = -0.065 + Math.sin(time * 3) * 0.012;
-      this.leftLeg.rotation.x = -0.18;
-      this.rightLeg.rotation.x = -0.18;
-      this.leftShin.rotation.x = 0.18;
-      this.rightShin.rotation.x = 0.18;
-      this.leftArm.rotation.z = -0.5;
-      this.rightArm.rotation.z = 0.5;
-      this.leftArm.rotation.x = -0.35;
-      this.rightArm.rotation.x = -0.35;
-    }
-  }
 }
 
 /**
  * An athlete with two rigs (high + low detail) under one THREE.LOD. three.js picks the level
- * per camera distance during render; both rigs are posed so a level switch never pops a stale pose.
+ * per camera distance during render; pose math runs once and is copied to both rigs so
+ * switching detail never shows a stale animation. Geometry and LOD distances are unchanged.
  */
 export class Player {
   readonly group = new THREE.LOD();
@@ -349,20 +291,31 @@ export class Player {
   }
 
   setProfile(profile: TakerProfile) { for (const rig of this.rigs) rig.setProfile(profile); }
-  idle(time: number) { for (const rig of this.rigs) rig.idle(time); }
-  run(phase: number, foot: Foot) { for (const rig of this.rigs) rig.run(phase, foot); }
-  followThrough(time: number, foot: Foot) { for (const rig of this.rigs) rig.followThrough(time, foot); }
+  private syncPose() { this.rigs[1].copyPose(this.rigs[0]); }
+  idle(time: number) { this.rigs[0].idle(time); this.syncPose(); }
+  prepare(time: number, charge: number) { this.rigs[0].prepare(time, charge); this.syncPose(); }
+  run(phase: number, foot: Foot) { this.rigs[0].run(phase, foot); this.syncPose(); }
+  followThrough(time: number, foot: Foot) { this.rigs[0].followThrough(time, foot); this.syncPose(); }
+  react(outcome: Outcome, elapsed: number, shotTime: number, foot: Foot) {
+    this.rigs[0].react(outcome, elapsed, shotTime, foot); this.syncPose();
+  }
   wallPose(jump: number, time: number) {
-    for (const rig of this.rigs) rig.wallPose(jump, time);
+    this.rigs[0].wallPose(jump, time); this.syncPose();
     this.shadow.scale.setScalar(1 - jump * 0.3);
   }
   /** Body yaw in the goal; the arena turns it toward the shot's angle. Facing the spot is PI. */
   yaw = Math.PI;
-  keeperPose(k: KeeperState, time: number) {
+  keeperPose(k: KeeperState, time: number, preparation = 0) {
     this.group.position.x = k.x;
     this.group.rotation.y = this.yaw;
-    for (const rig of this.rigs) rig.keeperPose(k, time);
+    this.rigs[0].keeperPose(k, time, preparation); this.syncPose();
   }
+  keeperRecover(k: KeeperState, time: number, elapsed: number, outcome: Outcome) {
+    this.group.position.x = k.x;
+    this.group.rotation.y = this.yaw;
+    this.rigs[0].keeperRecover(k, time, elapsed, outcome); this.syncPose();
+  }
+
 }
 
 export function makeFootball(): THREE.Mesh {
