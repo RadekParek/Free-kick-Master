@@ -22,23 +22,31 @@ function grassTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 2048;
   const ctx = canvas.getContext('2d')!;
   const pixels = ctx.createImageData(canvas.width, canvas.height);
-  const random = seededRandom(7017);
-  // One contiguous image-data write instead of 200,000 expensive canvas draw calls.
-  for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
-    const i = (y * canvas.width + x) * 4;
-    const stripe = Math.floor(y / 128) % 2 ? .9 : 1.06;
-    // Low-frequency mowing patches and worn spots break up the uniform colour, like real turf.
-    const patch = 1 + Math.sin(x * .013 + Math.cos(y * .009) * 2) * Math.cos(y * .011 + x * .004) * .055 - (Math.sin(x * .047 + y * .031) > .92 ? .08 : 0);
-    const grain = (random() - .5) * 19 + Math.sin(x * .31 + y * .1) * 2.2;
-    pixels.data[i] = (43 * stripe + grain * .66) * patch;
-    pixels.data[i + 1] = (91 * stripe + grain) * patch;
-    pixels.data[i + 2] = (43 * stripe + grain * .52) * patch;
-    pixels.data[i + 3] = 255;
-  }
+  fillGrassPixels(pixels.data, canvas.width, canvas.height);
   ctx.putImageData(pixels, 0, 0);
   const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 16;
   return texture;
 }
+/** Deterministic full-detail turf generation, separated for byte-equivalence tests. */
+export function fillGrassPixels(data: Uint8ClampedArray, width: number, height: number): void {
+  const random = seededRandom(7017);
+  // One contiguous image-data write instead of 200,000 expensive canvas draw calls.
+  for (let y = 0; y < height; y++) {
+    const stripe = Math.floor(y / 128) % 2 ? .9 : 1.06;
+    const rowCurve = Math.cos(y * .009) * 2;
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      // Low-frequency mowing patches and worn spots break up the uniform colour, like real turf.
+      const patch = 1 + Math.sin(x * .013 + rowCurve) * Math.cos(y * .011 + x * .004) * .055 - (Math.sin(x * .047 + y * .031) > .92 ? .08 : 0);
+      const grain = (random() - .5) * 19 + Math.sin(x * .31 + y * .1) * 2.2;
+      data[i] = (43 * stripe + grain * .66) * patch;
+      data[i + 1] = (91 * stripe + grain) * patch;
+      data[i + 2] = (43 * stripe + grain * .52) * patch;
+      data[i + 3] = 255;
+    }
+  }
+}
+
 function turfNormal(): THREE.DataTexture {
   const size = 128; const data = new Uint8Array(size * size * 4); const random = seededRandom(54);
   for (let i = 0; i < data.length; i += 4) { data[i] = 128 + (random() - .5) * 75; data[i + 1] = 128 + (random() - .5) * 75; data[i + 2] = 248; data[i + 3] = 255; }
@@ -150,6 +158,7 @@ export class Stadium {
   private crowdSeats!: THREE.Group;
   private readonly photoCrowd = new THREE.Group();
   private photoCrowdReady = false;
+  private disposed = false;
   private quality: Quality = 'high';
   private readonly photoCrowdMaterial = new THREE.MeshBasicMaterial({ color: '#bac9da' });
   private readonly hemisphere = new THREE.HemisphereLight('#bcd2f2', '#264131', 1.7);
@@ -584,6 +593,7 @@ export class Stadium {
     geometryParts.forEach(geometry=>geometry.dispose());
     this.photoCrowd.visible=false;this.group.add(this.photoCrowd);
     new THREE.TextureLoader().load('./textures/stadium-crowd.webp',texture=>{
+      if (this.disposed) { texture.dispose(); return; }
       texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=THREE.RepeatWrapping;texture.anisotropy=4;
       this.photoCrowdMaterial.map=texture;this.photoCrowdMaterial.needsUpdate=true;
       this.photoCrowdReady=true;this.photoCrowd.visible=true;
@@ -676,6 +686,8 @@ export class Stadium {
     this.cheerStrength = goal ? 1 : 0.45;
     if (goal) this.confetti.burst(point);
   }
+
+  dispose() { this.disposed = true; }
 
   update(time: number) {
     this.crowdTime.value = time;

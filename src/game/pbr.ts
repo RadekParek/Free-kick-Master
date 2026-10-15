@@ -12,14 +12,23 @@ export function normalMapFromCanvas(source: HTMLCanvasElement, strength: number)
   out.width = w; out.height = h;
   const octx = out.getContext('2d')!;
   const img = octx.createImageData(w, h);
-  const height = (x: number, y: number) => {
-    const i = (((y + h) % h) * w + ((x + w) % w)) * 4;
-    return (src[i] + src[i + 1] + src[i + 2]) / 765;
-  };
-  for (let y = 0; y < h; y++) {
+  // Three full-precision scanlines preserve byte output without a full-image height buffer.
+  // At 1024 px wide this is 24 KiB rather than 4 MiB for the 1024×512 ball texture.
+  const heights = new Float64Array(w * 3);
+  const readRow = (sourceY: number, slot: number) => {
     for (let x = 0; x < w; x++) {
-      const dx = (height(x + 1, y) - height(x - 1, y)) * strength;
-      const dy = (height(x, y + 1) - height(x, y - 1)) * strength;
+      const j = (sourceY * w + x) * 4;
+      heights[slot * w + x] = (src[j] + src[j + 1] + src[j + 2]) / 765;
+    }
+  };
+  readRow(0, 0);
+  readRow(h - 1, 2);
+  for (let y = 0; y < h; y++) {
+    const row = (y % 3) * w, above = ((y + 2) % 3) * w, below = ((y + 1) % 3) * w;
+    readRow((y + 1) % h, (y + 1) % 3);
+    for (let x = 0; x < w; x++) {
+      const dx = (heights[row + (x + 1) % w] - heights[row + (x + w - 1) % w]) * strength;
+      const dy = (heights[below + x] - heights[above + x]) * strength;
       const len = Math.hypot(dx, dy, 1);
       const o = (y * w + x) * 4;
       img.data[o] = ((-dx / len) * 0.5 + 0.5) * 255;
@@ -36,11 +45,16 @@ export function normalMapFromCanvas(source: HTMLCanvasElement, strength: number)
 }
 
 /** Image-based lighting from a neutral studio room. Shared by every material; generated once. */
-export function studioEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
+export function studioEnvironment(renderer: THREE.WebGLRenderer): THREE.WebGLRenderTarget {
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const texture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  pmrem.dispose();
-  return texture;
+  const room = new RoomEnvironment();
+  try {
+    // Retain the target, not only its texture: its framebuffer also needs disposal.
+    return pmrem.fromScene(room, 0.04);
+  } finally {
+    room.dispose();
+    pmrem.dispose();
+  }
 }
 
 /**

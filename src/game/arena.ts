@@ -17,6 +17,7 @@ import { applyStudioLight, studioEnvironment } from './pbr';
 import { advanceShot, createShotScratch } from './simulation';
 import { ReplayBuffer } from './replay';
 import { getPlayer } from '../players';
+import { disposeSceneResources } from './resources';
 import { effectivePixelRatio, isMobileDevice, type Settings, type ShotResult } from '../state';
 
 /** Real penalty run-ups take about 1.2 to 1.4 s; the taker reaches the ball at this run progress. */
@@ -49,6 +50,9 @@ export class Arena {
   private settings: Settings;
   private events: ArenaEvents;
   private stadium: Stadium;
+  private readonly studio: THREE.WebGLRenderTarget;
+  private readonly takerHere = { x: 0, z: 0 };
+  private readonly takerBefore = { x: 0, z: 0 };
   private football: THREE.Mesh;
   private ballShadow: THREE.Mesh;
   private taker: Player;
@@ -139,8 +143,8 @@ export class Arena {
     this.wallModels.forEach((m, i) => { m.group.scale.y = [1, 0.97, 1.03, 0.985, 1.015][i] ?? 1; });
     this.scene.add(this.taker.group, this.keeperModel.group, ...this.wallModels.map(p => p.group));
     // Studio image-based lighting for the athletes and ball only (PBR reflections, generated once).
-    const studio = studioEnvironment(this.renderer);
-    for (const object of [this.football, this.taker.group, this.keeperModel.group, ...this.wallModels.map(p => p.group)]) applyStudioLight(object, studio);
+    const studio = this.studio = studioEnvironment(this.renderer);
+    for (const object of [this.football, this.taker.group, this.keeperModel.group, ...this.wallModels.map(p => p.group)]) applyStudioLight(object, studio.texture);
     this.ring = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.425, 48), new THREE.MeshBasicMaterial({ color: '#d8ffad', transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
     this.ring.rotation.x = -Math.PI / 2;
     this.scene.add(this.ring);
@@ -199,10 +203,14 @@ export class Arena {
     if (g.shadows !== previous.shadows) {
       this.renderer.shadowMap.enabled = g.shadows > 0;
       this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      // Only a shadow-mode change requires shadow shader invalidation.
-      this.scene.traverse(object => {
-        if (object instanceof THREE.Mesh) for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.needsUpdate = true;
-      });
+      // A size-only change does not change shader defines. Only toggling shadows does.
+      if ((g.shadows > 0) !== (previous.shadows > 0)) {
+        const materials = new Set<THREE.Material>();
+        this.scene.traverse(object => {
+          if (object instanceof THREE.Mesh) for (const material of Array.isArray(object.material) ? object.material : [object.material]) materials.add(material);
+        });
+        for (const material of materials) material.needsUpdate = true;
+      }
       const size = g.shadows || 512;
       this.stadium.sun.shadow.mapSize.set(size, size);
       this.stadium.sun.shadow.map?.dispose();
@@ -215,6 +223,7 @@ export class Arena {
     }
     if (moved || playerChanged || (this.phase === 'result' && gameplayChanged)) this.reset();
     else if (this.phase === 'ready' || this.phase === 'charging') this.previewDirty = true;
+    if (settings.guides !== old.guides) this.setTrace();
     this.trace.visible = this.settings.guides && this.tracePointCount > 1 && (this.phase === 'flight' || this.phase === 'result');
   }
 
@@ -243,10 +252,15 @@ export class Arena {
 
   private resize() {
     const bounds = this.container.getBoundingClientRect();
-    this.width = Math.max(1, bounds.width);
-    this.height = Math.max(1, bounds.height);
-    this.renderer.setPixelRatio(effectivePixelRatio(window.devicePixelRatio || 1, this.settings.graphics.resolution, isMobileDevice()));
-    this.renderer.setSize(this.width, this.height, false);
+    const width = Math.max(1, bounds.width), height = Math.max(1, bounds.height);
+    const pixelRatio = effectivePixelRatio(window.devicePixelRatio || 1, this.settings.graphics.resolution, isMobileDevice());
+    if (width !== this.width || height !== this.height || pixelRatio !== this.renderer.getPixelRatio()) {
+      // setPixelRatio calls setSize internally. Update size + ratio atomically instead,
+      // and avoid resetting the canvas at all for unchanged ResizeObserver notifications.
+      this.renderer.setDrawingBufferSize(width, height, pixelRatio);
+    }
+    this.width = width;
+    this.height = height;
     this.traceMaterial.resolution.set(this.width, this.height);
     this.post.configure(this.postOptions(), this.width, this.height);
     this.camera.aspect = this.width / this.height;
@@ -405,7 +419,7 @@ export class Arena {
   }
 
   /** Ground position of the taker along a curved approach: about 4.8 m back, bending in to the ball. */
-  private takerGround(run: number): { x: number; z: number } {
+  private takerGround(run: number, out: { x: number; z: number }): void {
     const p = this.settings.position;
     const side = this.settings.foot === 'right' ? -1 : 1;
     const t = Math.min(1, Math.max(0, run) / RUNUP_PROGRESS_END);
@@ -414,13 +428,15 @@ export class Arena {
     const back = lerp(4.8, 0.21, e);
     // The lateral offset falls off faster than the distance, which bends the approach into an arc.
     const lateral = side * lerp(1.6, 0.22, Math.pow(e, 0.7));
-    return { x: p.x + p.x / length * back + p.z / length * lateral, z: p.z + p.z / length * back - p.x / length * lateral };
+    out.x = p.x + p.x / length * back + p.z / length * lateral;
+    out.z = p.z + p.z / length * back - p.x / length * lateral;
   }
 
   private positionTaker(run: number) {
     const p = this.settings.position;
-    const here = this.takerGround(run);
-    const before = this.takerGround(Math.max(0, run - 0.02));
+    const here = this.takerHere, before = this.takerBefore;
+    this.takerGround(run, here);
+    this.takerGround(Math.max(0, run - 0.02), before);
     this.taker.group.position.set(here.x, 0, here.z);
     // The body faces the line of travel while running and turns to the ball at the plant.
     const dx = here.x - before.x, dz = here.z - before.z;
@@ -590,6 +606,13 @@ export class Arena {
   }
 
   private setTrace() {
+    if (!this.settings.guides) {
+      // Keep CPU history for toggling guides back on, but do not copy/upload hidden segments.
+      this.trace.visible = false;
+      this.traceUploadedCount = 0;
+      this.traceDirty = false;
+      return;
+    }
     const count = Math.max(0, this.tracePointCount - 1);
     // Persistent Line2 segment storage: no setPositions allocations during flight.
     const start = count === 239 ? 0 : Math.min(this.traceUploadedCount || 0, count);
@@ -695,13 +718,9 @@ export class Arena {
     if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
     this.resizeFrame = 0;
     this.observer.disconnect();
-    this.scene.traverse(object => {
-      if (object instanceof THREE.Mesh || object instanceof THREE.Line) {
-        object.geometry.dispose();
-        const materials = Array.isArray(object.material) ? object.material : [object.material];
-        for (const mat of materials) mat.dispose();
-      }
-    });
+    this.stadium.dispose();
+    disposeSceneResources(this.scene, new Set([this.studio.texture]));
+    this.studio.dispose();
     this.post.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();

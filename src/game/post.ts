@@ -58,8 +58,13 @@ export class PostStack {
    */
   configure(options: PostOptions, width: number, height: number) {
     const { msaa, smaa, bloom, quality } = options;
-    const key = `${msaa}|${smaa}|${bloom}|${quality}`;
-    if (key === this.key) { this.setSize(width, height); return; }
+    const key = `${msaa}|${smaa}|${bloom}`;
+    if (key === this.key) {
+      // Quality only changes bloom strength, not pass topology or render targets.
+      if (this.bloom) this.bloom.strength = quality === 'high' ? 0.16 : 0.1;
+      this.setSize(width, height);
+      return;
+    }
     this.dispose();
     this.key = key;
     const target = new THREE.WebGLRenderTarget(width, height, { type: THREE.HalfFloatType, samples: msaa });
