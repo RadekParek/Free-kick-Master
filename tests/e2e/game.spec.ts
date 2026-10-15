@@ -219,3 +219,35 @@ test('touch viewport has no horizontal overflow and supports a touch shoot gestu
   await page.screenshot({ path: '.artifacts/phone-landscape.png', fullPage: true });
   await context.close();
 });
+
+
+test('keeps resolution option nodes during setup bursts and flushes preferences before pagehide', async ({ page }) => {
+  await openGame(page);
+  await page.locator('#settings-button').click();
+  const result = await page.evaluate(() => {
+    const select = document.querySelector<HTMLSelectElement>('#gfx-resolution')!;
+    const firstOption = select.firstElementChild;
+    const slider = document.querySelector<HTMLInputElement>('#distance-slider')!;
+    for (const distance of [25, 26, 27, 28, 29, 30]) {
+      slider.value = String(distance);
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    // No RAF can run inside this task: this tests the lifecycle flush, not the normal save.
+    window.dispatchEvent(new Event('pagehide'));
+    const saved = JSON.parse(localStorage.getItem('fkm.settings.v1')!);
+    return {
+      sameOption: firstOption === select.firstElementChild,
+      optionCount: select.options.length,
+      distance: Math.hypot(saved.position.x, saved.position.z),
+      sliderDistance: Number(slider.value),
+    };
+  });
+  expect(result.sameOption).toBe(true);
+  expect(result.optionCount).toBe(3);
+  // The native range control snaps to its min-relative step grid, not integer metres.
+  expect(result.distance).toBeCloseTo(result.sliderDistance, 10);
+  expect(result.distance).toBeGreaterThan(29);
+  await page.reload();
+  await expect(page.locator('#app')).toHaveClass('is-ready');
+  await expect(page.locator('#distance-value')).toHaveText(`${result.sliderDistance.toFixed(1)} m`);
+});

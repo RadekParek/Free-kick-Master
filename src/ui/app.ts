@@ -10,6 +10,7 @@ import { inPenaltyBox, clamp, constrainPosition, distanceBounds, distanceToGoal,
 import { DIFFICULTIES, KEEPER_PROFILES, type Difficulty } from '../game/keeper';
 import { DEFAULT_SETTINGS, effectivePixelRatio, emptySession, graphicsForPreset, isMobileDevice, loadSettings, nextPracticeAtmosphere, recordShot, saveSettings, tierOf, type GraphicsOptions, type Preset, type RenderScale, type Settings, type ShotResult, type ShadowSize } from '../state';
 import { fkLogo, brandSymbol } from './brand';
+import { FrameTask } from './frame-task';
 import { CONTACT_BALL_SVG, PITCH_MAP_SVG, QUICK_PITCH_MAP_SVG } from './svg';
 
 const icons = { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, AudioLines, Check, ChevronDown, Crosshair, Dumbbell, Flame, Focus, HelpCircle, Maximize, Minus, MousePointer2, Move, Plus, RotateCcw, Settings2, Shield, Smartphone, Sparkles, Trophy, Users, Volume2, VolumeX, X, Zap };
@@ -41,6 +42,7 @@ const CHALLENGES: Challenge[] = [
 
 export class GameApp {
   private settings = loadSettings();
+  private readonly settingsSave = new FrameTask(() => saveSettings(this.settings));
   private session = emptySession();
   private arena: Arena | null = null;
   private audio = new GameAudio();
@@ -386,6 +388,7 @@ export class GameApp {
       if (!this.overlayOpen()) focus?.focus({ preventScroll: true });
     });
     document.addEventListener('visibilitychange', () => this.setVisible(!document.hidden));
+    window.addEventListener('pagehide', () => this.settingsSave.flush());
     window.addEventListener('blur', () => { this.powerPointer = null; this.arena?.cancelCharge(); });
     const unlockAudio = (event: Event) => {
       if (this.visible && !(this.view === 'game' && this.overlayOpen())) this.audio.unlock();
@@ -398,6 +401,7 @@ export class GameApp {
   }
 
   setVisible(visible: boolean) {
+    if (!visible) this.settingsSave.flush();
     this.visible = visible;
     this.music.setVisible(visible);
     this.syncPause();
@@ -519,7 +523,7 @@ export class GameApp {
   private applySettings() {
     this.scheduleArenaSettings();
     this.syncUI();
-    saveSettings(this.settings);
+    this.settingsSave.schedule();
   }
 
   private scheduleArenaSettings() {
@@ -531,6 +535,7 @@ export class GameApp {
   }
 
   private flushArenaSettings() {
+    this.settingsSave.flush();
     if (!this.arenaSettingsFrame) return;
     cancelAnimationFrame(this.arenaSettingsFrame);
     this.arenaSettingsFrame = 0;
@@ -560,11 +565,15 @@ export class GameApp {
     const dpr = window.devicePixelRatio || 1;
     const mobile = isMobileDevice();
     const resolution = $<HTMLSelectElement>('#gfx-resolution');
-    resolution.innerHTML = ([[1, mobile ? 'Phone max' : 'Native'], [0.75, '75%'], [0.5, 'Half']] as const)
-      .map(([scale, label]) => {
-        const ratio = effectivePixelRatio(dpr, scale, mobile);
-        return `<option value="${scale}">${label} · ${Math.round(innerWidth * ratio)} × ${Math.round(innerHeight * ratio)}</option>`;
-      }).join('');
+    const resolutionKey = `${innerWidth}|${innerHeight}|${dpr}|${mobile}`;
+    if (resolution.dataset.viewport !== resolutionKey) {
+      resolution.dataset.viewport = resolutionKey;
+      resolution.innerHTML = ([[1, mobile ? 'Phone max' : 'Native'], [0.75, '75%'], [0.5, 'Half']] as const)
+        .map(([scale, label]) => {
+          const ratio = effectivePixelRatio(dpr, scale, mobile);
+          return `<option value="${scale}">${label} · ${Math.round(innerWidth * ratio)} × ${Math.round(innerHeight * ratio)}</option>`;
+        }).join('');
+    }
     resolution.value = String(g.resolution);
     $<HTMLSelectElement>('#gfx-msaa').value = String(g.msaa);
     $<HTMLInputElement>('#gfx-smaa').checked = g.smaa;

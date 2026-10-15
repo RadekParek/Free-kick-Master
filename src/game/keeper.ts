@@ -87,7 +87,9 @@ export function keeperSaves(point: Vec3, k: KeeperState, penalty = false): boole
   const bodyWidth = 0.35 + k.dive * 0.14 + BALL_RADIUS + penaltyReach;
   const bodyHeight = 0.78 - k.dive * 0.2 + BALL_RADIUS + penaltyReach;
   const body = ((point.x - k.x) / bodyWidth) ** 2 + ((point.y - bodyY) / bodyHeight) ** 2 <= 1;
-  const hands = Math.hypot(point.x - k.glove.x, point.y - k.glove.y) < 0.27 + BALL_RADIUS + (penalty ? 0.08 : 0);
+  if (body) return true;
+  const handRadius = 0.27 + BALL_RADIUS + (penalty ? 0.08 : 0);
+  if ((point.x - k.glove.x) ** 2 + (point.y - k.glove.y) ** 2 < handRadius ** 2) return true;
   // A swept reach between torso and hands; no random difficulty-based save percentage.
   const ax = k.x;
   const ay = bodyY + 0.25;
@@ -95,6 +97,6 @@ export function keeperSaves(point: Vec3, k: KeeperState, penalty = false): boole
   const by = k.glove.y;
   const denom = (bx - ax) ** 2 + (by - ay) ** 2;
   const t = denom > 0 ? clamp(((point.x - ax) * (bx - ax) + (point.y - ay) * (by - ay)) / denom, 0, 1) : 0;
-  const arms = Math.hypot(point.x - (ax + t * (bx - ax)), point.y - (ay + t * (by - ay))) < 0.16 + BALL_RADIUS + (penalty ? 0.06 : 0);
-  return body || hands || arms;
+  const armRadius = 0.16 + BALL_RADIUS + (penalty ? 0.06 : 0);
+  return (point.x - (ax + t * (bx - ax))) ** 2 + (point.y - (ay + t * (by - ay))) ** 2 < armRadius ** 2;
 }

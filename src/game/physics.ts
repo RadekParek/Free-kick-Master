@@ -311,9 +311,12 @@ function segmentWall(a: Vec3, b: Vec3, p: WallPlayer, jump: number): boolean {
 
 export function hitsWall(a: Vec3, b: Vec3, wall: WallPlayer[], time: number): boolean {
   if (!wall.length) return false;
-  const jump = wallJump(time);
+  const minZ = Math.min(a.z, b.z), maxZ = Math.max(a.z, b.z);
+  let jump: number | undefined;
   for (const p of wall) {
-    if (Math.min(a.z, b.z) > p.z + 0.2 + BALL_RADIUS || Math.max(a.z, b.z) < p.z - 0.2 - BALL_RADIUS) continue;
+    if (minZ > p.z + 0.2 + BALL_RADIUS || maxZ < p.z - 0.2 - BALL_RADIUS) continue;
+    // Most ticks never reach the wall's depth. Evaluate its jump only if a slab can hit.
+    jump ??= wallJump(time);
     if (segmentWall(a, b, p, jump)) return true;
   }
   return false;

@@ -114,6 +114,10 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
     arena.updateSettings(settings);
     expect(map.dispose).toHaveBeenCalledOnce();
     expect(arena.stadium.sun.shadow.mapSize.x).toBe(settings.graphics.shadows);
+    expect(arena.scene.traverse).not.toHaveBeenCalled();
+    settings.graphics.shadows = 0;
+    arena.updateSettings(settings);
+    expect(arena.scene.traverse).toHaveBeenCalledOnce();
   });
 
   it('refreshes dynamic shadow maps every other display frame and skips them when disabled', () => {
@@ -216,4 +220,74 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
     stadium.update(15);
     expect(attribute.version).toBe(version);
   });
+  it('does no hidden trail copying/uploads and restores the complete current trail on enable', () => {
+    const segments = new Float32Array(239 * 6);
+    const buffer = new THREE.InstancedInterleavedBuffer(segments, 6);
+    const arena = Object.assign(Object.create(Arena.prototype), {
+      tracePointCount: 3, tracePositions: new Float32Array([1, 2, 3, 4, 5, 6, 7, 8, 9]), traceSegments: segments,
+      traceGeometry: new LineGeometry(), traceBuffer: buffer, trace: { visible: true },
+      traceUploadedCount: 2, traceDirty: true, settings: { guides: false }, phase: 'flight',
+    });
+    arena.setTrace();
+    expect(buffer.version).toBe(0);
+    expect(segments.every((n: number) => n === 0)).toBe(true);
+    expect(arena.trace.visible).toBe(false);
+    expect(arena.traceDirty).toBe(false);
+    expect(arena.traceUploadedCount).toBe(0);
+    arena.settings.guides = true;
+    arena.setTrace();
+    expect([...segments.slice(0, 12)]).toEqual([1, 2, 3, 4, 5, 6, 4, 5, 6, 7, 8, 9]);
+    expect(arena.traceGeometry.instanceCount).toBe(2);
+    expect(arena.trace.visible).toBe(true);
+    expect(buffer.version).toBe(1);
+  });
+
+  it('writes the unchanged curved run-up into reusable scratch positions', () => {
+    const arena = Object.assign(Object.create(Arena.prototype), { settings: structuredClone(DEFAULT_SETTINGS) });
+    const out = { x: 0, z: 0 };
+    for (const foot of ['left', 'right']) for (const run of [0, .1, .5, .85, .9, 1]) {
+      arena.settings.foot = foot;
+      arena.takerGround(run, out);
+      const p = arena.settings.position;
+      const t = Math.min(1, Math.max(0, run) / .9), e = t * t * (3 - 2 * t);
+      const length = Math.hypot(p.x, p.z);
+      const back = 4.8 + (.21 - 4.8) * e;
+      const lateral = (foot === 'right' ? -1 : 1) * (1.6 + (.22 - 1.6) * Math.pow(e, .7));
+      expect(out.x).toBe(p.x + p.x / length * back + p.z / length * lateral);
+      expect(out.z).toBe(p.z + p.z / length * back - p.x / length * lateral);
+    }
+  });
+
+  it('resizes the drawing buffer once for size/DPR changes and never for identical bounds', () => {
+    const windowState = { devicePixelRatio: 2, innerWidth: 400 };
+    vi.stubGlobal('window', windowState);
+    const bounds = { width: 400, height: 800 };
+    let ratio = 2;
+    const renderer = {
+      getPixelRatio: () => ratio,
+      setDrawingBufferSize: vi.fn((_w: number, _h: number, r: number) => { ratio = r; }),
+    };
+    const settings = structuredClone(DEFAULT_SETTINGS);
+    settings.graphics.resolution = 1;
+    const arena = Object.assign(Object.create(Arena.prototype), {
+      container: { getBoundingClientRect: () => bounds }, settings,
+      width: 400, height: 800, renderer, camera: new THREE.PerspectiveCamera(),
+      traceMaterial: { resolution: new THREE.Vector2() }, post: { configure: vi.fn() },
+    });
+    arena.resize();
+    expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled();
+    bounds.width = 410;
+    settings.graphics.resolution = .75;
+    arena.resize();
+    expect(renderer.setDrawingBufferSize).toHaveBeenCalledExactlyOnceWith(410, 800, 1.5);
+    expect(arena.camera.aspect).toBe(410 / 800);
+    expect(arena.traceMaterial.resolution.toArray()).toEqual([410, 800]);
+    arena.resize();
+    expect(renderer.setDrawingBufferSize).toHaveBeenCalledOnce();
+    windowState.devicePixelRatio = 1;
+    arena.resize();
+    expect(renderer.setDrawingBufferSize).toHaveBeenLastCalledWith(410, 800, .75);
+    expect(renderer.setDrawingBufferSize).toHaveBeenCalledTimes(2);
+  });
+
 });
