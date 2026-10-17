@@ -1,6 +1,8 @@
+import { Vector3 } from 'three';
 import type { Object3D } from 'three';
 import type { KeeperState } from './keeper';
-import { clamp, lerp, type Contact, type Foot, type Outcome } from './physics';
+import { clamp, lerp } from './physics-math';
+import type { Contact, Foot, Outcome } from './physics';
 
 export type PlayerRole = 'taker' | 'wall' | 'keeper';
 export interface MotionRig {
@@ -176,6 +178,7 @@ export function wallPose(rig: MotionRig, jump: number, time: number) {
   rig.rightArm.rotation.x = 0.35;
 }
 
+const handWorld = new Vector3(), handTarget = new Vector3();
 export function keeperPose(rig: MotionRig, k: KeeperState, time: number, preparation = 0) {
   idlePose(rig, time, 'keeper');
   rig.head.rotation.y = clamp(-(k.targetX - k.x) * 0.12, -0.35, 0.35);
@@ -196,10 +199,25 @@ export function keeperPose(rig: MotionRig, k: KeeperState, time: number, prepara
     rig.rightArm.rotation.z = lerp(0.5, -k.direction * (1.5 + reach * 0.38), extension);
     rig.leftArm.rotation.x = rig.rightArm.rotation.x = 0.3 * (1 - extension);
     rig.leftForearm.rotation.x = rig.rightForearm.rotation.x = 0.4 * (1 - extension);
+    // The trailing upper arm goes forward out of the rib cage before the elbow reaches across.
+    // One leading hand extends; the other is naturally tucked, never driven through the torso.
+    const trailing = k.direction>0 ? rig.rightArm : rig.leftArm;
+    const elbow = k.direction>0 ? rig.rightForearm : rig.leftForearm;
+    trailing.rotation.z=lerp(k.direction>0?.5:-.5,-k.direction*.10,extension);
+    trailing.rotation.x=lerp(.3,1.15,extension);trailing.rotation.y=-k.direction*.25*extension;
+    elbow.rotation.z=-k.direction*1.15*extension;
     rig.leftLeg.rotation.z = -0.22;
     rig.rightLeg.rotation.z = 0.26;
     rig.leftLeg.rotation.x = k.dive * 0.2;
     rig.rightLeg.rotation.x = -k.dive * 0.3;
+    const hand = k.direction>0 ? rig.leftForearm : rig.rightForearm;
+    const parent=rig.body.parent;
+    if(parent) {
+      hand.localToWorld(handWorld.set(0,-.27,-.006));
+      parent.worldToLocal(handWorld);
+      parent.worldToLocal(handTarget.set(k.glove.x,k.glove.y,k.glove.z ?? .7));
+      rig.body.position.addScaledVector(handTarget.sub(handWorld),extension);
+    }
   } else {
     // Split-step and real alternating footwork follow the simulated lateral velocity,
     // so the keeper no longer glides across the line before committing to a dive.
@@ -212,16 +230,16 @@ export function keeperPose(rig: MotionRig, k: KeeperState, time: number, prepara
     rig.body.position.y = -0.065 + Math.sin(time * 3) * 0.012 + setStep * 0.035 + kneeLift * 0.018;
     rig.body.position.x = shuffle * 0.025;
     rig.body.rotation.y = stride * 0.025;
-    rig.leftLeg.rotation.z = -0.07 - shuffle * 0.12 - stride * 0.14;
-    rig.rightLeg.rotation.z = 0.07 - shuffle * 0.12 + stride * 0.14;
-    rig.leftLeg.rotation.x = -0.18 + stride * 0.16;
-    rig.rightLeg.rotation.x = -0.18 - stride * 0.16;
-    rig.leftShin.rotation.x = -.18 - Math.max(0, -stride) * .38 - kneeLift * .14;
-    rig.rightShin.rotation.x = -.18 - Math.max(0, stride) * .38 - kneeLift * .14;
+    rig.leftLeg.rotation.z = -0.07 - shuffle * 0.12 - stride * 0.23;
+    rig.rightLeg.rotation.z = 0.07 - shuffle * 0.12 + stride * 0.23;
+    rig.leftLeg.rotation.x = -0.18 + stride * 0.24;
+    rig.rightLeg.rotation.x = -0.18 - stride * 0.24;
+    rig.leftShin.rotation.x = -.18 - Math.max(0, -stride) * .38 - kneeLift * .20;
+    rig.rightShin.rotation.x = -.18 - Math.max(0, stride) * .38 - kneeLift * .20;
     rig.leftArm.rotation.z = -0.5 - stride * 0.08;
     rig.rightArm.rotation.z = 0.5 - stride * 0.08;
-    rig.leftArm.rotation.x = 0.35 + stride * 0.16;
-    rig.rightArm.rotation.x = 0.35 - stride * 0.16;
+    rig.leftArm.rotation.x = 0.35 + stride * 0.24;
+    rig.rightArm.rotation.x = 0.35 - stride * 0.24;
   }
 }
 

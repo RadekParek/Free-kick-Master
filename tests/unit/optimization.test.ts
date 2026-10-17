@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import { fillGrassPixels } from '../../src/game/stadium';
 import { normalMapFromCanvas } from '../../src/game/pbr';
 import { keeperSaves, createKeeper } from '../../src/game/keeper';
-import { BALL_RADIUS, clamp } from '../../src/game/physics';
 import { disposeSceneResources } from '../../src/game/resources';
 import { PostStack } from '../../src/game/post';
 
@@ -56,22 +55,10 @@ describe('quality-preserving mobile optimization regressions', () => {
     expect(texture.colorSpace).toBe(THREE.NoColorSpace);
   });
 
-  it('keeps keeper body, glove and swept-arm decisions across both penalty modes', () => {
-    for (const penalty of [false, true]) for (const dive of [0, .25, 1]) {
-      const k = createKeeper(0);
-      Object.assign(k, { x: -.2, dive, glove: { x: 1.2, y: 1.8 } });
-      const bodyY = dive > 0 ? .9 + (k.glove.y - 1.1) * .35 : 1;
-      for (let x = -2; x < 3; x += .07) for (let y = 0; y < 3; y += .07) {
-        const point = { x, y, z: 0 };
-        const extra = penalty ? .12 : 0;
-        const body = ((x - k.x) / (.35 + dive * .14 + BALL_RADIUS + extra)) ** 2 + ((y - bodyY) / (.78 - dive * .2 + BALL_RADIUS + extra)) ** 2 <= 1;
-        const hands = Math.hypot(x - k.glove.x, y - k.glove.y) < .27 + BALL_RADIUS + (penalty ? .08 : 0);
-        const ax = k.x, ay = bodyY + .25, bx = k.glove.x, by = k.glove.y;
-        const denom = (bx - ax) ** 2 + (by - ay) ** 2;
-        const t = denom > 0 ? clamp(((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / denom, 0, 1) : 0;
-        const arms = Math.hypot(x - (ax + t * (bx - ax)), y - (ay + t * (by - ay))) < .16 + BALL_RADIUS + (penalty ? .06 : 0);
-        expect(keeperSaves(point, k, penalty)).toBe(body || hands || arms);
-      }
+  it('uses the same model-aligned save shape in penalty mode, never an invisible reach bonus', () => {
+    const k=createKeeper(0);
+    for(const x of [-3,-.2,.72,1.3,3]) for(const y of [.1,1,1.8,2.8]) {
+      const point={x,y,z:.7};expect(keeperSaves(point,k,true)).toBe(keeperSaves(point,k,false));
     }
   });
 
@@ -79,7 +66,7 @@ describe('quality-preserving mobile optimization regressions', () => {
     const composer = { setSize: vi.fn(), setPixelRatio: vi.fn() };
     const bloomPass = bloom ? { strength: .16 } : null;
     const post = Object.assign(Object.create(PostStack.prototype), {
-      key: `fxaa|${bloom}`, composer, bloom: bloomPass, width: 800, height: 600, pixelRatio: 2,
+      key: `fxaa|${bloom}|false`, composer, bloom: bloomPass, width: 800, height: 600, pixelRatio: 2,
       renderer: { getPixelRatio: () => 2 },
     });
     const dispose = vi.spyOn(post, 'dispose');

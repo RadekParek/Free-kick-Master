@@ -9,14 +9,14 @@ import { applyStudioLight } from '../../src/game/pbr';
 
 const frame = (): AnalysisFrame => ({ stage: 'intro', shotTime: 0, progress: 0 });
 describe('HyperMotionV-inspired recorded replay choreography', () => {
-  it.each([[0, 'intro', 0], [.75, 'strike', 0], [1.55, 'flight', 0], [3.175, 'flight', 1], [4.8, 'finish', 2], [6.5, 'overview', 2], [ANALYSIS_DURATION, 'done', 2]] as const)('samples stage/time at %s seconds', (elapsed, stage, time) => {
+  it.each([[0, 'intro', -1.65], [.45, 'runup', -1.65], [1.275, 'runup', -.825], [2.1, 'strike', 0], [2.7, 'flight', 0], [4.15, 'flight', 1], [5.6, 'finish', 2], [7.25, 'overview', 2], [ANALYSIS_DURATION, 'done', 2]] as const)('samples stage/time at %s seconds', (elapsed, stage, time) => {
     const output = frame(); expect(sampleAnalysis(elapsed, 2, output)).toBe(output);
     expect(output.stage).toBe(stage); expect(output.shotTime).toBeCloseTo(time);
     expect(output.progress).toBeGreaterThanOrEqual(0); expect(output.progress).toBeLessThanOrEqual(1);
   });
   it('has monotonic recorded shot time and bounded frame progress for short and long shots', () => {
     for (const duration of [0, .04, 1, 4, 8]) {
-      let last = 0; const out = frame();
+      let last = -1.65; const out = frame();
       for (let time = -.1; time < 9; time += .02) {
         sampleAnalysis(time, duration, out);
         expect(out.shotTime).toBeGreaterThanOrEqual(last); expect(out.shotTime).toBeLessThanOrEqual(duration);
@@ -30,15 +30,15 @@ describe('HyperMotionV-inspired recorded replay choreography', () => {
     for (let i = 0; i < 10; i++) { ball.time = i / 60; ball.position.z = 24 - i; replay.record(ball, keeper); }
     const analysis = new GoalAnalysis();
     analysis.show(replay, { outcome: 'goal', distance: 24, speed: 100, power: .7, point: { x: 1, y: 2 }, technique: 'Knuckleball' }, 1, { x: 0, z: 24 });
-    const path = analysis.group.children.find(o => o instanceof THREE.Line && o.geometry.hasAttribute('shotTime')) as THREE.Line;
-    const positions = path.geometry.attributes.position as THREE.BufferAttribute;
-    const times = path.geometry.attributes.shotTime as THREE.BufferAttribute;
+    const path = analysis.group.children.find(o => o.name === 'recorded-flight-path') as THREE.Line;
+    const positions = (path.geometry.attributes.instanceStart as THREE.InterleavedBufferAttribute).data;
+    const times = (path.geometry.attributes.instanceStartTime as THREE.InterleavedBufferAttribute).data;
     const versions = [positions.version, times.version], original = positions.array.slice();
-    const shader = { uniforms: {}, vertexShader: '#include <begin_vertex>', fragmentShader: '#include <clipping_planes_fragment>' };
+    const shader = { uniforms: {}, vertexShader: 'void main() {', fragmentShader: '#include <clipping_planes_fragment>' };
     (path.material as THREE.Material).onBeforeCompile(shader as never, {} as never);
     for (let t = 0; t < 8; t += .016) analysis.update(t, Math.min(.15, t));
     expect([positions.version, times.version]).toEqual(versions); expect(positions.array).toEqual(original);
-    expect(shader.fragmentShader).toContain('vShotTime > uReveal');
+    expect(shader.fragmentShader).toContain('vShotTime>uReveal');
     expect((shader.uniforms as Record<string, {value:number}>).uReveal.value).toBe(.15);
     analysis.hide(); expect(analysis.group.visible).toBe(false);
   });

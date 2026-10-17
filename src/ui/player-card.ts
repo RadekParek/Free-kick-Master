@@ -47,13 +47,13 @@ export function monogram(player: TakerProfile): string {
  */
 export function playerCard(player: TakerProfile, selected = false, interactive = true): string {
   const special = player.edition === 'special';
-  const classes = ['player-card', special ? 'is-special' : '', selected ? 'selected' : '', interactive ? '' : 'is-showcase'].filter(Boolean).join(' ');
+  const classes = ['player-card', special ? 'is-special' : player.edition === 'icon' ? 'is-icon' : '', selected ? 'selected' : '', interactive ? '' : 'is-showcase'].filter(Boolean).join(' ');
   const art = player.portrait
     ? `<img class="card-portrait" src="${player.portrait}" alt="${player.name}" width="500" height="750" loading="lazy" draggable="false" />`
     : `<span class="card-monogram" aria-hidden="true">${monogram(player)}</span>`;
   const body = `<span class="card-foil" aria-hidden="true"></span><span class="card-lines" aria-hidden="true"></span><span class="card-frame" aria-hidden="true"></span>${special ? '<span class="card-hologram" aria-hidden="true"></span><span class="card-seal" aria-hidden="true">✦<small>FK</small></span>' : ''}
-    <span class="card-edition">${special ? 'TURQUOISE <b>SPECIAL</b>' : 'SET PIECE <b>ELITE</b>'}</span>
-    <span class="card-rating"><strong>${player.rating}</strong><small>FK</small>${flag(player.nationCode)}${playStyleBadge(player)}</span>
+    <span class="card-edition">${special ? 'TURQUOISE <b>SPECIAL</b>' : player.edition === 'icon' ? 'HERITAGE <b>ICON</b>' : 'SET PIECE <b>ELITE</b>'}</span>
+    <span class="card-rating"><strong>${player.rating}</strong><small>FK</small>${flag(player.nationCode)}</span>${playStyleBadge(player)}
     ${art}
     <span class="card-shade"></span>
     <span class="card-info"><strong class="card-name${special ? ' handwritten' : ''}">${player.shortName}</strong><span class="card-specialty">${player.specialty}</span>
@@ -61,18 +61,18 @@ export function playerCard(player: TakerProfile, selected = false, interactive =
       <span class="card-country">${player.nation} <i>·</i> ${player.appearance.height.toFixed(2)} M <i>·</i> ${player.foot === 'left' ? 'LEFT' : 'RIGHT'} FOOT</span>
     </span><span class="card-selected" aria-hidden="true">✓</span>`;
   if (!interactive) return `<div class="${classes}" aria-label="${player.name}">${body}</div>`;
-  return `<button class="${classes}" data-player="${player.id}" aria-label="Select ${player.name}${special ? ', turquoise special' : ''}" aria-pressed="${selected}">${body}</button>`;
+  return `<button class="${classes}" data-player="${player.id}" aria-label="Select ${player.name}${special ? ', turquoise special' : player.edition === 'icon' ? ', ICON' : ''}" aria-pressed="${selected}">${body}</button>`;
 }
 
 export function takerHud(player: TakerProfile): string {
   const special = player.edition === 'special';
   const art = player.portrait ? `<img src="${player.portrait}" alt="" width="500" height="750" draggable="false" />` : `<span class="card-monogram" aria-hidden="true">${monogram(player)}</span>`;
-  return `<span class="mini-card ${special ? 'is-special' : ''}"><span>${player.rating}<small>FK</small></span>${art}${playStyleBadge(player)}</span><span class="sr-only"><strong id="taker-name" class="${special ? 'handwritten' : ''}">${player.shortName}</strong></span>`;
+  return `<span class="mini-card ${special ? 'is-special' : player.edition === 'icon' ? 'is-icon' : ''}"><span>${player.rating}<small>FK</small></span>${art}${playStyleBadge(player)}</span><span class="sr-only"><strong id="taker-name" class="${special ? 'handwritten' : ''}">${player.shortName}</strong></span>`;
 }
 
 /** Main-menu showcase: the equipped player's photo or monogram art, without the card frame. */
 export function showcaseArt(player: TakerProfile): string {
-  const special = player.edition === 'special' ? ' is-special' : '';
+  const special = player.edition === 'special' ? ' is-special' : player.edition === 'icon' ? ' is-icon' : '';
   if (player.portrait) return `<figure class="showcase-art${special}"><img src="${player.portrait}" alt="${player.name}" width="500" height="750" draggable="false" /></figure>`;
   return `<figure class="showcase-art showcase-mono${special}" aria-label="${player.name}"><span>${monogram(player)}</span></figure>`;
 }

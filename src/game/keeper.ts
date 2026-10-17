@@ -1,4 +1,6 @@
-import { BALL_RADIUS, SIDE_MAGNUS, clamp, type BallState, type Vec3 } from './physics';
+import { keeperBodyHits } from './body-colliders';
+import type { PoseMetrics } from './skeleton-layout';
+import { SIDE_MAGNUS, clamp, type BallState, type Vec3 } from './physics';
 
 export const DIFFICULTIES = ['rookie', 'amateur', 'pro', 'world-class', 'legend'] as const;
 export type Difficulty = typeof DIFFICULTIES[number];
@@ -20,6 +22,8 @@ export const KEEPER_PROFILES: Record<Difficulty, KeeperProfile> = {
 };
 export interface KeeperState {
   x: number;
+  yaw?: number;
+  metrics?: PoseMetrics;
   targetX: number;
   targetY: number;
   /** Lateral metres/second for footwork animation; captured in replays. */
@@ -84,22 +88,7 @@ export function updateKeeper(k: KeeperState, ball: BallState, difficulty: Diffic
   k.glove.y = clamp(k.glove.y, 0.25, maxHeight - 0.12);
 }
 
-export function keeperSaves(point: Vec3, k: KeeperState, penalty = false): boolean {
-  const bodyY = k.dive > 0 ? 0.9 + (k.glove.y - 1.1) * 0.35 : 1;
-  const penaltyReach = penalty ? 0.12 : 0;
-  const bodyWidth = 0.35 + k.dive * 0.14 + BALL_RADIUS + penaltyReach;
-  const bodyHeight = 0.78 - k.dive * 0.2 + BALL_RADIUS + penaltyReach;
-  const body = ((point.x - k.x) / bodyWidth) ** 2 + ((point.y - bodyY) / bodyHeight) ** 2 <= 1;
-  if (body) return true;
-  const handRadius = 0.27 + BALL_RADIUS + (penalty ? 0.08 : 0);
-  if ((point.x - k.glove.x) ** 2 + (point.y - k.glove.y) ** 2 < handRadius ** 2) return true;
-  // A swept reach between torso and hands; no random difficulty-based save percentage.
-  const ax = k.x;
-  const ay = bodyY + 0.25;
-  const bx = k.glove.x;
-  const by = k.glove.y;
-  const denom = (bx - ax) ** 2 + (by - ay) ** 2;
-  const t = denom > 0 ? clamp(((point.x - ax) * (bx - ax) + (point.y - ay) * (by - ay)) / denom, 0, 1) : 0;
-  const armRadius = 0.16 + BALL_RADIUS + (penalty ? 0.06 : 0);
-  return (point.x - (ax + t * (bx - ax))) ** 2 + (point.y - (ay + t * (by - ay))) ** 2 < armRadius ** 2;
+/** Compatibility point query, now against the exact same posed capsules as swept gameplay contacts. */
+export function keeperSaves(point:Vec3,k:KeeperState,_penalty=false):boolean {
+  return keeperBodyHits(point,point,k,0);
 }

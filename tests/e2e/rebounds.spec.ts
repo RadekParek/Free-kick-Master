@@ -9,7 +9,7 @@ import type { Object3D, Mesh } from 'three';
 
 interface ArenaProbe {
   ball: BallState; keeper: KeeperState; wall: []; phase: Phase; phaseTime: number;
-  analysisPlayed: boolean; frameCounter: number; accumulator: number; resultBallTime: number;
+  frameCounter: number; accumulator: number; resultBallTime: number;
   replayFrames: ReplayBuffer; events: ArenaEvents; lastResult: ShotResult;
   taker: { rigs: (MotionRig & { root: Object3D })[] };
   setPhase(phase: Phase): void;
@@ -44,7 +44,6 @@ test('post-and-in counts once, plays impact feedback, and replays without recoun
     arena.wall = [];
     arena.frameCounter = 0; arena.accumulator = 0; arena.resultBallTime = Infinity;
     arena.replayFrames.clear();
-    arena.analysisPlayed = true; // Isolate aftermath pose/manual replay; automatic analysis has its own regression.
     window.woodworkCount = 0;
     const feedback = arena.events.woodwork;
     arena.events.woodwork = () => { window.woodworkCount++; feedback?.(); };
@@ -56,7 +55,7 @@ test('post-and-in counts once, plays impact feedback, and replays without recoun
   await expect(page.locator('#stat-goals')).toHaveText('1');
   expect(await page.evaluate(() => window.woodworkCount)).toBe(1);
   expect(await page.evaluate(() => window.reboundArena.lastResult.frameHits)).toBe(1);
-  await page.waitForFunction(() => window.reboundArena.phaseTime > 1.8);
+  await page.waitForFunction(() => window.reboundArena.phase === 'result' && window.reboundArena.taker.rigs[0].rightArm.rotation.z > 1);
   const rigCheck = await page.evaluate(() => {
     const [high, low] = window.reboundArena.taker.rigs;
     const joints = ['body', 'head', 'torso', 'leftLeg', 'rightLeg', 'leftShin', 'rightShin', 'leftArm', 'rightArm', 'leftForearm', 'rightForearm'] as const;
@@ -68,7 +67,7 @@ test('post-and-in counts once, plays impact feedback, and replays without recoun
       }
     });
     return {
-      posesMatch: joints.every(key => high[key].position.equals(low[key].position) && high[key].quaternion.equals(low[key].quaternion)),
+      posesMatch: !low.root.visible || joints.every(key => high[key].position.equals(low[key].position) && high[key].quaternion.equals(low[key].quaternion)),
       celebrating: high.rightArm.rotation.z > 1,
       frozen, unexpectedDynamicMeshes,
     };

@@ -15,7 +15,7 @@ import { Stadium } from './stadium';
 import { PostStack, type PostOptions } from './post';
 import { applyStudioLight, studioEnvironment } from './pbr';
 import { advanceShot, createShotScratch } from './simulation';
-import { ReplayBuffer } from './replay';
+import { ReplayBuffer, RunupBuffer } from './replay';
 import { GoalAnalysis } from './goal-analysis';
 import { sampleAnalysis, ANALYSIS_DURATION, type AnalysisFrame, type AnalysisStage } from './analysis-timeline';
 import { broadcastLens } from './camera';
@@ -41,6 +41,7 @@ export interface ArenaEvents {
   aim: (aim: Aim) => void;
   error: (message: string) => void;
   woodwork?: () => void;
+  chance?: (percent: number | null) => void;
   analysis?: (stage: AnalysisStage) => void;
   performance?: (stats: { fps: number; calls: number; triangles: number; pixelRatio: number }) => void;
 }
@@ -73,7 +74,6 @@ export class Arena {
   private readonly guideMaterial = new LineMaterial({ color: 0x2d9cff, linewidth: 2, transparent: true, opacity: .95, depthWrite: false });
   private readonly guideSegments = new Float32Array(511 * 6);
   private readonly guideBuffer = new THREE.InstancedInterleavedBuffer(this.guideSegments, 6).setUsage(THREE.DynamicDrawUsage);
-  private analysisPlayed = false;
   private readonly goalAnalysis = new GoalAnalysis();
   private readonly analysisFrame: AnalysisFrame = { stage: 'intro', shotTime: 0, progress: 0 };
   private analysisCameraCut = false;
@@ -101,6 +101,10 @@ export class Arena {
   private previewPower = -1;
   private shotSetup: ShotSetup;
   private readonly replayFrames = new ReplayBuffer();
+  private readonly runupFrames = new RunupBuffer();
+  private readonly savedOrientation = new THREE.Quaternion();
+  private chanceWorker: Worker | null = null;
+  private chanceJob = 0;
   private resultBallTime = Infinity;
   private readonly shotScratch = createShotScratch();
   private replayClock = 0;
@@ -239,7 +243,7 @@ export class Arena {
 
   private postOptions(): PostOptions {
     const g = this.settings.graphics;
-    return { antialias: g.antialias, bloom: g.bloom, quality: this.settings.quality };
+    return { antialias: g.antialias, bloom: g.bloom, dof: g.dof, quality: this.settings.quality };
   }
 
   private queueResize() {
@@ -274,7 +278,7 @@ export class Arena {
 
   reset() {
     this.cameraYawOffset = 0;
-    this.analysisPlayed = false;
+    this.chanceJob++;
     this.goalAnalysis.hide();
     this.stadium.setKickPosition(this.settings.position);
     this.keeperModel.yaw = keeperYaw(this.settings.position);
@@ -283,6 +287,8 @@ export class Arena {
     this.accumulator = 0;
     this.ball = launchBall(this.setup(recommendedPower(this.settings.position)));
     this.keeper = createKeeper(this.settings.position.x);
+    this.keeper.yaw = this.keeperModel.yaw;
+    this.keeper.metrics = this.keeperModel.collisionMetrics();
     this.football.position.set(this.ball.position.x, BALL_RADIUS, this.ball.position.z);
     this.football.rotation.set(0, 0.3, 0.1);
     this.ring.position.set(this.ball.position.x, 0.022, this.ball.position.z);
@@ -294,6 +300,7 @@ export class Arena {
     this.wallModels.forEach((model, i) => {
       model.group.visible = i < wall.length;
       if (wall[i]) {
+        wall[i].metrics = model.collisionMetrics();
         model.group.position.set(wall[i].x, 0, wall[i].z);
         model.group.rotation.y = Math.atan2(wall[i].x - this.settings.position.x, wall[i].z - this.settings.position.z);
         model.wallPose(0, this.time);
@@ -323,6 +330,10 @@ export class Arena {
     this.guide.visible = false;
     this.ring.visible = false;
     this.replayFrames.clear();
+    this.runupFrames.clear();
+    this.football.quaternion.identity();
+    this.runupFrames.record(0, 0, this.taker.group.position, this.taker.group.rotation.y);
+    this.chanceJob++;
     this.resultBallTime = Infinity;
     this.lastResult = null;
     this.setPhase('runup');
@@ -339,10 +350,10 @@ export class Arena {
 
   replay(): boolean {
     if (this.phase !== 'result' || this.replayFrames.length < 3) return false;
+    this.savedOrientation.copy(this.football.quaternion);
     this.savedBall = cloneBall(this.ball);
     this.savedKeeper = cloneKeeper(this.keeper);
     this.replayClock = 0;
-    this.analysisPlayed = true;
     if (this.lastResult?.outcome === 'goal') {
       sampleAnalysis(0, this.resultBallTime, this.analysisFrame);
       this.analysisCameraCut = true;
@@ -356,6 +367,7 @@ export class Arena {
   /** Exit analysis/replay without resimulating, scoring or changing the recorded outcome. */
   skipReplay(): boolean {
     if (this.phase !== 'replay') return false;
+    this.football.quaternion.copy(this.savedOrientation);
     if (this.savedBall) this.ball = this.savedBall;
     if (this.savedKeeper) this.keeper = this.savedKeeper;
     this.goalAnalysis.hide();
@@ -531,9 +543,10 @@ export class Arena {
       const plant = clamp((progress - .88) / .12, 0, 1);
       this.taker.alignStrike(this.settings.foot, this.shotSetup.position, plant * plant * (3 - 2 * plant));
       this.keeperModel.keeperPose(this.keeper, this.time, Math.max(0, (progress - 0.55) / 0.45));
+      this.runupFrames.record(progress * RUNUP_SECONDS, progress, this.taker.group.position, this.taker.group.rotation.y);
       if (progress >= 1) {
         this.ball = launchBall(this.shotSetup);
-        this.replayFrames.record(this.ball, this.keeper); // Include exact contact/launch, not only the first 60Hz sample.
+        this.replayFrames.record(this.ball, this.keeper, this.football.quaternion); // Include exact contact/launch, not only the first 60Hz sample.
         this.frameCounter = 0;
         this.accumulator = 0;
         this.setPhase('flight');
@@ -544,9 +557,9 @@ export class Arena {
         this.stepShot();
         this.accumulator -= FIXED_DT;
       }
-      this.taker.followThrough(this.ball.time, this.settings.foot, this.settings.contact);
+      if (this.phase === 'flight') this.taker.followThrough(this.ball.time, this.settings.foot, this.settings.contact);
       this.wallModels.forEach((p, i) => { if (this.inView(p.group)) p.wallPose(defenderJump(this.wall[i], this.ball.time), this.ball.time); });
-      this.keeperModel.keeperPose(this.keeper, this.time);
+      if (this.phase === 'flight') this.keeperModel.keeperPose(this.keeper, this.ball.time);
     } else if (this.phase === 'result') {
       if (this.phaseTime < 1.8) {
         this.accumulator += dt;
@@ -558,19 +571,9 @@ export class Arena {
       this.taker.react(this.lastResult!.outcome, this.phaseTime, this.ball.time, this.settings.foot, this.settings.contact);
       this.wallModels.forEach(p => { if (this.inView(p.group)) p.wallPose(0, this.time); });
       this.keeperModel.keeperRecover(this.keeper, this.time, this.phaseTime, this.lastResult!.outcome);
-      if (this.phaseTime >= 1.8 && this.lastResult?.outcome === 'goal' && !this.analysisPlayed) this.replay();
+
     } else if (this.phase === 'replay') this.stepReplay(dt);
     this.football.position.set(this.ball.position.x, this.ball.position.y, this.ball.position.z);
-    if (this.phase === 'flight' || this.phase === 'result' || this.phase === 'replay') {
-      const v = this.ball.velocity, speed = Math.max(.001, Math.hypot(v.x, v.z));
-      const roll = this.ball.knuckle ? 1.3 : this.ball.topSpin;
-      this.spinAxis.set(v.z / speed * roll, this.ball.sideSpin, -v.x / speed * roll);
-      const angularSpeed = this.spinAxis.length();
-      if (angularSpeed > .001) {
-        this.spinRotation.setFromAxisAngle(this.spinAxis.multiplyScalar(1 / angularSpeed), angularSpeed * dt);
-        this.football.quaternion.premultiply(this.spinRotation);
-      }
-    }
     this.ballShadow.position.set(this.ball.position.x, 0.022, this.ball.position.z);
     this.ballShadow.scale.setScalar(1 + this.ball.position.y * 0.18);
     (this.ballShadow.material as THREE.MeshBasicMaterial).opacity = Math.max(0.05, 0.32 - this.ball.position.y * 0.055);
@@ -582,6 +585,7 @@ export class Arena {
     for (const player of this.wallModels) player.updateLod(this.camera);
     this.refreshDynamicShadows();
     this.renderer.info.reset();
+    this.post.focus(this.camera.position.distanceTo(this.phase === 'replay' && this.analysisFrame.shotTime < 0 ? this.taker.group.position : this.football.position));
     this.post.render();
     this.metricsFrames++;
     if (!this.metricsStart) this.metricsStart = timestamp;
@@ -599,9 +603,22 @@ export class Arena {
     if (this.shadowFrame % SHADOW_REFRESH_EVERY === 0) this.renderer.shadowMap.needsUpdate = true;
   }
 
+  private rotateBall(dt: number) {
+      const v = this.ball.velocity, speed = Math.max(.001, Math.hypot(v.x, v.z));
+      const roll = this.ball.knuckle ? 1.3 : this.ball.topSpin;
+      this.spinAxis.set(v.z / speed * roll, this.ball.sideSpin, -v.x / speed * roll);
+      const angularSpeed = this.spinAxis.length();
+      if (angularSpeed > .001) {
+        this.spinRotation.setFromAxisAngle(this.spinAxis.multiplyScalar(1 / angularSpeed), angularSpeed * dt);
+        this.football.quaternion.premultiply(this.spinRotation);
+      }
+  }
+
   private stepShot() {
     const event = advanceShot(this.ball, this.keeper, this.wall, this.settings.difficulty, this.shotScratch, inPenaltyBox(this.shotSetup.position));
+    this.rotateBall(FIXED_DT);
     this.recordFrame();
+    if (event && !event.continues && this.frameCounter % 2 !== 0) this.replayFrames.record(this.ball, this.keeper, this.football.quaternion);
     if (!event) return;
     if (event.frameImpact) this.events.woodwork?.();
     const impact = new THREE.Vector3(event.point.x, event.point.y, -1.6);
@@ -613,6 +630,7 @@ export class Arena {
 
   private stepAftermath() {
     integrateBall(this.ball);
+    this.rotateBall(FIXED_DT);
     if (this.lastResult?.outcome === 'goal') {
       if (this.ball.position.z < -2.05) {
         this.ball.position.z = -2.05;
@@ -636,13 +654,30 @@ export class Arena {
   private recordFrame() {
     this.frameCounter++;
     if (this.frameCounter % 2 !== 0) return;
-    this.replayFrames.record(this.ball, this.keeper);
+    this.replayFrames.record(this.ball, this.keeper, this.football.quaternion);
+  }
+
+  private requestChance() {
+    try {
+      if (!this.chanceWorker) {
+        this.chanceWorker = new Worker(new URL('./chance-worker.ts', import.meta.url), { type: 'module' });
+        this.chanceWorker.onmessage = (event: MessageEvent<{job:number; percent:number}>) => {
+          if (event.data.job !== this.chanceJob || !this.lastResult || !Number.isFinite(event.data.percent)) return;
+          this.lastResult.estimatedChance = event.data.percent; this.events.chance?.(event.data.percent);
+        };
+        this.chanceWorker.onerror = () => { this.chanceWorker?.terminate(); this.chanceWorker = null; this.events.chance?.(null); };
+      }
+      this.chanceWorker.postMessage({ job: this.chanceJob, setup: this.shotSetup, wall: this.wall, keeper: { yaw:this.keeper.yaw, metrics:this.keeper.metrics }, difficulty: this.settings.difficulty });
+    } catch { this.events.chance?.(null); /* Never fabricate a statistic if workers are unavailable. */ }
   }
 
   private resolve(outcome: Outcome, point = this.ball.position) {
     this.resultBallTime = this.ball.time;
     this.lastResult = {
       outcome,
+      runupSpeed: this.runupFrames.peakSpeed,
+      playerHeight: getPlayer(this.settings.playerId).appearance.height,
+      keeperHeight: 1.90,
       frameHits: this.ball.frameHits,
       distance: distanceToGoal(this.shotSetup.position),
       speed: shotSpeed(this.shotSetup.power, this.shotSetup.attributes, this.shotSetup.playStyle) * 3.6,
@@ -652,6 +687,11 @@ export class Arena {
     };
     this.setPhase('result');
     this.events.result(this.lastResult);
+    if (outcome === 'goal') {
+      this.requestChance();
+      // Enter on the scoring tick, not after the old 1.8-second celebration delay.
+      this.replay(); this.stepReplay(0);
+    }
   }
 
   private stepReplay(dt: number) {
@@ -665,9 +705,17 @@ export class Arena {
     }
     const sampleTime = goal ? this.analysisFrame.shotTime : this.replayClock;
     const index = Math.floor(sampleTime * 60);
-    if (this.replayFrames.sample(sampleTime * 60, this.ball, this.keeper)) {
+    if (goal && sampleTime <= 0) {
+      const approach = this.runupFrames.sample(Math.max(0, RUNUP_SECONDS + sampleTime), this.taker.group.position);
+      this.taker.group.rotation.y = approach.yaw;
+      this.taker.run(approach.phase, this.settings.foot, this.settings.contact);
+      this.replayFrames.sampleTime(0, this.ball, this.keeper, this.football.quaternion);
+      this.keeperModel.keeperPose(this.keeper, 0, Math.max(0, (approach.phase - .55) / .45));
+      for (const player of this.wallModels) if (player.group.visible) player.wallPose(0, 0);
+    } else if (this.replayFrames.sampleTime(sampleTime, this.ball, this.keeper, this.football.quaternion)) {
+      if (goal) { const plant = this.runupFrames.sample(RUNUP_SECONDS, this.taker.group.position); this.taker.group.rotation.y = plant.yaw; }
       const elapsed = this.ball.time - this.resultBallTime;
-      if (elapsed >= 0 && this.lastResult) {
+      if (elapsed > 0 && this.lastResult && !goal) {
         this.keeperModel.keeperRecover(this.keeper, this.ball.time, elapsed, this.lastResult.outcome);
         this.taker.react(this.lastResult.outcome, elapsed, this.ball.time, this.settings.foot, this.settings.contact);
       } else {
@@ -699,12 +747,16 @@ export class Arena {
         if (stage === 'intro' || stage === 'overview' || stage === 'done') {
           this.desiredCamera.set(p.x + side * (10 + progress * 2), 9 + progress * 2, p.z + 6);
           this.desiredLook.set(p.x * .45, .85, p.z * .45);
+        } else if (stage === 'runup') {
+          const taker = this.taker.group.position;
+          this.desiredCamera.set(taker.x + side * 4.5, 1.8, taker.z + 4.5);
+          this.desiredLook.set(taker.x, 1.05, taker.z - .5);
         } else if (stage === 'strike') {
           this.desiredCamera.set(p.x + side * (3.5 + progress * .4), 1.3, p.z + 3.6);
           this.desiredLook.set(p.x, .7, p.z - .3);
         } else if (stage === 'flight') {
           this.desiredCamera.set(this.ball.position.x + side * (8 + Math.sin(progress * Math.PI) * 3), 3 + Math.sin(progress * Math.PI) * 3, this.ball.position.z + 8);
-          this.desiredLook.set(this.ball.position.x, Math.max(.65, this.ball.position.y), this.ball.position.z - 2);
+          this.desiredLook.set(this.ball.position.x, this.ball.position.y, this.ball.position.z);
         } else {
           const entry = this.lastResult.point;
           this.desiredCamera.set(entry.x + side * (3.5 - progress), Math.max(1.5, entry.y + .4), 5 - progress);
@@ -742,11 +794,13 @@ export class Arena {
     const blend = snap || (replay && this.analysisCameraCut) ? 1 : 1 - Math.exp(-dt * 4.5);
     this.analysisCameraCut = false;
     this.camera.position.lerp(this.desiredCamera, blend);
-    this.lookAt.lerp(this.desiredLook, blend);
+    if(replay && this.analysisFrame.stage === 'flight') this.lookAt.copy(this.desiredLook);
+    else this.lookAt.lerp(this.desiredLook, blend);
     this.camera.lookAt(this.lookAt);
   }
 
   dispose() {
+    this.chanceWorker?.terminate();
     cancelAnimationFrame(this.raf);
     if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
     this.resizeFrame = 0;

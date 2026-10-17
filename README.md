@@ -13,14 +13,14 @@ Open the Vite URL. The server binds to `0.0.0.0` and accepts Arena preview hosts
 
 ### Controls
 
-- **Music:** your three custom songs start in shuffled order. The main-menu song-title button toggles music, with previous/next beside it. Browsers that block autoplay start after a tap or keypress. Music pauses while the app is backgrounded. [Soundtrack details](src/soundtracks/README.md).
+- **Music:** your five custom songs (including Worms and Parado no bailão) start in shuffled order. The menu/in-game song-title button toggles music, with previous/next beside it. Browsers that block autoplay start after a tap or keypress. Music pauses while the app is backgrounded. [Soundtrack details](src/soundtracks/README.md).
 - **Menu:** Play (five-kick challenges), Practice (free kicks), Players (the roster), Settings, and How to play. Practice fills the whole screen with only gameplay controls; **Back** returns to the menu.
 - **Settings:** a full-screen, scrolling screen with Pitch & Keeper and Visuals & Sound tabs. Open it from the Settings button (or **Escape**) during play; **Back to the pitch** returns to the shot. The fullscreen button hides browser chrome where permitted.
-- **Choose a player:** open Players from the menu, or press **T** in play. Search by name/nation, filter by foot or edition (standard or turquoise special), then select the card.
+- **Choose a player:** open Players from the menu, or press **T** in play. Search by name/nation, filter by foot or edition (standard, ICON or turquoise special), then select the card.
 - **Set your spot:** in Settings, tap/drag the mini pitch or choose a flank; use the distance slider. Arrow keys work when the mini pitch is focused. Direct kicks stay outside the penalty area.
 - **Aim:** drag the 3D pitch, tap near the goal, or use the arrow keys. Aim is a launch direction, not a guaranteed destination.
 - **Contact:** drag the marker on the ball. Left/right contact adds opposite sidespin. Lower contact adds lift/backspin; higher contact lowers the launch and adds topspin. Curl, knuckleball, and driven presets are starting points.
-- **Shoot:** hold the lime button or **Space**; release for the run-up and strike. The lime power mark is a suggestion. The trajectory preview uses that power until charging, then your actual power.
+- **Shoot:** hold the lime button or **Space**; release for the run-up and strike. The trajectory preview uses that power until charging, then your actual power.
 - **Replay:** click the replay button or **R** after a shot. Replays use recorded states and do not count again.
 - **Camera:** **V** or the camera button. **Escape** pauses in Settings. Settings also control sound, guides, haptics, and graphics quality.
 
@@ -104,6 +104,10 @@ Custom also offers SMAA or Off. [Upgrade notes](docs/REALISM_UPGRADE.md) cover s
 flight, revised aerodynamics/turf response, closed player joints/necklines, catalogue-height
 scaling, signature poses, outside-foot animation and original holographic-style shield cards.
 
-## Latest presentation update
+## Latest cinematic / ICON update
+
+See [the cinematic replay, ICON, DOF and performance update](docs/CINEMATIC_ICON_UPDATE.md) for recorded run-ups and rotation, immediate goal analysis, the 64-trial conversion estimate, model-aligned collisions, five-track playback and eight workload reductions. DOF defaults on only in High and can be toggled in Custom. The roster has 42 cards, including Roberto Carlos, Ronaldinho, Zidane and Beckham ICON tributes.
+
+### Previous presentation update
 
 See [player realism, PlayStyles and HyperMotionV-inspired analysis](docs/PLAYSTYLE_PRESENTATION_UPDATE.md) for the complete change log, GPU/CPU optimizations, validation and explicit technology/asset-rights limitations.

@@ -77,75 +77,79 @@ function signageTexture(text: string, dark = true): THREE.CanvasTexture {
   return tex;
 }
 
-/** Pooled confetti: one instanced draw call, no allocation per goal. */
-class Confetti {
+/** Only one vec4/particle is uploaded each frame; flutter/rotation are evaluated on the GPU. */
+export class Confetti {
   readonly mesh: THREE.InstancedMesh;
   private readonly count = 90;
   private readonly position = new Float32Array(90 * 3);
   private readonly velocity = new Float32Array(90 * 3);
   private readonly life = new Float32Array(90);
-  private readonly spin = new Float32Array(90);
-  private readonly dummy = new THREE.Object3D();
+  private readonly particle = new THREE.InstancedBufferAttribute(new Float32Array(90 * 4), 4).setUsage(THREE.DynamicDrawUsage);
+  private readonly clock = { value: 0 };
   private active = false;
 
   constructor(parent: THREE.Object3D) {
-    this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.09, 0.05), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false }), this.count);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.frustumCulled = false;
-    this.mesh.visible = false;
-    const palette = ['#b4ff37', '#2fd8c8', '#ffffff', '#ffd166', '#ef476f'].map(color => new THREE.Color(color));
-    for (let i = 0; i < this.count; i++) {
-      this.mesh.setColorAt(i, palette[i % palette.length]);
-      this.dummy.position.set(0, -100, 0); this.dummy.scale.setScalar(0); this.dummy.updateMatrix();
-      this.mesh.setMatrixAt(i, this.dummy.matrix);
-    }
+    const geometry = new THREE.PlaneGeometry(.09, .05);
+    geometry.setAttribute('aParticle', this.particle);
+    geometry.setAttribute('aIndex', new THREE.InstancedBufferAttribute(Float32Array.from({length:90}, (_,i)=>i), 1));
+    const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false });
+    material.onBeforeCompile = shader => {
+      shader.uniforms.uParticleTime = this.clock;
+      shader.vertexShader = 'attribute vec4 aParticle; attribute float aIndex; uniform float uParticleTime;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        float a = uParticleTime * aParticle.w;
+        float flutter = max(.15, abs(sin(a*.5+aIndex)));
+        transformed.y *= flutter;
+        // Same XYZ Euler transform as the former per-particle Object3D matrix.
+        float cy=cos(a*.7), sy=sin(a*.7), cx=cos(a), sx=sin(a);
+        transformed = vec3(cy*transformed.x+sy*transformed.z, transformed.y, -sy*transformed.x+cy*transformed.z);
+        transformed.yz = mat2(cx,sx,-sx,cx)*transformed.yz;
+        if(aParticle.y < -99.) transformed=vec3(0.);
+        transformed += aParticle.xyz;
+      `);
+    };
+    material.customProgramCacheKey = () => 'gpu-confetti-euler-v1';
+    this.mesh = new THREE.InstancedMesh(geometry, material, this.count);
+    this.mesh.name = 'gpu-confetti'; this.mesh.frustumCulled = false; this.mesh.visible = false;
+    const palette = ['#b4ff37', '#2fd8c8', '#ffffff', '#ffd166', '#ef476f'].map(c => new THREE.Color(c));
+    for (let i=0;i<this.count;i++) { this.mesh.setColorAt(i,palette[i%palette.length]); this.particle.setY(i,-100); }
     parent.add(this.mesh);
   }
-
   burst(origin: THREE.Vector3) {
-    for (let i = 0; i < this.count; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const up = 2.5 + Math.random() * 4;
-      this.position.set([origin.x, origin.y, origin.z], i * 3);
-      this.velocity.set([Math.cos(a) * (1 + Math.random() * 2.5), up, Math.sin(a) * (1 + Math.random() * 2.5) - 1], i * 3);
-      this.life[i] = 2.2 + Math.random() * 1.6;
-      this.spin[i] = (Math.random() - 0.5) * 12;
+    for(let i=0;i<this.count;i++) {
+      const a=Math.random()*Math.PI*2, up=2.5+Math.random()*4, j=i*3;
+      this.position[j]=origin.x;this.position[j+1]=origin.y;this.position[j+2]=origin.z;
+      this.velocity[j]=Math.cos(a)*(1+Math.random()*2.5);this.velocity[j+1]=up;this.velocity[j+2]=Math.sin(a)*(1+Math.random()*2.5)-1;
+      this.life[i]=2.2+Math.random()*1.6;
+      this.particle.setXYZW(i,origin.x,origin.y,origin.z,(Math.random()-.5)*12);
     }
-    this.active = true;
-    this.mesh.visible = true;
+    this.particle.needsUpdate=true; this.active=true; this.mesh.visible=true;
   }
-
-  update(dt: number, time: number) {
-    if (!this.active) return;
-    let alive = 0;
-    for (let i = 0; i < this.count; i++) {
-      if (this.life[i] <= 0) continue;
-      this.life[i] -= dt;
-      if (this.life[i] <= 0) {
-        // Hide the particle once; dead particles are skipped on later frames.
-        this.dummy.position.set(0, -100, 0); this.dummy.scale.setScalar(0); this.dummy.updateMatrix();
-        this.mesh.setMatrixAt(i, this.dummy.matrix);
-        continue;
-      }
-      alive++;
-      const j = i * 3;
-      // Air drag keeps confetti floating for a moment before it falls.
-      this.velocity[j] *= 1 - dt * 1.6; this.velocity[j + 1] = this.velocity[j + 1] * (1 - dt * 1.2) - 2.2 * dt; this.velocity[j + 2] *= 1 - dt * 1.6;
-      this.position[j] += this.velocity[j] * dt; this.position[j + 1] += this.velocity[j + 1] * dt; this.position[j + 2] += this.velocity[j + 2] * dt;
-      const flutter = Math.max(0.15, Math.abs(Math.sin(time * this.spin[i] * 0.5 + i)));
-      this.dummy.position.set(this.position[j], Math.max(0.02, this.position[j + 1]), this.position[j + 2]);
-      this.dummy.rotation.set(time * this.spin[i], time * this.spin[i] * 0.7, 0);
-      this.dummy.scale.set(1, flutter, 1);
-      this.dummy.updateMatrix();
-      this.mesh.setMatrixAt(i, this.dummy.matrix);
+  update(dt:number,time:number) {
+    if(!this.active)return;
+    this.clock.value=time;let alive=0;
+    for(let i=0;i<this.count;i++) {
+      if(this.life[i]<=0)continue;
+      this.life[i]-=dt;
+      if(this.life[i]<=0) {this.particle.setXYZ(i,0,-100,0);continue;}
+      alive++; const j=i*3;
+      this.velocity[j]*=1-dt*1.6;this.velocity[j+1]=this.velocity[j+1]*(1-dt*1.2)-2.2*dt;this.velocity[j+2]*=1-dt*1.6;
+      this.position[j]+=this.velocity[j]*dt;this.position[j+1]+=this.velocity[j+1]*dt;this.position[j+2]+=this.velocity[j+2]*dt;
+      this.particle.setXYZ(i,this.position[j],Math.max(.02,this.position[j+1]),this.position[j+2]);
     }
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (alive === 0) { this.active = false; this.mesh.visible = false; }
+    this.particle.needsUpdate=true;
+    if(!alive){this.active=false;this.mesh.visible=false;}
   }
 }
 
+/** Explicit immutable-world contract: shaders animate; the movable grass patch writes its own world matrix. */
+export class FrozenStadiumGroup extends THREE.Group {
+  private frozen = false;
+  freezeWorld() { super.updateMatrixWorld(true); this.frozen = true; }
+  override updateMatrixWorld(force?: boolean) { if (!this.frozen) super.updateMatrixWorld(force); }
+}
+
 export class Stadium {
-  readonly group = new THREE.Group();
+  readonly group = new FrozenStadiumGroup();
   readonly net: THREE.LineSegments;
   private readonly netRipple: NetRipple;
   readonly sun: THREE.DirectionalLight;
@@ -162,7 +166,8 @@ export class Stadium {
   private skyMaterial!: THREE.ShaderMaterial;
   private sunDisc!: THREE.Mesh;
   private readonly glows = new THREE.Group();
-  private readonly crowdTime = { value: 0 };
+  private readonly crowdMotion = { value: new THREE.Vector4(1,0,1,0) };
+  private readonly photoMotion = { value: new THREE.Vector2(1,0) };
   private readonly flagTime = { value: 0 };
   private readonly crowdEnergy = { value: 0 };
   private cheerStart = -100;
@@ -215,6 +220,7 @@ export class Stadium {
       object.matrixAutoUpdate = false;
       object.matrixWorldAutoUpdate = false;
     });
+    this.group.freezeWorld();
   }
 
   private box(w: number, h: number, d: number, x: number, y: number, z: number, material: THREE.Material, shadow = false) {
@@ -378,13 +384,13 @@ export class Stadium {
     const crowdMat = standard('#e8ebec');
     const headMat = standard('#ceb698');
     for (const mat of [crowdMat, headMat]) mat.onBeforeCompile = shader => {
-      shader.uniforms.crowdTime = this.crowdTime;
+      shader.uniforms.crowdMotion = this.crowdMotion;
       shader.uniforms.crowdEnergy = this.crowdEnergy;
-      shader.vertexShader = 'uniform float crowdTime;\nuniform float crowdEnergy;\n' + shader.vertexShader;
+      shader.vertexShader = 'uniform vec4 crowdMotion; attribute vec4 aCrowdPhase;\nuniform float crowdEnergy;\n' + shader.vertexShader;
       // Idle bob, a slow travelling wave along the stands, and a stronger jump after a goal.
       shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-        float wave = max(0.0, sin(instanceMatrix[3].x * 0.085 - crowdTime * 2.1)) * 0.05;
-        float bob = (0.025 + crowdEnergy * 0.2) * sin(crowdTime * (1.6 + crowdEnergy * 5.0) + instanceMatrix[3].x * 1.7 + instanceMatrix[3].z);
+        float wave = max(0.0, dot(aCrowdPhase.xy,crowdMotion.xy)) * 0.05;
+        float bob = (0.025 + crowdEnergy * 0.2) * dot(aCrowdPhase.zw,crowdMotion.zw);
         transformed.y += bob + wave * (0.6 + crowdEnergy);`);
     };
     const clothes = ['#d8dee2','#d6d4c6','#1b2940','#334860','#ae3d45','#56758f','#87939c','#203448','#a6b6c3','#a57044'];
@@ -411,8 +417,8 @@ export class Stadium {
     const seatsGroup = this.crowdSeats = new THREE.Group(), crowdGroup = new THREE.Group(), headsGroup = this.crowdHeads = new THREE.Group();
     for (const indices of cells.values()) {
       const seats = new THREE.InstancedMesh(seatGeometry, seatMat, indices.length);
-      const crowd = new THREE.InstancedMesh(crowdGeometry, crowdMat, indices.length);
-      const heads = new THREE.InstancedMesh(headGeometry, headMat, indices.length);
+      const crowd = new THREE.InstancedMesh(crowdGeometry.clone(), crowdMat, indices.length);
+      const heads = new THREE.InstancedMesh(headGeometry.clone(), headMat, indices.length);
       indices.forEach((i, j) => {
         const pl = places[i];
         dummy.position.set(pl.x,pl.y+.12,pl.z); dummy.rotation.set(0,pl.rotation,0); dummy.scale.set(1,1,1); dummy.updateMatrix();
@@ -422,9 +428,13 @@ export class Stadium {
         dummy.position.y=pl.y+.76; dummy.scale.setScalar(occupied[i]?1:0); dummy.updateMatrix();
         heads.setMatrixAt(j,dummy.matrix); heads.setColorAt(j,new THREE.Color(skinTone[i]));
       });
+      const phase = new Float32Array(indices.length*4);
+      indices.forEach((i,j)=>{ const p=places[i],a=p.x*.085,b=p.x*1.7+p.z;phase.set([Math.sin(a),Math.cos(a),Math.sin(b),Math.cos(b)],j*4); });
+      for(const mesh of [crowd,heads]) mesh.geometry.setAttribute('aCrowdPhase',new THREE.InstancedBufferAttribute(phase,4));
       seatsGroup.add(seats); crowdGroup.add(crowd); headsGroup.add(heads);
     }
     this.group.add(seatsGroup,crowdGroup,headsGroup);
+    crowdGeometry.dispose(); headGeometry.dispose();
     // Continuous upper tier and hospitality band; no flat wall of repeated blocks.
     this.box(103,1.4,.5,0,8.6,-24.4,charcoal);
     this.box(105,1.0,1,0,17.4,-35.2,charcoal);
@@ -470,15 +480,15 @@ export class Stadium {
     // Wider, single-triangle blades sway in the vertex shader (no CPU work).
     const blade = new THREE.BufferGeometry();
     blade.setAttribute('position', new THREE.Float32BufferAttribute([
-      -.0078, 0, 0, .0078, 0, 0, 0, .048, .002,
+      -.009, 0, 0, .009, 0, 0, 0, .048, .002,
     ], 3));
     blade.computeVertexNormals();
     const mat = new THREE.MeshBasicMaterial({ color: '#426d42', side: THREE.DoubleSide });
     mat.onBeforeCompile = shader => {
-      shader.uniforms.uTime = this.grassTime;
-      shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      shader.uniforms.uWind = this.grassWind;
+      shader.vertexShader = 'uniform vec4 uWind; attribute vec4 aWind;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
 #ifdef USE_INSTANCING
-  float sway = position.y * (sin(uTime * 1.7 + instanceMatrix[3].x * 0.9 + instanceMatrix[3].z * 0.6) * 0.6 + sin(uTime * 3.1 + instanceMatrix[3].z * 1.3) * 0.25);
+  float sway = position.y * (dot(aWind.xy,uWind.xy)*.6 + dot(aWind.zw,uWind.zw)*.25);
   transformed.x += sway * 0.02;
   transformed.z += sway * 0.008;
 #endif`);
@@ -497,9 +507,9 @@ export class Stadium {
       // Distance from the kick area (0, 22) sets the density: dense near the ball, sparse at the edges.
       const d = Math.hypot(cx, cz - 22);
       const near = i === centres.length - 2;
-      const count = near ? 12000 : d < 12 ? 3600 : d < 22 ? 2000 : 960;
+      const count = near ? 14400 : d < 12 ? 4320 : d < 22 ? 2400 : 1152;
       const tile = near ? 4 : TILE;
-      const patch = new THREE.InstancedMesh(blade, mat, count);
+      const patch = new THREE.InstancedMesh(blade.clone(), mat, count);
       for (let n = 0; n < count; n++) {
         const angle = near ? random() * Math.PI * 2 : 0;
         const radius = near ? 4 * Math.sqrt(random() * random()) : 0;
@@ -530,9 +540,17 @@ export class Stadium {
         }
         patch.position.set(cx, 0, cz); patch.updateMatrix(); patch.computeBoundingSphere(); this.nearGrass = patch;
       }
+      if(patch.boundingSphere) patch.boundingSphere.radius += .002; // Include shader sway in culling bounds.
+      const wind = new Float32Array(count * 4), matrix = patch.instanceMatrix.array;
+      for(let n=0;n<count;n++) {
+        const x=matrix[n*16+12],z=matrix[n*16+14],a=x*.9+z*.6,b=z*1.3;
+        wind.set([Math.sin(a),Math.cos(a),Math.sin(b),Math.cos(b)],n*4);
+      }
+      patch.geometry.setAttribute('aWind', new THREE.InstancedBufferAttribute(wind,4));
       this.grassPatches.push(patch);
       this.grassFull.push(count);
     }
+    blade.dispose();
   }
 
   private nearGrass: THREE.InstancedMesh | null = null;
@@ -544,7 +562,7 @@ export class Stadium {
   }
 
   private grassPatches: THREE.InstancedMesh[] = [];
-  private readonly grassTime = { value: 0 };
+  private readonly grassWind = { value: new THREE.Vector4(1,0,1,0) };
   private grassFull: number[] = [];
 
   setQuality(quality: Quality) {
@@ -579,9 +597,9 @@ export class Stadium {
     // Animate the existing atlas strips on the GPU. Their lower edge stays in the seats;
     // the upper edge rises in a travelling cheer. No second crowd mesh or per-frame uploads.
     this.photoCrowdMaterial.onBeforeCompile = shader => {
-      shader.uniforms.crowdTime = this.crowdTime; shader.uniforms.crowdEnergy = this.crowdEnergy;
-      shader.vertexShader = 'uniform float crowdTime; uniform float crowdEnergy; attribute float crowdAnchor;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-        float crowdWave = sin(crowdTime * 1.8 + position.x * 0.21 + position.z * 0.17);
+      shader.uniforms.photoMotion = this.photoMotion; shader.uniforms.crowdEnergy = this.crowdEnergy;
+      shader.vertexShader = 'uniform vec2 photoMotion; attribute vec2 aPhotoPhase; uniform float crowdEnergy; attribute float crowdAnchor;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        float crowdWave = dot(aPhotoPhase,photoMotion);
         transformed.y += crowdAnchor * (0.012 + crowdEnergy * 0.22) * (0.5 + 0.5 * crowdWave);
       `);
     };
@@ -612,6 +630,9 @@ export class Stadium {
     this.photoCrowdMaterial.side=THREE.DoubleSide;
     const crowdGeometry = mergeGeometries(geometryParts);
     crowdGeometry.computeBoundingSphere(); crowdGeometry.boundingSphere!.radius += .25;
+    const p = crowdGeometry.attributes.position, phase = new Float32Array(p.count*2);
+    for(let i=0;i<p.count;i++){const a=p.getX(i)*.21+p.getZ(i)*.17;phase[i*2]=Math.sin(a);phase[i*2+1]=Math.cos(a);}
+    crowdGeometry.setAttribute('aPhotoPhase',new THREE.Float32BufferAttribute(phase,2));
     this.photoCrowd.add(new THREE.Mesh(crowdGeometry,this.photoCrowdMaterial));
     geometryParts.forEach(geometry=>geometry.dispose());
     this.photoCrowd.visible=false;this.group.add(this.photoCrowd);
@@ -684,6 +705,18 @@ export class Stadium {
       this.group.add(flag);
       this.flags.push({ geometry, base: (geometry.attributes.position.array as Float32Array).slice() });
     }
+    const steel = standard('#334453'), concrete = standard('#66717c');
+    // Low-cost hospitality glazing, tunnel lintel, seating rails and a distant city silhouette.
+    this.box(5.8,.35,1.1,27,3.5,-12,steel);
+    this.box(.35,3.2,1.1,24.2,1.6,-12,concrete);this.box(.35,3.2,1.1,29.8,1.6,-12,concrete);
+    for(const side of [-1,1]) {
+      this.box(.08,.08,22,side*38.4,1.45,28,steel);
+      for(let i=0;i<6;i++)this.box(.08,1.2,.08,side*38.4,.85,18+i*4,steel);
+      for(let i=0;i<7;i++) {
+        const h=10+(i*7%13);this.box(6,h,9,side*(73+i%3*9),h/2,-55-i*9,concrete);
+        this.box(6,.4,9,side*(73+i%3*9),h+.2,-55-i*9,steel);
+      }
+    }
     // Broadcast camera pods behind the advertising boards.
     const dark = standard('#263c36');
     for (const x of [-11, 11]) {
@@ -707,13 +740,15 @@ export class Stadium {
   dispose() { this.disposed = true; }
 
   update(time: number) {
-    this.crowdTime.value = time;
+    this.photoMotion.value.set(Math.cos(time*1.8),Math.sin(time*1.8));
     this.flagTime.value = time;
-    this.grassTime.value = time;
+    this.grassWind.value.set(Math.cos(time*1.7),Math.sin(time*1.7),Math.cos(time*3.1),Math.sin(time*3.1));
     const dt = this.lastUpdate ? Math.min(0.1, Math.max(0, time - this.lastUpdate)) : 1 / 30;
     this.lastUpdate = time;
     const cheer = time - this.cheerStart;
     this.crowdEnergy.value = cheer < 6 ? Math.exp(-cheer / 2.2) * this.cheerStrength : 0;
+    const bob = time*(1.6+this.crowdEnergy.value*5);
+    this.crowdMotion.value.set(Math.cos(-time*2.1),Math.sin(-time*2.1),Math.cos(bob),Math.sin(bob));
     this.confetti.update(dt, time);
     this.netRipple.update(time);
   }

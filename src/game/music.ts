@@ -3,11 +3,14 @@ export const PLAYLIST: readonly { file: string; title: string }[] = [
   { file: '01-feet-dont-fail-me-now.mp3', title: "Feet Don't Fail Me Now" },
   { file: '02-haya-haya.mp3', title: 'Hayya Hayya (Better Together)' },
   { file: '06-ai-seu-te-pego.mp3', title: 'Ai Se Eu Te Pego' },
+  { file: '../Worms - Ashnikko (EAFC 24 SOUNDTRACK).mp3', title: 'Worms · Ashnikko' },
+  { file: '../MC-L-Da-SnapYT.App.mp3', title: 'Parado no bailão · MC L da Vinte & MC Gury' },
 ];
-const SOUNDTRACKS = import.meta.glob('../soundtracks/*.{mp3,ogg,m4a,wav}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const SOUNDTRACKS = import.meta.glob(['../soundtracks/*.{mp3,ogg,m4a,wav}', '../Worms*.mp3', '../MC-L-*.mp3'], { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 export interface MusicTrack { title: string; url: string }
 const TRACKS: MusicTrack[] = PLAYLIST.flatMap(track => {
-  const url = SOUNDTRACKS[`../soundtracks/${track.file}`];
+  const path = track.file.startsWith('../') ? track.file : `../soundtracks/${track.file}`;
+  const url = SOUNDTRACKS[path];
   return url ? [{ title: track.title, url }] : [];
 });
 

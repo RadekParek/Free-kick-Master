@@ -29,7 +29,8 @@ test('loads CC0 anatomy offline and renders all hair/kit identities through the 
     const key = new THREE.DirectionalLight('#fff0dd', 3); key.position.set(-2, 4, -4); scene.add(key);
     const player = new Player('taker'); scene.add(player.group);
     const post = new PostStack(renderer, scene, camera);
-    post.configure({ antialias: 'fxaa', bloom: true, quality: 'high' }, 360, 600);
+    post.configure({ antialias: 'fxaa', bloom: true, dof: true, quality: 'high' }, 360, 600);
+    post.focus(2.6);
     const results = [];
     for (const { id } of PLAYERS) {
       player.setProfile(getPlayer(id)); player.idle(.5); player.updateLod(camera);
@@ -37,9 +38,10 @@ test('loads CC0 anatomy offline and renders all hair/kit identities through the 
       const body = player.group.children[0].getObjectByName('body');
       results.push({ id, ...player.group.userData.appearance, build: body.scale.x / body.scale.y });
     }
-    const aaModes = [];
+    const aaModes = [], depthBindings = [];
     for (const antialias of ['off', 'fxaa', 'smaa']) {
-      post.configure({ antialias, bloom: false, quality: 'high' }, 360, 600); post.render();
+      post.configure({ antialias, bloom: false, dof: true, quality: 'high' }, 360, 600);
+      for(let i=0;i<2;i++){const source=post.composer.readBuffer.depthTexture;post.render();depthBindings.push(post.grade.uniforms.tDepth.value===source);}
       aaModes.push({ mode: antialias, samples: post.composer.renderTarget1.samples });
     }
     const contacts = [];
@@ -56,17 +58,28 @@ test('loads CC0 anatomy offline and renders all hair/kit identities through the 
     const height = player.group.children[0].userData.height;
     // Keep the final canvas for a visual attachment; release the secondary GPU allocations.
     const image = renderer.domElement.toDataURL('image/png');
+    post.focus(.6);post.render();const defocused=renderer.domElement.toDataURL('image/png');
+    const dofChangesPixels=image!==defocused;
+    const low=player.rigs[1],copy=low.copyPose.bind(low);let copies=0;
+    low.copyPose=(source:any)=>{copies++;copy(source);};
+    for(let i=0;i<20;i++){player.idle(i/60);player.updateLod(camera);}
+    const lodCopies=[copies];camera.position.set(0,1,100);camera.updateMatrixWorld();player.updateLod(camera);lodCopies.push(copies);
+    const lowMatches=low.head.quaternion.equals(player.rigs[0].head.quaternion);
+    player.idle(1);lodCopies.push(copies);camera.position.set(.22,1.38,-2.6);camera.updateMatrixWorld();player.updateLod(camera);player.idle(2);lodCopies.push(copies);
     post.dispose(); renderer.dispose(); renderer.domElement.remove();
-    return { results, image, aaModes, contacts, height };
+    return { results, image, aaModes, contacts, height, depthBindings, dofChangesPixels, lodCopies, lowMatches };
   });
-  expect(rendered.results).toHaveLength(38);
-  expect(rendered.contacts).toHaveLength(38);
+  expect(rendered.results).toHaveLength(42);
+  expect(rendered.contacts).toHaveLength(42);
   expect(rendered.aaModes.map(aa => aa.samples)).toEqual([0, 0, 0]);
   expect(rendered.height).toBe(1.8);
+  expect(rendered.depthBindings).toEqual(Array(6).fill(true));
+  expect(rendered.dofChangesPixels).toBe(true);
+  expect(rendered.lodCopies).toEqual([0,1,2,2]);expect(rendered.lowMatches).toBe(true);
   expect(rendered.results.find(result => result.id === 'ronaldo')!.build).toBeCloseTo(1.04);
   expect(rendered.results.find(result => result.id === 'yamal')!.build).toBeCloseTo(.94);
   for (const point of rendered.contacts) { expect(point.x).toBeCloseTo(0, 5); expect(point.z).toBeCloseTo(.09, 5); }
-  expect(new Set(rendered.results.map(result => result.hair)).size).toBe(7);
+  expect(new Set(rendered.results.map(result => result.hair)).size).toBe(9);
   expect(rendered.results.find(result => result.id === 'messi')!.kit).toBe('stripes');
   expect(rendered.results.find(result => result.id === 'modric')!.kit).toBe('checks');
   expect(rendered.results.find(result => result.id === 'vinicius-special')!.kit).toBe('sash');

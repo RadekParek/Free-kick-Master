@@ -1,3 +1,4 @@
+import { RIG_REST } from './skeleton-layout';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { PlayerRole } from './animation';
@@ -119,7 +120,7 @@ function buildTemplate(role: PlayerRole, detail: Detail): RigRoot {
   const high = detail === 'high', radial = high ? 32 : 16;
   const root = new RigRoot();
   const bone = (name: string, parent: THREE.Object3D, x = 0, y = 0, z = 0) => {
-    const group = new THREE.Group(); group.name = name; group.position.set(x, y, z); parent.add(group); return group;
+    const group = new THREE.Group(); group.name = name; group.position.fromArray(RIG_REST[name as keyof typeof RIG_REST] ?? [x,y,z]); parent.add(group); return group;
   };
   const placeholder = Object.fromEntries((['skin', 'jersey', 'sleeve', 'shorts', 'trim', 'sock', 'boot', 'sole', 'hair', 'glove', 'eyes', 'iris'] as Surface[])
     .map(name => { const mat = new THREE.MeshStandardMaterial(); mat.name = name; return [name, mat]; })) as AthleteMaterials;
@@ -245,11 +246,15 @@ export function athleteModel(role: PlayerRole, detail: Detail, materials: Athlet
 export function hairGeometry(style: HairStyle, detail: Detail): THREE.BufferGeometry {
   const key = `${style}/${detail}`;
   const cached = hairCache.get(key); if (cached) return cached;
+  if(style === 'bald') {
+    const empty = new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute([],3)).setIndex([]);
+    empty.boundingSphere = new THREE.Sphere(new THREE.Vector3(),0); hairCache.set(key,empty);return empty;
+  }
   const high = detail === 'high', segments = high ? 32 : 16;
   const parts: THREE.BufferGeometry[] = [];
   const fitted = fittedHead(detail, (_x, y, z) => {
     const front = Math.max(0, -z / .13), back = Math.max(0, z / .13);
-    return y > .165 + front * .085 - back * (style === 'flow' ? .14 : .045);
+    return y > .165 + front * .085 - back * (style === 'flow' || style === 'ponytail' ? .14 : .045);
   });
   const shell = fitted ?? new THREE.SphereGeometry(1, segments, high ? 14 : 8, 0, Math.PI * 2, 0, Math.PI / 2);
   const p = shell.attributes.position;
@@ -296,6 +301,10 @@ export function hairGeometry(style: HairStyle, detail: Detail): THREE.BufferGeom
     clump(0, .264, .113, .047, .038, .038);
   } else if (style === 'braids') {
     for (let i = 0; i < 6; i++) clump((i - 2.5) * .031, .296 - Math.abs(i - 2.5) * .009, .001, .012, .018, .101, .07);
+  } else if (style === 'ponytail') {
+    // Rooted tied curls and a compact tail: Ronaldinho's classic silhouette.
+    for(let i=0;i<6;i++) clump(Math.sin(i*2.1)*.012,.20-i*.021,.105+i*.014,.029,.035,.026,(i-2)*.07);
+    clump(0,.242,.109,.043,.024,.026);
   } else if (style === 'flow') {
     for (let i = 0; i < 7; i++) clump(Math.sin(i / 6 * Math.PI - Math.PI / 2) * .097, .173, .063, .032, .092, .047, (i - 3) * -.09);
   }

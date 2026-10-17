@@ -12,13 +12,14 @@ export interface TakerAppearance { shirt: string; shorts: string; trim: string; 
 export type PlayStyle = 'finesse' | 'power' | 'deadball';
 /** Custom assignments requested for this game, not EA's live ratings. Specials inherit the base. */
 const PLAYSTYLES = new Map<string, PlayStyle>([
-  ['messi', 'finesse'], ['yamal', 'finesse'], ['ronaldo', 'power'], ['haaland', 'power'],
+  ['messi', 'finesse'], ['yamal', 'finesse'], ['ronaldo', 'power'], ['haaland', 'power'], ['roberto-carlos', 'power'],
+  ['ronaldinho', 'finesse'], ['beckham', 'deadball'], ['zidane', 'deadball'],
   ['neymar', 'deadball'], ['vinicius', 'deadball'], ['musiala', 'deadball'], ['dembele', 'deadball'],
 ]);
 export function playStyleFor(baseId: string): PlayStyle | undefined { return PLAYSTYLES.get(baseId); }
 export const PLAYSTYLE_LABELS: Record<PlayStyle, string> = { finesse: 'Finesse Shot+', power: 'Power Shot+', deadball: 'Dead Ball+' };
 
-export type Edition = 'standard' | 'special';
+export type Edition = 'standard' | 'special' | 'icon';
 export interface TakerProfile {
   id: string;
   /** Base player id this card belongs to (equal to `id` for standard cards). */
@@ -264,8 +265,14 @@ const standardCards: TakerProfile[] = BASE.map(base => ({
   ...base, rating: overall(base.attributes), baseId: base.id, edition: 'standard',
   ...resolvePhoto(base),
 }));
+const iconCards: TakerProfile[] = [
+  { id: 'roberto-carlos', baseId: 'roberto-carlos', edition: 'icon', name: 'Roberto Carlos', shortName: 'Roberto Carlos', nation: 'Brazil', nationCode: 'BR', foot: 'left', number: 6, rating: 97, specialty: 'Power Shot+ · ICON', description: 'Original ivory-and-gold ICON tribute. Fan-made training attributes, not official EA ratings.', attributes: { power: 99, curve: 99, knuckle: 94, control: 96 }, appearance: { shirt: '#edcc38', shorts: '#163e77', trim: '#d0ae58', skin: '#a86f4b', hair: '#231c17', beard: false, height: 1.68 }, portrait: './players/roberto-carlos.webp', photoDate: null, photoSource: 'https://www.gettyimages.in/photos/roberto-carlos', credit: 'Getty Images editorial search preview; photographer/copyright holder retains rights. Reuse not cleared.' },
+  { id: 'ronaldinho', baseId: 'ronaldinho', edition: 'icon', name: 'Ronaldinho', shortName: 'Ronaldinho', nation: 'Brazil', nationCode: 'BR', foot: 'right', number: 10, rating: 95, specialty: 'Finesse Shot+ · ICON', description: 'Original ivory-and-gold ICON tribute. Fan-made training attributes, not official EA ratings.', attributes: { power: 94, curve: 99, knuckle: 89, control: 99 }, appearance: { shirt: '#edcc38', shorts: '#163e77', trim: '#d0ae58', skin: '#a06a46', hair: '#241c16', beard: false, height: 1.82 }, portrait: './players/ronaldinho.webp', photoDate: null, photoSource: 'https://gettyimages.com/photos/ronaldinho-national-team', credit: 'Getty Images editorial search preview; photographer/copyright holder retains rights. Reuse not cleared.' },
+  { id: 'zidane', baseId: 'zidane', edition: 'icon', name: 'Zinedine Zidane', shortName: 'Zidane', nation: 'France', nationCode: 'FR', foot: 'right', number: 10, rating: 95, specialty: 'Dead Ball+ · ICON', description: 'Original ivory-and-gold ICON tribute. Fan-made training attributes, not official EA ratings.', attributes: { power: 95, curve: 97, knuckle: 88, control: 99 }, appearance: { shirt: '#18356d', shorts: '#163e77', trim: '#d0ae58', skin: '#bd9071', hair: '#31251c', beard: false, height: 1.85 }, portrait: './players/zidane.webp', photoDate: null, photoSource: 'https://gettyimages.com/photos/zidane-headshot', credit: 'Getty Images editorial search preview; photographer/copyright holder retains rights. Reuse not cleared.' },
+  { id: 'beckham', baseId: 'beckham', edition: 'icon', name: 'David Beckham', shortName: 'Beckham', nation: 'England', nationCode: 'GB', foot: 'right', number: 7, rating: 94, specialty: 'Dead Ball+ · ICON', description: 'Original ivory-and-gold ICON tribute. Fan-made training attributes, not official EA ratings.', attributes: { power: 94, curve: 99, knuckle: 85, control: 98 }, appearance: { shirt: '#f3f1e9', shorts: '#163e77', trim: '#d0ae58', skin: '#c7997b', hair: '#8d693f', beard: false, height: 1.83 }, portrait: './players/beckham.webp', photoDate: null, photoSource: 'https://gettyimages.co.uk/photos/david-beckam-england', credit: 'Getty Images editorial search preview; photographer/copyright holder retains rights. Reuse not cleared.' },
+];
 /** Standard cards first, then each player's turquoise special. */
-export const PLAYERS: readonly TakerProfile[] = [...standardCards, ...BASE.filter(base => SPECIAL_IDS.includes(base.id)).map(specialOf)];
+export const PLAYERS: readonly TakerProfile[] = [...standardCards, ...iconCards, ...BASE.filter(base => SPECIAL_IDS.includes(base.id)).map(specialOf)];
 
 const PLAYER_INDEX = new Map(PLAYERS.map(player => [player.id, player]));
 export const DEFAULT_PLAYER_ID = 'ronaldo';

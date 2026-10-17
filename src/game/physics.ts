@@ -1,3 +1,7 @@
+import { BALL_RADIUS, clamp, lerp } from './physics-math';
+export { BALL_RADIUS, clamp, lerp } from './physics-math';
+import { wallBodyHits } from './body-colliders';
+import type { PoseMetrics } from './skeleton-layout';
 /** Seeded, fixed-step set-piece physics. All distances are metres, time is seconds. */
 import type { TakerAttributes, PlayStyle } from '../players';
 export interface Vec3 { x: number; y: number; z: number }
@@ -28,9 +32,8 @@ export interface BallState {
   bounces: number;
   frameHits: number;
 }
-export interface WallPlayer { x: number; z: number; noJump?: boolean }
+export interface WallPlayer { x: number; z: number; noJump?: boolean; height?: number; yaw?: number; metrics?: PoseMetrics }
 export type Outcome = 'goal' | 'saved' | 'wall' | 'post' | 'wide' | 'over' | 'short';
-export const BALL_RADIUS = 0.11;
 export const POST_RADIUS = 0.06;
 export const GOAL_WIDTH = 7.32;
 export const GOAL_HEIGHT = 2.44;
@@ -48,8 +51,6 @@ export function dragCoefficient(speed: number): number { return 0.15 + 0.14 / (1
 export const WALL_DISTANCE = 10.5;
 export const SIDE_MAGNUS = AERO * 1.05 * BALL_RADIUS;
 const TOP_MAGNUS = SIDE_MAGNUS;
-export const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
-export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export const distanceToGoal = (p: Position) => Math.hypot(p.x, p.z);
 export const recommendedPower = (p: Position) => clamp(0.48 + distanceToGoal(p) * 0.006, 0.59, 0.79);
 export const shotSpeed = (power: number, attributes?: TakerAttributes, playStyle?: PlayStyle) => {
@@ -59,7 +60,7 @@ export const shotSpeed = (power: number, attributes?: TakerAttributes, playStyle
 };
 /** Roll once per attempt. Persist the decision for collisions, live animation and replay. */
 export function rollWallJump(wall: WallPlayer[], random = Math.random): void {
-  for (const defender of wall) defender.noJump = random() < .25;
+  for (const defender of wall) defender.noJump = random() < .15;
 }
 export function defenderJump(defender: WallPlayer | undefined, time: number): number {
   return defender?.noJump ? 0 : wallJump(time);
@@ -103,7 +104,8 @@ function referenceElevation(distance: number, height: number, speed: number): nu
     const angle = (low + high) / 2;
     let vx = speed * Math.cos(angle), vy = speed * Math.sin(angle), x = 0, y = BALL_RADIUS;
     for (let n = 0; n < 360 && x < distance; n++) {
-      const drag = AERO * dragCoefficient(Math.hypot(vx, vy)) * Math.hypot(vx, vy);
+      const magnitude = Math.hypot(vx, vy);
+      const drag = AERO * dragCoefficient(magnitude) * magnitude;
       vx -= drag * vx / 60; vy -= (GRAVITY + drag * vy) / 60;
       const dx = vx / 60;
       const fraction = Math.min(1, (distance - x) / Math.max(dx, 1e-6));
@@ -148,6 +150,8 @@ export function cloneBall(ball: BallState): BallState {
   return { ...ball, position: { ...ball.position }, velocity: { ...ball.velocity } };
 }
 
+const FIXED_SPIN_DECAY = Math.exp(-FIXED_DT * .12);
+const FIXED_GROUND_SPIN_DECAY = Math.exp(-FIXED_DT * 3);
 export function integrateBall(ball: BallState, dt = FIXED_DT): void {
   const v = ball.velocity;
   const horizontalSpeed = Math.hypot(v.x, v.z);
@@ -168,7 +172,7 @@ export function integrateBall(ball: BallState, dt = FIXED_DT): void {
     az += v.x / speed * sideForce;
     ay += Math.sin(t * 9.7 + .6 + phase) * 3 * wake;
   }
-  const spinDecay = Math.exp(-dt * .12);
+  const spinDecay = dt === FIXED_DT ? FIXED_SPIN_DECAY : Math.exp(-dt * .12);
   ball.sideSpin *= spinDecay; ball.topSpin *= spinDecay;
   v.x += ax * dt;
   v.y += ay * dt;
@@ -199,7 +203,7 @@ export function integrateBall(ball: BallState, dt = FIXED_DT): void {
       v.x *= scale; v.z *= scale;
       ball.topSpin = next / BALL_RADIUS;
     }
-    ball.sideSpin *= Math.exp(-dt * 3);
+    ball.sideSpin *= dt === FIXED_DT ? FIXED_GROUND_SPIN_DECAY : Math.exp(-dt * 3);
 
   }
 }
@@ -322,7 +326,8 @@ export function getWall(position: Position, count: number, gapIndex = -1): WallP
     // A defender who leans away opens a gap of about 0.25 m beside him.
     const gap = i === gapIndex ? (i < (count - 1) / 2 ? -0.25 : 0.25) : 0;
     const offset = (i - (count - 1) / 2) * 0.56 + gap;
-    return { x: cx + tangentX * offset, z: cz + tangentZ * offset };
+    const x = cx + tangentX * offset, z = cz + tangentZ * offset;
+    return { x, z, height: 1.83*([1,.97,1.03,.985,1.015][i] ?? 1), yaw: Math.atan2(x-position.x,z-position.z) };
   });
 }
 
@@ -331,36 +336,16 @@ export function wallJump(time: number): number {
   return phase > 0 && phase < 1 ? Math.sin(phase * Math.PI) * 0.36 : 0;
 }
 
-const AXES = ['x', 'y', 'z'] as const;
-function segmentWall(a: Vec3, b: Vec3, p: WallPlayer, jump: number): boolean {
-  let lo = 0;
-  let hi = 1;
-  for (const axis of AXES) {
-    const min = axis === 'x' ? p.x - 0.26 - BALL_RADIUS : axis === 'y' ? jump - BALL_RADIUS : p.z - 0.2 - BALL_RADIUS;
-    const max = axis === 'x' ? p.x + 0.26 + BALL_RADIUS : axis === 'y' ? 1.83 + jump + BALL_RADIUS : p.z + 0.2 + BALL_RADIUS;
-    const delta = b[axis] - a[axis];
-    if (Math.abs(delta) < 1e-8) {
-      if (a[axis] < min || a[axis] > max) return false;
-    } else {
-      const t1 = (min - a[axis]) / delta;
-      const t2 = (max - a[axis]) / delta;
-      lo = Math.max(lo, Math.min(t1, t2));
-      hi = Math.min(hi, Math.max(t1, t2));
-      if (lo > hi) return false;
-    }
-  }
-  return true;
-}
-
 export function hitsWall(a: Vec3, b: Vec3, wall: WallPlayer[], time: number): boolean {
   if (!wall.length) return false;
   const minZ = Math.min(a.z, b.z), maxZ = Math.max(a.z, b.z);
   let jump: number | undefined;
   for (const p of wall) {
-    if (minZ > p.z + 0.2 + BALL_RADIUS || maxZ < p.z - 0.2 - BALL_RADIUS) continue;
+    if (minZ > p.z + 0.45 + BALL_RADIUS || maxZ < p.z - 0.45 - BALL_RADIUS) continue;
     // Most ticks never reach the wall's depth. Evaluate its jump only if a slab can hit.
+    if (Math.min(a.x,b.x)>p.x+.46+BALL_RADIUS || Math.max(a.x,b.x)<p.x-.46-BALL_RADIUS) continue;
     jump ??= wallJump(time);
-    if (segmentWall(a, b, p, p.noJump ? 0 : jump)) return true;
+    if (wallBodyHits(a,b,p,p.noJump ? 0 : jump,time)) return true;
   }
   return false;
 }

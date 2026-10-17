@@ -7,16 +7,16 @@ export type Preset = 'high' | 'balanced' | 'performance' | 'custom';
 export type RenderScale = 1 | 0.75 | 0.5;
 export type ShadowSize = 0 | 512 | 1024;
 /** Graphics options. Presets fill these in; Custom lets each one be changed. */
-export interface GraphicsOptions { preset: Preset; resolution: RenderScale; antialias: 'off' | 'fxaa' | 'smaa'; bloom: boolean; shadows: ShadowSize }
+export interface GraphicsOptions { preset: Preset; resolution: RenderScale; antialias: 'off' | 'fxaa' | 'smaa'; bloom: boolean; dof: boolean; shadows: ShadowSize }
 export const GRAPHICS_PRESETS: Record<Exclude<Preset, 'custom'>, Omit<GraphicsOptions, 'preset'>> = {
   // Single-pass FXAA replaces multisampled HDR targets; shadow resolution remains bounded.
-  high: { resolution: 1, antialias: 'fxaa', bloom: true, shadows: 1024 },
-  balanced: { resolution: .75, antialias: 'fxaa', bloom: false, shadows: 1024 },
-  performance: { resolution: .5, antialias: 'off', bloom: false, shadows: 0 },
+  high: { resolution: 1, antialias: 'fxaa', bloom: true, dof: true, shadows: 1024 },
+  balanced: { resolution: .75, antialias: 'fxaa', bloom: false, dof: false, shadows: 1024 },
+  performance: { resolution: .5, antialias: 'off', bloom: false, dof: false, shadows: 0 },
 };
 const MOBILE_PRESETS: Partial<Record<Exclude<Preset, 'custom'>, Omit<GraphicsOptions, 'preset'>>> = {
-  balanced: { resolution: 0.75, antialias: 'fxaa', bloom: false, shadows: 512 },
-  performance: { resolution: 0.5, antialias: 'off', bloom: false, shadows: 0 },
+  balanced: { resolution: 0.75, antialias: 'fxaa', bloom: false, dof: false, shadows: 512 },
+  performance: { resolution: 0.5, antialias: 'off', bloom: false, dof: false, shadows: 0 },
 };
 
 export function isMobileDevice(): boolean {
@@ -64,6 +64,11 @@ export interface Settings {
 }
 export interface ShotResult {
   frameHits?: number;
+  runupSpeed?: number;
+  playerHeight?: number;
+  keeperHeight?: number;
+  /** Uncalibrated Monte Carlo estimate of this game model, never real-world xG. */
+  estimatedChance?: number;
   outcome: Outcome;
   distance: number;
   speed: number;
@@ -122,7 +127,7 @@ export function loadSettings(): Settings {
       const g = saved.graphics;
       const preset = pick<Preset>(g.preset, ['high', 'balanced', 'performance', 'custom'], defaults.graphics.preset);
       defaults.graphics = preset === 'custom'
-        ? { preset, resolution: pick<RenderScale>(g.resolution, [1, 0.75, 0.5], 1), antialias: pick<GraphicsOptions['antialias']>(g.antialias, ['off', 'fxaa', 'smaa'], g.msaa === 2 ? 'fxaa' : g.smaa === false ? 'off' : 'smaa'), bloom: typeof g.bloom === 'boolean' ? g.bloom : true, shadows: pick<ShadowSize>(g.shadows, [0, 512, 1024], 1024) }
+        ? { preset, resolution: pick<RenderScale>(g.resolution, [1, 0.75, 0.5], 1), antialias: pick<GraphicsOptions['antialias']>(g.antialias, ['off', 'fxaa', 'smaa'], g.msaa === 2 ? 'fxaa' : g.smaa === false ? 'off' : 'smaa'), bloom: typeof g.bloom === 'boolean' ? g.bloom : true, dof: typeof g.dof === 'boolean' ? g.dof : false, shadows: pick<ShadowSize>(g.shadows, [0, 512, 1024], 1024) }
         : graphicsForPreset(preset as Exclude<Preset, 'custom'>);
     } else if (['high', 'balanced', 'low'].includes(saved.quality)) {
       // Settings saved before the graphics options existed.

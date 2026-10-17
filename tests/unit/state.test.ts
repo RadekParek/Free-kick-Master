@@ -58,7 +58,7 @@ describe('local preferences and session statistics', () => {
   });
   it('migrates old MSAA settings to FXAA without retaining a multisample target', () => {
     store.set('fkm.settings.v1', JSON.stringify({ graphics: { preset: 'custom', resolution: .75, msaa: 2, smaa: true, bloom: true, shadows: 1024 } }));
-    expect(loadSettings().graphics).toEqual({ preset: 'custom', resolution: .75, antialias: 'fxaa', bloom: true, shadows: 1024 });
+    expect(loadSettings().graphics).toEqual({ preset: 'custom', resolution: .75, antialias: 'fxaa', bloom: true, dof: false, shadows: 1024 });
     saveSettings(loadSettings());
     expect(store.get('fkm.settings.v1')).not.toContain('msaa');
   });
@@ -66,7 +66,7 @@ describe('local preferences and session statistics', () => {
     for (const mobile of [false, true]) for (const scale of [1, .75, .5] as const) expect(effectivePixelRatio(dpr, scale, mobile)).toBe(dpr * scale);
   });
   it('round-trips a native custom phone resolution without reverting to the capped preset', () => {
-    saveSettings({ ...DEFAULT_SETTINGS, graphics: { preset: 'custom', resolution: 1, antialias: 'off', bloom: false, shadows: 0 } });
+    saveSettings({ ...DEFAULT_SETTINGS, graphics: { preset: 'custom', resolution: 1, antialias: 'off', bloom: false, dof: false, shadows: 0 } });
     expect(loadSettings().graphics).toMatchObject({ preset: 'custom', resolution: 1 });
     expect(effectivePixelRatio(4, loadSettings().graphics.resolution, true)).toBe(4);
   });

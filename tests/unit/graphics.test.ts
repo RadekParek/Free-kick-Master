@@ -107,7 +107,7 @@ describe('offline anatomy and original kit identity', () => {
         expect(kit.pattern).toBe('sash');
       }
     }
-    expect(styles.size).toBe(7);
+    expect(styles.size).toBe(9);
     expect(kitDesign(getPlayer('messi')).pattern).toBe('stripes');
     expect(kitDesign(getPlayer('modric')).pattern).toBe('checks');
     expect(kitDesign(getPlayer('haaland')).base).toBe('#b72c38');

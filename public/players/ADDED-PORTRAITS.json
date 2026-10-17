@@ -54,5 +54,33 @@
   "hojlund": {
     "portrait": "./players/hojlund.webp",
     "photoSource": "https://gettyimages.de/fotos/rasmus-hojlund"
+  },
+  "roberto-carlos": {
+    "portrait": "./players/roberto-carlos.webp",
+    "photoSource": "https://www.gettyimages.in/photos/roberto-carlos",
+    "editorialImageId": "52627984",
+    "adaptations": "Grayscale and WebP conversion; source preview kept intact, no watermark removal.",
+    "rights": "Getty Images/editorial copyright, reuse not cleared. Personal testing only pending rights clearance."
+  },
+  "ronaldinho": {
+    "portrait": "./players/ronaldinho.webp",
+    "photoSource": "https://gettyimages.com/photos/ronaldinho-national-team",
+    "editorialImageId": "837032",
+    "adaptations": "Grayscale and WebP conversion; source preview kept intact, no watermark removal.",
+    "rights": "Getty Images/editorial copyright, reuse not cleared. Personal testing only pending rights clearance."
+  },
+  "zidane": {
+    "portrait": "./players/zidane.webp",
+    "photoSource": "https://gettyimages.com/photos/zidane-headshot",
+    "editorialImageId": "1084155",
+    "adaptations": "Grayscale and WebP conversion; source preview kept intact, no watermark removal.",
+    "rights": "Getty Images/editorial copyright, reuse not cleared. Personal testing only pending rights clearance."
+  },
+  "beckham": {
+    "portrait": "./players/beckham.webp",
+    "photoSource": "https://gettyimages.co.uk/photos/david-beckam-england",
+    "editorialImageId": "1285310",
+    "adaptations": "Grayscale and WebP conversion; source preview kept intact, no watermark removal.",
+    "rights": "Getty Images/editorial copyright, reuse not cleared. Personal testing only pending rights clearance."
   }
 }

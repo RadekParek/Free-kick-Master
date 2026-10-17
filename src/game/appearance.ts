@@ -1,6 +1,6 @@
 import type { TakerProfile } from '../players';
 
-export type HairStyle = 'quiff' | 'crop' | 'curls' | 'swept' | 'bun' | 'flow' | 'braids';
+export type HairStyle = 'quiff' | 'crop' | 'curls' | 'swept' | 'bun' | 'flow' | 'braids' | 'bald' | 'ponytail';
 export type KitPattern = 'solid' | 'stripes' | 'checks' | 'sash';
 export interface KitDesign {
   base: string; secondary: string; trim: string; shorts: string; socks: string; ink: string;
@@ -10,6 +10,10 @@ export interface PlayerLook { hair: HairStyle; width: number; jaw: number; beard
 
 // Recognisable silhouettes, not scanned likenesses. Base IDs keep special cards consistent.
 const LOOKS: Record<string, PlayerLook> = {
+  'roberto-carlos': { hair: 'bald', width: 1.06, jaw: 1.09, beard: false },
+  zidane: { hair: 'bald', width: .97, jaw: 1.04, beard: false },
+  ronaldinho: { hair: 'ponytail', width: 1.03, jaw: 1.04, beard: false },
+  beckham: { hair: 'swept', width: .98, jaw: 1.08, beard: false },
   ronaldo: { hair: 'quiff', width: .96, jaw: 1.07, beard: false },
   messi: { hair: 'swept', width: 1.02, jaw: 1.03, beard: true },
   mbappe: { hair: 'crop', width: 1.04, jaw: 1.04, beard: false },
@@ -50,7 +54,7 @@ export function playerLook(profile: TakerProfile): PlayerLook {
   return LOOKS[profile.baseId] ?? { hair: 'swept', width: 1, jaw: 1, beard: profile.appearance.beard };
 }
 
-// Original international training-kit designs: familiar national colours/patterns,
+// National home-kit colours, shorts, socks and characteristic patterns,
 // deliberately no unlicensed federation crests, brand marks or sponsor artwork.
 const NATIONS: Record<string, Partial<KitDesign>> = {
   PT: { base: '#ac202d', secondary: '#174d3a', trim: '#d9b967', shorts: '#173e33', socks: '#a11c2b', ink: '#f8ead0' },
