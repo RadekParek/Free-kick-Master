@@ -203,3 +203,71 @@ The browser suite has **15 tests**, including a new real-DOM test for stable res
 latest-state lifecycle persistence, and reload. Its native range-input assertion uses the actual
 min-relative step-snapped value rather than assuming an integer-metre grid. The existing Vite
 Three.js chunk-size advisory remains. No physical-phone FPS, battery, or thermal claim is made.
+
+
+## Broadcast / human-anatomy pass — 16 October 2026
+
+This pass trades waste in the old overlapping-primitive athletes for clearer anatomy, a CC0
+human face, fitted hair and national training-kit detail. It does **not** lower render scale,
+shadow resolution/rate, AA, bloom, crowd/turf texture dimensions, or physics frequency.
+
+### Four additional optimizations
+
+1. **Fused HDR output + grade.** Tone mapping, sRGB conversion and the broadcast grade execute
+   in one `BroadcastOutputPass`, removing one full-screen texture read/write and draw per frame.
+   SMAA remains after sRGB conversion. The new grade is deliberately less saturated, less warm
+   and less vignetted; this is an artistic change, not removal of tone mapping or antialiasing.
+2. **Shared anatomical geometry templates.** Build each outfield/keeper detail template once,
+   then reuse vertex/index buffers among instances. Purpose-shaped cloth and limbs replace
+   overlapping high-segment primitive volumes. The sampled Ronaldo high rig moves from
+   **80,128 triangles to approximately 21,200**, including a CC0 human head and fitted quiff.
+   This is about 74% fewer high-rig triangles with a more anatomical silhouette. The upgraded
+   distant rig is more detailed than before (about 7,000 rather than 3,432 triangles); this is
+   explicitly not an across-the-board triangle reduction. Exact counts vary with hair/beard.
+3. **Skip invisible LOD matrices correctly.** Arena updates the camera, selects athlete LODs,
+   then propagates scene matrices. Hidden `RigRoot` subtrees skip descendant recomposition and
+   matrix multiplication. A newly selected rig receives its current pose and matrix update in
+   that same frame. The 30 m transition threshold is retained; no animation cadence is reduced.
+4. **Share materials and use bounded opaque kit atlases.** High/low rigs reuse one palette per
+   player. Profile changes swap atlas contents without invalidating already-mapped shaders.
+   Kit name/number/badge artwork is in one opaque surface, with no separate transparent decal
+   mesh. The six-entry atlas cache is bounded; previously used model/hair/kit GPU resources are
+   also released at arena teardown. Fixed camera optics are cached on resize.
+
+### Graphics changes within that budget
+
+- Validated, locally bundled MakeHuman CC0 head geometry (about 130 kB total for both binary
+  LODs), with original fitted hair/beards, proportional faces, shaped shoulders/limbs/cloth and
+  individual fingers in the near rig. These are generic human faces, not scanned likenesses.
+- Seven player-specific hair families and original national-colour training kits (Argentina
+  stripes, Croatia checks, coordinated shorts/socks/trim, names/numbers, turquoise specials).
+  No copied federation crests, sponsors or licensed current-season uniform claim.
+- Existing PBR lighting rebalanced into a warm key, cool sky fill and turf bounce, with matte
+  skin/cloth and baked shape shading. Same scene-light count and shadow budget, no SSAO/SSR,
+  depth-of-field render targets, hair alpha overdraw or extra shadow-casting spotlights.
+- GPU crowd-strip motion: quiet breathing and a travelling goal cheer, with anchored bottom
+  vertices and conservative culling bounds. No extra crowd draw, CPU poses or frame uploads.
+- Optical perspective compression: pull back and narrow the lens so the distant goal/keeper
+  read larger without changing their physical size. Separate attract/replay lenses remain.
+
+### Validation / limits
+
+Unit checks cover mesh decoding, invalid/corrupt assets, shared geometry/material identity,
+triangle budgets, all seven hairstyles, base/special identity, national patterns, visible-only
+matrix updates, fused post ordering and long-lens projection. Chromium renders every hair
+family through bloom + SMAA, checks offline head loading, and exercises mobile input, scoring,
+replay, challenges and settings. APK sync includes both models and the complete CC0 notice;
+Android CI verifies their bundled bytes as well as the existing offline media.
+
+This is a reduced-work/resource-budget validation, **not a phone FPS guarantee**. Software
+WebGL test duration and alternating shadow/non-shadow draw counts are not Android benchmarks.
+The new materials also receive shadows and the distant head has more detail, while the long
+lens changes which stadium cells are visible. Measure identical presets/positions on a real
+phone in ready, run-up, flight, crowd reaction and replay before claiming equal/better sustained
+FPS, battery life, or thermal behaviour. No proprietary football-game visual parity is claimed.
+
+
+Final local verification for this pass: **122 unit tests + TypeScript pass**, **16 Chromium/WebGL
+E2E tests pass**, and **production build / Capacitor Android sync pass**. Both anatomy files
+and their license notices match the Android asset bundle byte-for-byte. Android Gradle APK/lint
+compilation and physical-device GPU profiling have not been run locally for this pass.

@@ -3,38 +3,34 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 
 export type PostQuality = 'high' | 'balanced' | 'low';
 export interface PostOptions { msaa: 0 | 2; smaa: boolean; bloom: boolean; quality: PostQuality }
 
-/** Broadcast-style grade: a little saturation, contrast, warm highlights and a soft vignette. */
-const GradeShader = {
-  uniforms: {
-    tDiffuse: { value: null as THREE.Texture | null },
-    saturation: { value: 1.08 },
-    contrast: { value: 1.05 },
-    warmth: { value: 0.025 },
-    vignette: { value: 0.22 },
-  },
-  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float saturation; uniform float contrast; uniform float warmth; uniform float vignette;
-    varying vec2 vUv;
-    void main() {
-      vec4 c = texture2D(tDiffuse, vUv);
-      vec3 col = c.rgb;
+/** Tone mapping -> sRGB -> broadcast grade in ONE draw, with SMAA still after sRGB.
+ * Extending OutputPass retains Three.js' exposure and output-colour-space define management.
+ */
+export class BroadcastOutputPass extends OutputPass {
+  constructor() {
+    super();
+    this.material.name = 'BroadcastOutput';
+    // Add grading after OutputShader's conversion, not before ACES or after antialiasing.
+    const end = this.material.fragmentShader.lastIndexOf('}');
+    this.material.fragmentShader = this.material.fragmentShader.slice(0, end) + `
+      vec3 col = gl_FragColor.rgb;
       float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
-      col = mix(vec3(l), col, saturation);
-      col = (col - 0.5) * contrast + 0.5;
-      col *= vec3(1.0 + warmth, 1.0, 1.0 - warmth);
+      col = mix(vec3(l), col, 1.06);
+      col = (col - 0.5) * 1.035 + 0.5;
+      col *= vec3(1.015, 1.0, 0.985);
       vec2 d = vUv - 0.5;
-      float v = smoothstep(0.95, 0.25, length(d * vec2(1.0, 0.85)));
-      col *= mix(1.0 - vignette, 1.0, v);
-      gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
-    }`,
-};
+      float v = 1.0 - smoothstep(0.25, 0.95, length(d * vec2(1.0, 0.85)));
+      col *= mix(0.84, 1.0, v);
+      gl_FragColor.rgb = clamp(col, 0.0, 1.0);
+    }`;
+    this.material.depthTest = false; this.material.depthWrite = false;
+  }
+}
 
 /**
  * HDR composer with configurable MSAA, bloom, output transform, grade and SMAA.
@@ -43,7 +39,7 @@ const GradeShader = {
 export class PostStack {
   private composer: EffectComposer | null = null;
   private bloom: UnrealBloomPass | null = null;
-  private grade: ShaderPass | null = null;
+  private grade: BroadcastOutputPass | null = null;
   private smaa: SMAAPass | null = null;
   private key = '';
   private width = 0;
@@ -75,8 +71,7 @@ export class PostStack {
       this.bloom = new UnrealBloomPass(new THREE.Vector2(width, height), quality === 'high' ? 0.16 : 0.1, 0.5, 0.92);
       composer.addPass(this.bloom);
     }
-    composer.addPass(new OutputPass());
-    this.grade = new ShaderPass(GradeShader);
+    this.grade = new BroadcastOutputPass();
     composer.addPass(this.grade);
     if (smaa) {
       this.smaa = new SMAAPass();

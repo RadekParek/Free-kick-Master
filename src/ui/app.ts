@@ -11,6 +11,7 @@ import { DIFFICULTIES, KEEPER_PROFILES, type Difficulty } from '../game/keeper';
 import { DEFAULT_SETTINGS, effectivePixelRatio, emptySession, graphicsForPreset, isMobileDevice, loadSettings, nextPracticeAtmosphere, recordShot, saveSettings, tierOf, type GraphicsOptions, type Preset, type RenderScale, type Settings, type ShotResult, type ShadowSize } from '../state';
 import { fkLogo, brandSymbol } from './brand';
 import { FrameTask } from './frame-task';
+import { loadHumanAnatomy } from '../game/human';
 import { CONTACT_BALL_SVG, PITCH_MAP_SVG, QUICK_PITCH_MAP_SVG } from './svg';
 
 const icons = { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, AudioLines, Check, ChevronDown, Crosshair, Dumbbell, Flame, Focus, HelpCircle, Maximize, Minus, MousePointer2, Move, Plus, RotateCcw, Settings2, Shield, Smartphone, Sparkles, Trophy, Users, Volume2, VolumeX, X, Zap };
@@ -72,7 +73,10 @@ export class GameApp {
     this.music.setVisible(this.visible);
     this.music.setEnabled(this.settings.music);
     this.music.start();
-    await document.fonts.ready;
+    await Promise.all([document.fonts.ready, loadHumanAnatomy().catch(error => {
+      // Keep the procedural fallback playable if a package is incomplete or a local asset fails.
+      console.warn('Using fallback athlete anatomy', error);
+    })]);
     try {
       this.arena = new Arena($('#arena'), this.settings, {
         phase: phase => this.onPhase(phase),
@@ -974,7 +978,7 @@ export class GameApp {
 
   private showPhotoCredits() {
     const photographed = PLAYERS.filter((player): player is TakerProfile & { portrait: string; photoDate: string; photoSource: string; credit: string } => !!player.portrait && !!player.photoDate && !!player.photoSource && !!player.credit && player.edition === 'standard');
-    this.openModal(`<span class="modal-eyebrow">REAL PHOTOGRAPHS. PROPER CREDIT.</span><h2 id="modal-title">Player photography</h2><p class="modal-intro">Four cards use photographs bundled locally for offline play. The dates identify the actual photographs, not a live photo feed.</p><div class="photo-credit-list">${photographed.map(player => `<article><img src="${player.portrait}" alt="${player.name}" width="64" height="80"/><div><h3>${player.name}</h3><p>${player.photoDate} · ${player.credit}</p><a href="${player.photoSource}" target="_blank" rel="noopener noreferrer">Original photograph ↗</a></div></article>`).join('')}</div><p class="modal-footnote">Photographs by Bryan Berlin / WikiPortraits, licensed <a href="${PHOTO_LICENSE}" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>. Adaptations: portrait crop, soft background masking, resize, and WebP conversion; adapted photos remain CC BY-SA 4.0. Card artwork, training ratings, kits, monogram art and 3D avatars are original, not official EA assets. No player, photographer, federation, EA, or FIFA endorsement is implied. Image copyright licenses do not grant athlete publicity or trademark rights for commercial distribution.</p>`, 'credits-modal');
+    this.openModal(`<span class="modal-eyebrow">REAL PHOTOGRAPHS. PROPER CREDIT.</span><h2 id="modal-title">Player photography</h2><p class="modal-intro">Four cards use photographs bundled locally for offline play. The dates identify the actual photographs, not a live photo feed.</p><div class="photo-credit-list">${photographed.map(player => `<article><img src="${player.portrait}" alt="${player.name}" width="64" height="80"/><div><h3>${player.name}</h3><p>${player.photoDate} · ${player.credit}</p><a href="${player.photoSource}" target="_blank" rel="noopener noreferrer">Original photograph ↗</a></div></article>`).join('')}</div><p class="modal-footnote">Photographs by Bryan Berlin / WikiPortraits, licensed <a href="${PHOTO_LICENSE}" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>. Adaptations: portrait crop, soft background masking, resize, and WebP conversion; adapted photos remain CC BY-SA 4.0. Card artwork, training ratings, kit artwork and hair are original. Generic 3D head anatomy is adapted from MakeHuman CC0 assets; see the bundled models/README.md and CC0-1.0.md for provenance and the full license. Avatars are not scanned player likenesses or official EA assets. No player, photographer, federation, EA, or FIFA endorsement is implied. Image copyright licenses do not grant athlete publicity or trademark rights for commercial distribution.</p>`, 'credits-modal');
   }
 
   private showAndroid() {
