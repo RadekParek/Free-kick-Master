@@ -13,6 +13,12 @@ export class WorldLabels {
   private readonly icon = document.createElement("img");
   private readonly wipe = document.createElement("div");
   private readonly projected = new THREE.Vector3();
+  private readonly visibility = new WeakMap<HTMLElement, boolean>();
+  private readonly transforms = new WeakMap<HTMLElement, string>();
+  private renderedValue = "";
+  private settled = false;
+  private lastTarget: number | undefined;
+  private lastDecimals = -1;
   private metric = "";
   private age = 0;
   private style: PlayStyle | undefined;
@@ -32,8 +38,16 @@ export class WorldLabels {
     container.append(this.root);
   }
   private visible(element: HTMLElement, on: boolean) {
-    if (element.classList.contains("is-visible") !== on)
+    if ((this.visibility.get(element) ?? false) !== on) {
+      this.visibility.set(element, on);
       element.classList.toggle("is-visible", on);
+    }
+  }
+  private transform(element: HTMLElement, text: string) {
+    if (this.transforms.get(element) !== text) {
+      this.transforms.set(element, text);
+      element.style.transform = text;
+    }
   }
   private project(
     point: THREE.Vector3,
@@ -71,16 +85,19 @@ export class WorldLabels {
     if (this.metric !== metric) {
       this.metric = metric;
       this.age = 0;
+      this.settled = false;
       this.label.dataset.metric = metric;
       this.title.textContent = title;
       this.unit.textContent = unit;
     }
     this.age += dt;
-    const t = this.reducedMotion ? 1 : Math.min(1, this.age / 0.36),
-      smooth = t * t * (3 - 2 * t);
-    const text =
-      target === undefined ? "…" : (target * smooth).toFixed(decimals);
-    if (this.value.textContent !== text) this.value.textContent = text;
+    if (!this.settled || target !== this.lastTarget || decimals !== this.lastDecimals) {
+      const t = this.reducedMotion ? 1 : Math.min(1, this.age / 0.36), smooth = t * t * (3 - 2 * t);
+      const text = target === undefined ? "…" : (target * smooth).toFixed(decimals);
+      if (text !== this.renderedValue) { this.renderedValue = text; this.value.textContent = text; }
+      this.lastTarget = target; this.lastDecimals = decimals;
+      this.settled = t === 1 || target === undefined;
+    }
     const on = this.project(point, camera, w, h);
     this.visible(this.label, on);
     if (on) {
@@ -89,7 +106,7 @@ export class WorldLabels {
         h * 0.23,
         Math.min(h * 0.77 - 60, this.projected.y - 38),
       );
-      this.label.style.transform = `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0)`;
+      this.transform(this.label, `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0)`);
     }
   }
   hideStats() {
@@ -115,7 +132,7 @@ export class WorldLabels {
     const visible = !!style && on && this.project(head, camera, w, h);
     this.visible(this.badge, visible);
     if (visible)
-      this.badge.style.transform = `translate3d(${this.projected.x.toFixed(1)}px,${(this.projected.y - 24).toFixed(1)}px,0) translate(-50%,-100%)`;
+      this.transform(this.badge, `translate3d(${this.projected.x.toFixed(1)}px,${(this.projected.y - 24).toFixed(1)}px,0) translate(-50%,-100%)`);
   }
   transition(stage: string) {
     this.root.dataset.stage = stage;

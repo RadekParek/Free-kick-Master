@@ -1,8 +1,8 @@
 # Performance changes — history and current behavior
 
-**Current behavior (17 October):** all render scales are fractions of full native DPR, with
+**Current behavior (18 October):** all render scales are fractions of full native DPR, with
 no mobile cap. MSAA has been removed in favor of FXAA/SMAA/off. See
-[ULTRA_ANDROID_UPDATE.md](ULTRA_ANDROID_UPDATE.md) for the newest depth-memory, animation, numerical and resource-lifecycle work. Earlier DPR-cap entries below
+[PERFORMANCE_ONLY_UPDATE.md](PERFORMANCE_ONLY_UPDATE.md) for 30 additional quality-preserving changes, exact GPU pixel verification and reproducible CPU measurements. The preceding feature update is recorded in [ULTRA_ANDROID_UPDATE.md](ULTRA_ANDROID_UPDATE.md). Earlier DPR-cap entries below
 are historical and superseded.
 
 ## 14 October baseline

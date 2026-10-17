@@ -141,7 +141,8 @@ describe("quality-preserving numerical and GPU-memory optimizations", () => {
       deferred.flushRotation();
       expect(deferred.quaternion.angleTo(normal.quaternion)).toBeLessThan(1e-7);
     }
-    expect(conversions).toHaveBeenCalledTimes(50);
+    // The identity pose now needs no conversion; all 49 genuinely different poses still do.
+    expect(conversions).toHaveBeenCalledTimes(49);
     deferred.rotation.x = 0.7;
     normal.rotation.x = 0.7;
     expect(

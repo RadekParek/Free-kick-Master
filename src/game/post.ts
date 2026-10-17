@@ -100,6 +100,8 @@ export class PostStack {
   private width = 0;
   private height = 0;
   private pixelRatio = 0;
+  private focusFov = NaN;
+  private focalLength = 0;
 
   constructor(private readonly renderer: THREE.WebGLRenderer, private readonly scene: THREE.Scene, private readonly camera: THREE.Camera) {}
 
@@ -129,12 +131,19 @@ export class PostStack {
     composer.addPass(new RenderPass(this.scene, this.camera));
     if (bloom) {
       this.bloom = new UnrealBloomPass(new THREE.Vector2(width, height), quality === 'high' ? 0.16 : 0.1, 0.5, 0.92);
+      // These eleven full-screen colour targets never sample/test depth. Remove their otherwise
+      // default depth renderbuffers before first GPU allocation; scene depth is untouched.
+      for (const target of [this.bloom.renderTargetBright, ...this.bloom.renderTargetsHorizontal, ...this.bloom.renderTargetsVertical]) target.depthBuffer = false;
+      for (const material of [this.bloom.materialHighPassFilter, ...this.bloom.separableBlurMaterials, this.bloom.compositeMaterial]) {
+        material.depthTest = material.depthWrite = false;
+      }
       composer.addPass(this.bloom);
     }
     this.grade = new BroadcastOutputPass(dof, ambientOcclusion, lensEffects);
     composer.addPass(this.grade);
     if (antialias !== 'off') {
       this.aa = antialias === 'smaa' ? new SMAAPass() : new ShaderPass(FXAAShader);
+      if (this.aa instanceof ShaderPass) this.aa.material.depthTest = this.aa.material.depthWrite = false;
       composer.addPass(this.aa);
     }
     this.setSize(width, height);
@@ -145,6 +154,7 @@ export class PostStack {
     const pixelRatio = this.renderer.getPixelRatio();
     // ResizeObserver often reports unchanged bounds. Avoid walking/resizing every pass twice.
     const ratioChanged = pixelRatio !== this.pixelRatio;
+    if (!ratioChanged && width === this.width && height === this.height) return;
     if (ratioChanged) this.composer.setPixelRatio(pixelRatio);
     if (width !== this.width || height !== this.height) this.composer.setSize(width, height);
     if (this.aa instanceof ShaderPass) this.aa.uniforms.resolution.value.set(
@@ -159,7 +169,11 @@ export class PostStack {
   focus(distance: number) {
     if (!this.grade || !(this.grade.dof || this.grade.ambientOcclusion) || !(this.camera instanceof THREE.PerspectiveCamera)) return;
     const lens = this.grade.uniforms.uLens.value as THREE.Vector4;
-    lens.set(this.camera.near, this.camera.far, Math.max(.15, distance), .024/(2*Math.tan(THREE.MathUtils.degToRad(this.camera.fov)*.5)));
+    if (this.camera.fov !== this.focusFov) {
+      this.focusFov = this.camera.fov;
+      this.focalLength = .024/(2*Math.tan(THREE.MathUtils.degToRad(this.camera.fov)*.5));
+    }
+    lens.set(this.camera.near, this.camera.far, Math.max(.15, distance), this.focalLength);
   }
 
   render() {

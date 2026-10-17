@@ -26,7 +26,7 @@ import { disposeKitCache } from './kits';
 import { disposeIdentityCache } from './identity';
 import { getPlayer, playStyleFor, gameplayBonuses } from '../players';
 import { disposeSceneResources } from './resources';
-import { effectivePixelRatio, isMobileDevice, type Settings, type ShotResult } from '../state';
+import { cloneSettings, effectivePixelRatio, isMobileDevice, type Settings, type ShotResult } from '../state';
 
 /** Real penalty run-ups take about 1.2 to 1.4 s; the taker reaches the ball at this run progress. */
 const RUNUP_SECONDS = 1.65;
@@ -122,7 +122,7 @@ export class Arena {
   private pointer: { id: number; x: number; y: number; aim: Aim; moved: boolean } | null = null;
 
   constructor(private container: HTMLElement, settings: Settings, events: ArenaEvents) {
-    this.settings = structuredClone(settings);
+    this.settings = cloneSettings(settings);
     this.events = events;
     this.labels=new WorldLabels(container);
     this.shotSetup = this.setup(recommendedPower(settings.position));
@@ -217,7 +217,7 @@ export class Arena {
     const playerChanged = settings.playerId !== old.playerId;
     const gameplayChanged = moved || techniqueChanged || playerChanged || settings.difficulty !== old.difficulty;
     const qualityChanged = settings.quality !== old.quality;
-    this.settings = structuredClone(settings);
+    this.settings = cloneSettings(settings);
     if (inPenaltyBox(this.settings.position)) this.settings.wall = 0;
     if (playerChanged) this.taker.setProfile(getPlayer(settings.playerId));
     if (settings.atmosphere !== old.atmosphere) this.stadium.setAtmosphere(settings.atmosphere);
@@ -467,12 +467,11 @@ export class Arena {
   }
 
   /** Ground position of the taker along a curved approach: about 4.8 m back, bending in to the ball. */
-  private takerGround(run: number, out: { x: number; z: number }): void {
+  private takerGround(run: number, out: { x: number; z: number }, length = distanceToGoal(this.settings.position)): void {
     const p = this.settings.position;
     const side = this.settings.foot === 'right' ? -1 : 1;
     const t = Math.min(1, Math.max(0, run) / RUNUP_PROGRESS_END);
     const e = t ** 1.35; // accelerate into the plant instead of stopping before the strike
-    const length = distanceToGoal(p);
     const back = lerp(4.8, 0.21, e);
     // The lateral offset falls off faster than the distance, which bends the approach into an arc.
     const lateral = side * lerp(1.6, 0.22, Math.pow(e, 0.7));
@@ -483,14 +482,15 @@ export class Arena {
   private positionTaker(run: number) {
     const p = this.settings.position;
     const here = this.takerHere, before = this.takerBefore;
-    this.takerGround(run, here);
-    this.takerGround(Math.max(0, run - 0.02), before);
+    const length = distanceToGoal(p);
+    this.takerGround(run, here, length);
+    this.takerGround(Math.max(0, run - 0.02), before, length);
     this.taker.group.position.set(here.x, 0, here.z);
     // The body faces the line of travel while running and turns to the ball at the plant.
     const dx = here.x - before.x, dz = here.z - before.z;
     // Model forward is (-sin yaw, -cos yaw), so a heading (x, z) maps to atan2(-x, -z).
-    const travel = Math.hypot(dx, dz) > 1e-4 ? Math.atan2(-dx, -dz) : Math.atan2(-(p.x - here.x), -(p.z - here.z));
     const faceBall = Math.atan2(-(p.x - here.x), -(p.z - here.z));
+    const travel = dx * dx + dz * dz > 1e-8 ? Math.atan2(-dx, -dz) : faceBall;
     const turn = Math.min(1, Math.max(0, (run - 0.85) / 0.15));
     this.taker.group.rotation.y = travel + (faceBall - travel) * turn;
   }
@@ -553,7 +553,7 @@ export class Arena {
       if (this.phase === 'charging') this.taker.prepare(this.time, this.power);
       else this.taker.idle(this.time);
       this.keeperModel.keeperPose(this.keeper, this.time);
-      this.wallModels.forEach((p, i) => { if (this.inView(p.group)) p.wallPose(0, this.time + i * 0.7); });
+      for (let i = 0; i < this.wallModels.length; i++) { const p = this.wallModels[i]; if (this.inView(p.group)) p.wallPose(0, this.time + i * 0.7); }
     } else if (this.phase === 'runup') {
       const progress = Math.min(1, this.phaseTime / RUNUP_SECONDS);
       this.positionTaker(progress);
@@ -576,7 +576,7 @@ export class Arena {
         this.accumulator -= FIXED_DT;
       }
       if (this.phase === 'flight') this.taker.followThrough(this.ball.time, this.settings.foot, this.settings.contact);
-      this.wallModels.forEach((p, i) => { if (this.inView(p.group)) p.wallPose(defenderJump(this.wall[i], this.ball.time), this.ball.time); });
+      for (let i = 0; i < this.wallModels.length; i++) { const p = this.wallModels[i]; if (this.inView(p.group)) p.wallPose(defenderJump(this.wall[i], this.ball.time), this.ball.time); }
       if (this.phase === 'flight') this.keeperModel.keeperPose(this.keeper, this.ball.time);
     } else if (this.phase === 'result') {
       if (this.phaseTime < 1.8) {
@@ -587,7 +587,7 @@ export class Arena {
         }
       }
       this.taker.react(this.lastResult!.outcome, this.phaseTime, this.ball.time, this.settings.foot, this.settings.contact);
-      this.wallModels.forEach(p => { if (this.inView(p.group)) p.wallPose(0, this.time); });
+      for (const p of this.wallModels) if (this.inView(p.group)) p.wallPose(0, this.time);
       this.keeperModel.keeperRecover(this.keeper, this.time, this.phaseTime, this.lastResult!.outcome);
 
     } else if (this.phase === 'replay') this.stepReplay(dt);
@@ -617,8 +617,10 @@ export class Arena {
 
   private updateWorldLabels(dt:number) {
     const profile=getPlayer(this.settings.playerId), r=this.lastResult, point=this.labelPoint;
-    this.taker.headWorldPosition(point);point.y+=.36;
-    this.labels.playstyle(playStyleFor(profile.baseId),!this.attract && !this.paused && (this.phase==='charging' || this.phase==='runup' || (this.phase==='flight' && this.ball.time<.25)),point,this.camera,this.width,this.height);
+    const style = playStyleFor(profile.baseId);
+    const badgeOn = !!style && !this.attract && !this.paused && (this.phase==='charging' || this.phase==='runup' || (this.phase==='flight' && this.ball.time<.25));
+    if (badgeOn) { this.taker.headWorldPosition(point); point.y += .36; }
+    this.labels.playstyle(style,badgeOn,point,this.camera,this.width,this.height);
     if(this.phase!=='replay' || r?.outcome!=='goal') { this.labels.hideStats();return; }
     const {stage,progress}=this.analysisFrame;
     let metric='distance',title='SHOT DISTANCE',value:number|undefined=r.distance,decimals=1,unit='METRES · CALCULATED';
@@ -766,7 +768,7 @@ export class Arena {
         this.keeperModel.keeperPose(this.keeper, this.ball.time);
         this.taker.followThrough(this.ball.time, this.settings.foot, this.settings.contact);
       }
-      this.wallModels.forEach((p, i) => { if (p.group.visible) p.wallPose(defenderJump(this.wall[i], this.ball.time), this.ball.time); });
+      for (let i = 0; i < this.wallModels.length; i++) { const p = this.wallModels[i]; if (p.group.visible) p.wallPose(defenderJump(this.wall[i], this.ball.time), this.ball.time); }
     }
     if (goal ? this.replayClock >= ANALYSIS_DURATION : index >= this.replayFrames.length + 15) {
       this.skipReplay();

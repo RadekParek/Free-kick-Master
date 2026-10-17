@@ -121,7 +121,8 @@ function referenceElevation(distance: number, height: number, speed: number): nu
   return angle;
 }
 
-export function launchBall(setup: ShotSetup): BallState {
+/** Optional caller-owned storage is fully reset; the default still returns independent state. */
+export function launchBall(setup: ShotSetup, output?: BallState): BallState {
   const p = constrainPosition(setup.position);
   const cx = clamp(setup.contact.x, -1, 1);
   const cy = clamp(setup.contact.y, -1, 1);
@@ -129,23 +130,28 @@ export function launchBall(setup: ShotSetup): BallState {
   const dz = -p.z;
   const distance = Math.hypot(dx, dz);
   const speed = shotSpeed(setup.power, setup.attributes, setup.playStyle) + (setup.speedBonusKph ?? 0)/3.6;
-  const controlPenalty = setup.attributes ? Math.max(0, setup.power - recommendedPower(p) - 0.1) ** 2 * (100 - setup.attributes.control) / 100 * 0.65 : 0;
-  const angle = referenceElevation(distance, clamp(setup.aim.y, AIM_LIMITS.yMin, AIM_LIMITS.yMax), shotSpeed(recommendedPower(p), setup.attributes, setup.playStyle) + (setup.speedBonusKph ?? 0)/3.6) - cy * 0.07 + controlPenalty * (setup.playStyle === 'deadball' ? .15 : 1);
+  const nominalPower = recommendedPower(p);
+  const controlPenalty = setup.attributes ? Math.max(0, setup.power - nominalPower - 0.1) ** 2 * (100 - setup.attributes.control) / 100 * 0.65 : 0;
+  const angle = referenceElevation(distance, clamp(setup.aim.y, AIM_LIMITS.yMin, AIM_LIMITS.yMax), shotSpeed(nominalPower, setup.attributes, setup.playStyle) + (setup.speedBonusKph ?? 0)/3.6) - cy * 0.07 + controlPenalty * (setup.playStyle === 'deadball' ? .15 : 1);
   const curveScale = setup.attributes ? 0.78 + (setup.attributes.curve + (setup.curveBonus ?? 0) - 80) * 0.028 : 1;
   const horizontal = speed * Math.cos(angle);
-  return {
-    position: { x: p.x, y: BALL_RADIUS, z: p.z },
-    velocity: { x: dx / distance * horizontal, y: speed * Math.sin(angle), z: dz / distance * horizontal },
-    sideSpin: -cx * 40 * curveScale * (setup.playStyle === 'finesse' ? 2.35 : 1),
-    topSpin: cy * 22,
-    knuckle: Math.hypot(cx, cy) < 0.19 && setup.power > 0.64,
-    knuckleStrength: 1.12 * (setup.attributes ? 0.6 + (setup.attributes.knuckle - 60) * 0.017 : 1) * (0.75 + clamp((setup.power - 0.64) / 0.36, 0, 1) * 0.25),
-    // A stateless hash: repeatable for tests/replay, distinct for independently seeded live kicks.
-    wakePhase: (((((setup.playStyle === 'deadball' ? 0 : setup.seed ?? 0) >>> 0) * 0.61803398875) % 1) * Math.PI * 2),
-    time: 0,
-    bounces: 0,
-    frameHits: 0,
+  const ball = output ?? {
+    position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
+    sideSpin: 0, topSpin: 0, knuckle: false, knuckleStrength: 0, wakePhase: 0,
+    time: 0, bounces: 0, frameHits: 0,
   };
+  ball.position.x = p.x; ball.position.y = BALL_RADIUS; ball.position.z = p.z;
+  ball.velocity.x = dx / distance * horizontal;
+  ball.velocity.y = speed * Math.sin(angle);
+  ball.velocity.z = dz / distance * horizontal;
+  ball.sideSpin = -cx * 40 * curveScale * (setup.playStyle === 'finesse' ? 2.35 : 1);
+  ball.topSpin = cy * 22;
+  ball.knuckle = Math.hypot(cx, cy) < 0.19 && setup.power > 0.64;
+  ball.knuckleStrength = 1.12 * (setup.attributes ? 0.6 + (setup.attributes.knuckle - 60) * 0.017 : 1) * (0.75 + clamp((setup.power - 0.64) / 0.36, 0, 1) * 0.25);
+  // Stateless wake: independent live kicks remain independently seeded.
+  ball.wakePhase = (((((setup.playStyle === 'deadball' ? 0 : setup.seed ?? 0) >>> 0) * 0.61803398875) % 1) * Math.PI * 2);
+  ball.time = 0; ball.bounces = 0; ball.frameHits = 0;
+  return ball;
 }
 
 export function cloneBall(ball: BallState): BallState {
@@ -355,10 +361,13 @@ export function hitsWall(a: Vec3, b: Vec3, wall: WallPlayer[], time: number): bo
   return false;
 }
 
+// Preview sampling is synchronous/non-reentrant; returned object previews still own their points.
+let previewBall: BallState | undefined;
+const previewPrevious: Vec3 = { x: 0, y: 0, z: 0 };
 /** Shared sampling loop for the public object preview and the renderer's persistent buffer. */
 function samplePreview(setup: ShotSetup, maxTime: number, output: Vec3[] | Float32Array): number {
-  const ball = launchBall(setup);
-  const previous: Vec3 = { x: 0, y: 0, z: 0 };
+  const ball = previewBall = launchBall(setup, previewBall);
+  const previous = previewPrevious;
   let count = 0;
   const limit = output instanceof Float32Array ? Math.floor(output.length / 3) : Infinity;
   if (!limit) return 0;
