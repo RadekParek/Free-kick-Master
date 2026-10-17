@@ -30,7 +30,7 @@ Adapted WebP portraits retain CC BY-SA 4.0. Modifications: resize, portrait crop
 
 ## Roster / ratings
 
-The four-player catalogue is curated in `src/players.ts`; numerical ratings are original game-balancing values, **not** official EA FC27 ratings. This is not an official, exhaustive, current-season or live Ultimate Team card database. The card art is newly authored CSS, not downloaded EA assets. Real player names identify the requested selectable profiles; no player endorsement is claimed.
+The 57-card catalogue is curated in `src/players.ts`; numerical ratings are original game-balancing values, **not** official EA FC27 ratings. This is not an official, exhaustive, current-season or live Ultimate Team card database. The card art is newly authored CSS, not downloaded EA assets. Real player names identify the requested selectable profiles; no player endorsement is claimed.
 
 Runtime dependencies retain their upstream licences:
 
@@ -41,3 +41,13 @@ Runtime dependencies retain their upstream licences:
 - **Barlow Condensed** typeface — SIL Open Font License 1.1, distributed through `@fontsource/barlow-condensed`
 
 Fonts are bundled locally so the installed Android game does not depend on a font CDN. Exact library versions and all transitive dependencies are recorded in `package-lock.json`; upstream package licence files are available in the installed npm packages. Development/test tools (TypeScript, Vite, Vitest, Playwright, and the test-only Chromium package) are not shipped as Android game code.
+
+## Expanded portraits / original ball (17 October 2026)
+
+The additional 12 current-player and 3 ICON photos are individually sourced in
+`public/players/ADDED-PORTRAITS.json` and the in-game photo credits. Reuse is not cleared;
+see `public/players/LICENSE.md` before distribution. ICON previews preserve source
+watermarks and are only desaturated/resized/encoded. The four-panel football pattern
+and `public/textures/contact-ball.webp` are original, unbranded procedural artwork;
+`src/game/ball-surface.ts` and `scripts/generate-contact-ball.mjs` define its generation.
+No Adidas artwork or logo was copied.

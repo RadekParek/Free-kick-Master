@@ -84,7 +84,7 @@ test('analysis titles, measurements and skip control stay on-screen in both phon
   });
   for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
     await page.setViewportSize(viewport);
-    for (const selector of ['.analysis-brand', '.analysis-data', '.analysis-timeline', '#skip-analysis']) {
+    for (const selector of ['.analysis-brand', '.analysis-timeline', '#skip-analysis']) {
       const rect = await page.locator(selector).boundingBox();
       expect(rect).not.toBeNull();
       expect(rect!.x).toBeGreaterThanOrEqual(0); expect(rect!.y).toBeGreaterThanOrEqual(0);

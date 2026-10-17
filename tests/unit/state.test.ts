@@ -58,7 +58,7 @@ describe('local preferences and session statistics', () => {
   });
   it('migrates old MSAA settings to FXAA without retaining a multisample target', () => {
     store.set('fkm.settings.v1', JSON.stringify({ graphics: { preset: 'custom', resolution: .75, msaa: 2, smaa: true, bloom: true, shadows: 1024 } }));
-    expect(loadSettings().graphics).toEqual({ preset: 'custom', resolution: .75, antialias: 'fxaa', bloom: true, dof: false, shadows: 1024 });
+    expect(loadSettings().graphics).toEqual({ preset: 'custom', resolution: .75, antialias: 'fxaa', bloom: true, dof: false, ambientOcclusion:false,lensEffects:false,surfaceDetail:false,shadows: 1024 });
     saveSettings(loadSettings());
     expect(store.get('fkm.settings.v1')).not.toContain('msaa');
   });

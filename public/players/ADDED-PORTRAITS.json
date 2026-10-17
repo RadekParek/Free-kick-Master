@@ -82,5 +82,98 @@
     "editorialImageId": "1285310",
     "adaptations": "Grayscale and WebP conversion; source preview kept intact, no watermark removal.",
     "rights": "Getty Images/editorial copyright, reuse not cleared. Personal testing only pending rights clearance."
+  },
+  "hakimi": {
+    "portrait": "./players/hakimi.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/hakimi.jpg",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "rice": {
+    "portrait": "./players/rice.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/declan_rice.jpg",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "saliba": {
+    "portrait": "./players/saliba.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/william_saliba.jpg",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "gabriel": {
+    "portrait": "./players/gabriel.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/gabriel.jpg",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "olise": {
+    "portrait": "./players/olise.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/michael_olise.jpg",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "kvaratskhelia": {
+    "portrait": "./players/kvaratskhelia.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/kvaratskhelia.jpg",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "nuno-mendes": {
+    "portrait": "./players/nuno-mendes.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/nuno_mendes.jpg",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "joao-neves": {
+    "portrait": "./players/joao-neves.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/joao_neves.png",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "mane": {
+    "portrait": "./players/mane.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/mane.jpg",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "marquinhos": {
+    "portrait": "./players/marquinhos.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/marquinhos.jpg",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "cucurella": {
+    "portrait": "./players/cucurella.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/cucurella.jpg",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "upamecano": {
+    "portrait": "./players/upamecano.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/upamecano.jpg",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared."
+  },
+  "juninho": {
+    "portrait": "./players/juninho.webp",
+    "photoSource": "https://gettyimages.in/photos/juninho-pernambucano",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+    "editorialImageId": "51338043"
+  },
+  "ronaldo-nazario": {
+    "portrait": "./players/ronaldo-nazario.webp",
+    "photoSource": "https://gettyimages.com/photos/ronaldo-brazil-2002",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+    "editorialImageId": "891940"
+  },
+  "pirlo": {
+    "portrait": "./players/pirlo.webp",
+    "photoSource": "https://gettyimages.com/photos/andrea-pirlo-italy-photos",
+    "adaptations": "Resize and WebP conversion; ICON previews desaturated. No watermark removal.",
+    "rights": "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+    "editorialImageId": "51230816"
   }
 }

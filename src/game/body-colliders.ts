@@ -1,4 +1,5 @@
 import { Group, Object3D, Vector3 } from 'three';
+import { DeferredBone } from './deferred-bone';
 import { keeperPose, wallPose, type MotionRig } from './animation';
 import type { KeeperState } from './keeper';
 import { BALL_RADIUS } from './physics-math';
@@ -25,7 +26,7 @@ export class BodyColliders {
     this.group.add(this.model);
     const bones = {} as Record<keyof typeof RIG_REST, Object3D>;
     for (const [name, position] of Object.entries(RIG_REST)) {
-      const bone = new Object3D();
+      const bone = new DeferredBone();
       bone.name = name;
       bone.position.fromArray(position);
       bones[name as keyof typeof RIG_REST] = bone;

@@ -107,14 +107,14 @@ describe('offline anatomy and original kit identity', () => {
         expect(kit.pattern).toBe('sash');
       }
     }
-    expect(styles.size).toBe(9);
+    expect(styles.size).toBe(12);
     expect(kitDesign(getPlayer('messi')).pattern).toBe('stripes');
     expect(kitDesign(getPlayer('modric')).pattern).toBe('checks');
     expect(kitDesign(getPlayer('haaland')).base).toBe('#b72c38');
   });
-  it('has distinct cached opaque geometry for all seven hairstyles and both detail levels', () => {
+  it('has distinct cached opaque geometry for all ten nonempty hairstyles and both detail levels', () => {
     const signatures = new Set<string>();
-    for (const style of ['quiff', 'crop', 'curls', 'swept', 'bun', 'flow', 'braids'] as HairStyle[]) {
+    for (const style of ['quiff', 'crop', 'curls', 'swept', 'bun', 'flow', 'braids','fade-curls','neymar-fade','r9'] as HairStyle[]) {
       const high = hairGeometry(style, 'high'), low = hairGeometry(style, 'low');
       expect(high).toBe(hairGeometry(style, 'high'));
       expect(high).not.toBe(low);
@@ -122,7 +122,7 @@ describe('offline anatomy and original kit identity', () => {
       expect(high.index!.count).toBeGreaterThan(500);
       signatures.add(`${high.index!.count}/${high.attributes.position.count}/${high.boundingSphere!.radius}`);
     }
-    expect(signatures.size).toBe(7);
+    expect(signatures.size).toBe(10);
   });
 });
 

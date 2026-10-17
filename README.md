@@ -2,6 +2,8 @@
 
 **The pitch is yours.** An original, playable 3D free-kick practice game for the browser and Android, built from an empty repository.
 
+Latest: [Ultra, Android performance and spatial replay update](docs/ULTRA_ANDROID_UPDATE.md).
+
 ## Play
 
 ```bash
@@ -30,8 +32,8 @@ Keyboard/assistive activation of the shoot button also supports Enter to start c
 
 - A fully rendered 3D stadium: smoother articulated athletes, batched architecture, photographic-style baked crowd, procedural turf/ball, pitch markings, shadows, LED boards, goal frame, and animated net.
 - **Main menu** in the style of modern football-game menus, with a full-screen gameplay view and a full-screen, scrollable settings screen.
-- **30 roster cards:** 15 players, each with a turquoise special (higher ratings, turquoise foil, handwritten name). The ratings and attributes are placeholder fan-made values, not EA or FC27 data.
-- **Ronaldo, Messi, Mbappé, and Salah** with credited real June/July 2026 photos. The other players use generated monogram art. All cards carry fan-made training ratings, not official FC27 cards or a complete or live database.
+- **57 photographed roster cards:** 47 standard, 7 ivory-and-gold ICON tributes and 3 turquoise specials. Ratings/attributes are original fan-made training values, not official EA/FC ratings. ICON boosts apply only in gameplay, not displayed card attributes.
+- Every card has a locally bundled real photograph, including Juninho, Ronaldo Nazário and Pirlo. Four recent portraits have CC BY-SA credits; the other editorial/public-mirror photos have uncleared reuse rights and require permission or replacement before distribution. See [photo provenance](public/players/LICENSE.md).
 - **36% stronger base curl** and a visibly stronger, low-frequency knuckle wake with repeatable late changes of direction.
 - **Floodlit night / golden hour / clear day**, native device-pixel resolution (no adaptive downscaling), distance-based LOD and culling, and a live performance monitor.
 - Movable free-kick positions across the attacking training half; roughly 18–55 m radial range, with closer wide-angle positions.
@@ -40,7 +42,8 @@ Keyboard/assistive activation of the shoot button also supports Enter to start c
 - **Richer animations:** head/elbow articulation, preparation, continuous follow-through, goal/miss reactions, keeper set-steps, varied reaches, landing and recovery.
 - Fixed 120 Hz flight: gravity, drag, spin-induced movement, high-power knuckle wake, turf bounces, swept wall/frame collisions, full-ball goal-line checks.
 - Five physically different keeper levels: reaction delay, lateral speed, reach, height, and anticipation—not a random save percentage.
-- Foot selection, animated run-up and keeper dives, two camera angles, slow-motion recorded replay, synthesized audio.
+- Foot selection, animated run-up/keeper dives, rotatable broadcast view and multi-stage recorded replay with shot-dependent cameras, strike close-up and progressive object-anchored measurements. Assigned PlayStyle artwork fades above the head during charging.
+- Opt-in **Ultra** shaders and independently editable Custom depth shading, athlete surfaces, lens finish and tracking DOF; existing mobile presets retain their quality settings.
 - Session goals, attempts, conversion rate, streak, recent shots; saved preferences and personal bests.
 - Three five-shot challenges: **Top bins only**, **From way out**, and **Bend the rules**.
 - Fullscreen desktop and portrait layouts, plus a compact immersive landscape Android layout. No persistent dashboard takes space from the pitch.
@@ -106,7 +109,7 @@ scaling, signature poses, outside-foot animation and original holographic-style 
 
 ## Latest cinematic / ICON update
 
-See [the cinematic replay, ICON, DOF and performance update](docs/CINEMATIC_ICON_UPDATE.md) for recorded run-ups and rotation, immediate goal analysis, the 64-trial conversion estimate, model-aligned collisions, five-track playback and eight workload reductions. DOF defaults on only in High and can be toggled in Custom. The roster has 42 cards, including Roberto Carlos, Ronaldinho, Zidane and Beckham ICON tributes.
+See [the cinematic replay, ICON, DOF and performance update](docs/CINEMATIC_ICON_UPDATE.md) for recorded run-ups and rotation, immediate goal analysis, the 64-trial conversion estimate, model-aligned collisions, five-track playback and eight workload reductions. DOF defaults on in High and Ultra and can be toggled in Custom. The expanded roster has 57 cards / 7 ICONs, including Juninho, Ronaldo Nazário and Pirlo. See the [Ultra / Android / spatial replay update](docs/ULTRA_ANDROID_UPDATE.md) for progressive object-anchored statistics, charging PlayStyle badges, gameplay-only ICON bonuses and optional shaders.
 
 ### Previous presentation update
 

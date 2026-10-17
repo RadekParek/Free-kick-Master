@@ -20,16 +20,19 @@ const DOF_GATHER = Array.from({length:12},(_,i)=>{
 }).join('\n');
 
 export type PostQuality = 'high' | 'balanced' | 'low';
-export interface PostOptions { antialias: 'off' | 'fxaa' | 'smaa'; bloom: boolean; dof?: boolean; quality: PostQuality }
+export interface PostOptions { antialias: 'off' | 'fxaa' | 'smaa'; bloom: boolean; dof?: boolean; ambientOcclusion?: boolean; lensEffects?: boolean; quality: PostQuality }
 
 /** Tone mapping -> sRGB -> broadcast grade in ONE draw, with AA still after sRGB.
  * Extending OutputPass retains Three.js' exposure and output-colour-space define management.
  */
 export class BroadcastOutputPass extends OutputPass {
   declare uniforms: Record<string, THREE.IUniform>;
-  constructor(readonly dof = false) {
+  constructor(readonly dof = false, readonly ambientOcclusion = false, lensEffects = false) {
     super();
-    if (dof) {
+    this.uniforms.uLensEffects = { value:lensEffects ? 1 : 0 };
+    this.material.uniforms = this.uniforms;
+    this.material.fragmentShader = "precision highp float;\nuniform float uLensEffects;\n" + this.material.fragmentShader;
+    if (dof || ambientOcclusion) {
       this.uniforms.tDepth = { value: null };
       this.uniforms.uLens = { value: new THREE.Vector4(.05, 450, 15, .04) };
       this.uniforms.uPixels = { value: new THREE.Vector2(1, 1) };
@@ -52,7 +55,12 @@ export class BroadcastOutputPass extends OutputPass {
       // Function declaration needs tDiffuse before lensSample; OutputShader's own declaration is removed.
       this.material.fragmentShader = this.material.fragmentShader.replace('uniform sampler2D tDiffuse;', '');
       this.material.fragmentShader = 'precision highp float;\nuniform sampler2D tDiffuse;\n' + this.material.fragmentShader;
-      this.material.fragmentShader = this.material.fragmentShader.replace('texture2D( tDiffuse, vUv )', 'lensSample(vUv)');
+      this.material.fragmentShader = this.material.fragmentShader.replace('texture2D( tDiffuse, vUv )', dof ? 'lensSample(vUv)' : 'texture2D( tDiffuse, vUv )');
+      if (ambientOcclusion) {
+        const gather=Array.from({length:6},(_,i)=>{ const a=i*Math.PI/3; return ` { float dz=z-viewDepth(vUv+vec2(${Math.cos(a).toFixed(7)},${Math.sin(a).toFixed(7)})*3./uPixels); occ+=smoothstep(.015,.09,dz)*(1.-smoothstep(.2,.8,dz)); }`; }).join('\n');
+        // Insert directly after the initial HDR sample, before OutputShader tone mapping.
+        this.material.fragmentShader=this.material.fragmentShader.replace(/gl_FragColor = ([^;]+);/, `gl_FragColor = $1; float z=viewDepth(vUv); float occ=0.; ${gather} gl_FragColor.rgb*=1.-occ*.035;`);
+      }
     }
     this.material.name = 'BroadcastOutput';
     // Add grading after OutputShader's conversion, not before ACES or after antialiasing.
@@ -63,6 +71,8 @@ export class BroadcastOutputPass extends OutputPass {
       col = mix(vec3(l), col, 1.025);
       col = (col - 0.5) * 1.02 + 0.5;
       col *= vec3(1.005, 1.0, 0.995);
+      // Optional optical finish; no time-dependent grain, no extra full-screen pass.
+      if (uLensEffects > .5) { col = mix(col, col*col*(3.-2.*col), .12); col += vec3(.006,.003,-.002)*smoothstep(.5,1.,l); }
       vec2 d = vUv - 0.5;
       float v = 1.0 - smoothstep(0.25, 0.95, length(d * vec2(1.0, 0.85)));
       col *= mix(0.84, 1.0, v);
@@ -72,7 +82,7 @@ export class BroadcastOutputPass extends OutputPass {
   }
   override render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget, deltaTime = 0, maskActive = false) {
     // Bind the ACTUAL RenderPass source after composer swaps, never a stale ping-pong attachment.
-    if (this.dof) this.uniforms.tDepth.value = readBuffer.depthTexture;
+    if (this.dof || this.ambientOcclusion) this.uniforms.tDepth.value = readBuffer.depthTexture;
     super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
   }
 }
@@ -98,26 +108,30 @@ export class PostStack {
    * FXAA runs on the tone-mapped sRGB image; SMAA remains an optional sharper alternative.
    */
   configure(options: PostOptions, width: number, height: number) {
-    const { antialias, bloom, quality, dof = false } = options;
-    const key = `${antialias}|${bloom}|${dof}`;
+    const { antialias, bloom, quality, dof = false, ambientOcclusion = false, lensEffects = false } = options;
+    const key = `${antialias}|${bloom}|${dof}|${ambientOcclusion}`;
     if (key === this.key) {
       // Quality only changes bloom strength, not pass topology or render targets.
       if (this.bloom) this.bloom.strength = quality === 'high' ? 0.16 : 0.1;
+      if(this.grade) this.grade.uniforms.uLensEffects.value=lensEffects ? 1 : 0;
       this.setSize(width, height);
       return;
     }
     this.dispose();
     this.key = key;
     const target = new THREE.WebGLRenderTarget(width, height, { type: THREE.HalfFloatType, samples: 0 });
-    if (dof) target.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
+    if (dof || ambientOcclusion) target.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
     const composer = this.composer = new EffectComposer(this.renderer, target);
+    // With AA there are two swaps (output + AA), so RenderPass always reads target2.
+    // target1 holds only post colour: no unused native-resolution depth attachment/clear.
+    if (antialias !== 'off') { composer.renderTarget1.depthTexture?.dispose(); composer.renderTarget1.depthTexture=null; composer.renderTarget1.depthBuffer=false; }
     this.pixelRatio = this.renderer.getPixelRatio();
     composer.addPass(new RenderPass(this.scene, this.camera));
     if (bloom) {
       this.bloom = new UnrealBloomPass(new THREE.Vector2(width, height), quality === 'high' ? 0.16 : 0.1, 0.5, 0.92);
       composer.addPass(this.bloom);
     }
-    this.grade = new BroadcastOutputPass(dof);
+    this.grade = new BroadcastOutputPass(dof, ambientOcclusion, lensEffects);
     composer.addPass(this.grade);
     if (antialias !== 'off') {
       this.aa = antialias === 'smaa' ? new SMAAPass() : new ShaderPass(FXAAShader);
@@ -135,7 +149,7 @@ export class PostStack {
     if (width !== this.width || height !== this.height) this.composer.setSize(width, height);
     if (this.aa instanceof ShaderPass) this.aa.uniforms.resolution.value.set(
       1 / Math.max(1, Math.floor(width * pixelRatio)), 1 / Math.max(1, Math.floor(height * pixelRatio)));
-    if (this.grade?.dof) this.grade.uniforms.uPixels.value.set(Math.max(1, width * pixelRatio), Math.max(1, height * pixelRatio));
+    if (this.grade && (this.grade.dof || this.grade.ambientOcclusion)) this.grade.uniforms.uPixels.value.set(Math.max(1, width * pixelRatio), Math.max(1, height * pixelRatio));
     this.width = width;
     this.height = height;
     this.pixelRatio = pixelRatio;
@@ -143,7 +157,7 @@ export class PostStack {
 
   /** Camera-tracked thin-lens focus. Pausing stops this along with the simulation. */
   focus(distance: number) {
-    if (!this.grade?.dof || !(this.camera instanceof THREE.PerspectiveCamera)) return;
+    if (!this.grade || !(this.grade.dof || this.grade.ambientOcclusion) || !(this.camera instanceof THREE.PerspectiveCamera)) return;
     const lens = this.grade.uniforms.uLens.value as THREE.Vector4;
     lens.set(this.camera.near, this.camera.far, Math.max(.15, distance), .024/(2*Math.tan(THREE.MathUtils.degToRad(this.camera.fov)*.5)));
   }

@@ -72,7 +72,7 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
     const request = vi.fn(() => 8), cancel = vi.fn();
     vi.stubGlobal('requestAnimationFrame', request);
     vi.stubGlobal('cancelAnimationFrame', cancel);
-    const arena = Object.assign(Object.create(Arena.prototype), { paused: false, raf: 7, lastTick: 4000, cancelCharge: vi.fn(), tick: vi.fn() });
+    const arena = Object.assign(Object.create(Arena.prototype), { paused: false, raf: 7, lastTick: 4000, cancelCharge: vi.fn(), tick: vi.fn(), labels:{setPaused:vi.fn()} });
     arena.setPaused(true);
     arena.setPaused(true);
     expect(cancel).toHaveBeenCalledExactlyOnceWith(7);
@@ -175,7 +175,7 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
 
   it('returns the camera to neutral as soon as a charged shot is released', () => {
     const arena = Object.assign(Object.create(Arena.prototype), {
-      phase: 'charging', cameraYawOffset: 0.4, phaseTime: 0, power: 0.6,
+      labels:{hideStats:vi.fn()}, phase: 'charging', cameraYawOffset: 0.4, phaseTime: 0, power: 0.6,
       setup: vi.fn(() => ({})), settings: structuredClone(DEFAULT_SETTINGS),
       guide: { visible: true }, ring: { visible: true },
       replayFrames: { clear: vi.fn() }, runupFrames:{clear:vi.fn(),record:vi.fn()}, football:{quaternion:new THREE.Quaternion()}, taker:{group:new THREE.Group()}, chanceJob:0, resultBallTime: 0, lastResult: { outcome: 'goal' },

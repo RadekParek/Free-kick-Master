@@ -18,7 +18,7 @@ test('Carlos ICON has right-side Power+, records a real approach and enters anal
   await expect(page.locator('#app')).toHaveClass('is-ready');
   await page.locator('#menu-players').click();
   await page.locator('[data-edition-filter="icon"]').click();
-  await expect(page.locator('.player-card:visible')).toHaveCount(4);
+  await expect(page.locator('.player-card:visible')).toHaveCount(7);
   const card = page.locator('[data-player="roberto-carlos"]');
   await expect(card).toHaveClass(/is-icon/);
   await expect(card.locator('.card-stats')).toContainText('99');

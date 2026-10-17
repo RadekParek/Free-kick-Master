@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeSceneResources } from './resources';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Atmosphere, Quality } from '../state';
 import { GOAL_HEIGHT, GOAL_WIDTH, POST_RADIUS } from './physics';
@@ -641,7 +642,11 @@ export class Stadium {
       texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=THREE.RepeatWrapping;texture.anisotropy=4;
       this.photoCrowdMaterial.map=texture;this.photoCrowdMaterial.needsUpdate=true;
       this.photoCrowdReady=true;this.photoCrowd.visible=true;
-      this.crowd.visible=false;this.crowdHeads.visible=false;this.crowdSeats.visible=false;
+      // Successful photo load makes these fallback meshes permanently unreachable visually.
+      // Free their instance buffers, geometries/materials and scene traversal, not just visibility.
+      const fallback=new THREE.Group();fallback.add(this.crowd,this.crowdHeads,this.crowdSeats);
+      disposeSceneResources(fallback);
+      this.crowd.clear();this.crowdHeads.clear();this.crowdSeats.clear();fallback.clear();
       this.setQuality(this.quality);
     },undefined,()=>{ /* Procedural crowd is retained as an offline-safe fallback. */ });
   }

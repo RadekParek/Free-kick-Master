@@ -14,7 +14,7 @@ export type PlayStyle = 'finesse' | 'power' | 'deadball';
 const PLAYSTYLES = new Map<string, PlayStyle>([
   ['messi', 'finesse'], ['yamal', 'finesse'], ['ronaldo', 'power'], ['haaland', 'power'], ['roberto-carlos', 'power'],
   ['ronaldinho', 'finesse'], ['beckham', 'deadball'], ['zidane', 'deadball'],
-  ['neymar', 'deadball'], ['vinicius', 'deadball'], ['musiala', 'deadball'], ['dembele', 'deadball'],
+  ['mbappe', 'deadball'], ['juninho', 'deadball'], ['pirlo', 'deadball'], ['hakimi', 'deadball'], ['olise','finesse'], ['kvaratskhelia','finesse'], ['ronaldo-nazario','finesse'], ['neymar', 'deadball'], ['vinicius', 'deadball'], ['musiala', 'deadball'], ['dembele', 'deadball'],
 ]);
 export function playStyleFor(baseId: string): PlayStyle | undefined { return PLAYSTYLES.get(baseId); }
 export const PLAYSTYLE_LABELS: Record<PlayStyle, string> = { finesse: 'Finesse Shot+', power: 'Power Shot+', deadball: 'Dead Ball+' };
@@ -271,11 +271,151 @@ const iconCards: TakerProfile[] = [
   { id: 'zidane', baseId: 'zidane', edition: 'icon', name: 'Zinedine Zidane', shortName: 'Zidane', nation: 'France', nationCode: 'FR', foot: 'right', number: 10, rating: 95, specialty: 'Dead Ball+ · ICON', description: 'Original ivory-and-gold ICON tribute. Fan-made training attributes, not official EA ratings.', attributes: { power: 95, curve: 97, knuckle: 88, control: 99 }, appearance: { shirt: '#18356d', shorts: '#163e77', trim: '#d0ae58', skin: '#bd9071', hair: '#31251c', beard: false, height: 1.85 }, portrait: './players/zidane.webp', photoDate: null, photoSource: 'https://gettyimages.com/photos/zidane-headshot', credit: 'Getty Images editorial search preview; photographer/copyright holder retains rights. Reuse not cleared.' },
   { id: 'beckham', baseId: 'beckham', edition: 'icon', name: 'David Beckham', shortName: 'Beckham', nation: 'England', nationCode: 'GB', foot: 'right', number: 7, rating: 94, specialty: 'Dead Ball+ · ICON', description: 'Original ivory-and-gold ICON tribute. Fan-made training attributes, not official EA ratings.', attributes: { power: 94, curve: 99, knuckle: 85, control: 98 }, appearance: { shirt: '#f3f1e9', shorts: '#163e77', trim: '#d0ae58', skin: '#c7997b', hair: '#8d693f', beard: false, height: 1.83 }, portrait: './players/beckham.webp', photoDate: null, photoSource: 'https://gettyimages.co.uk/photos/david-beckam-england', credit: 'Getty Images editorial search preview; photographer/copyright holder retains rights. Reuse not cleared.' },
 ];
+const expansionCards: TakerProfile[] = [
+  {
+    id: "hakimi", baseId: "hakimi", edition: "standard", name: "Achraf Hakimi", shortName: "Hakimi",
+    nation: "Morocco", nationCode: "MA", foot: "right", number: 2, rating: 89,
+    specialty: "Dead Ball+", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 91, "curve": 89, "knuckle": 83, "control": 92},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#b08362", "hair": "#201a17", "beard": false, "height": 1.81},
+    portrait: "./players/hakimi.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/hakimi.jpg", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "rice", baseId: "rice", edition: "standard", name: "Declan Rice", shortName: "Rice",
+    nation: "England", nationCode: "GB", foot: "right", number: 4, rating: 88,
+    specialty: "Set-piece specialist", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 91, "curve": 88, "knuckle": 81, "control": 92},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#d1a685", "hair": "#403024", "beard": false, "height": 1.88},
+    portrait: "./players/rice.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/declan_rice.jpg", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "saliba", baseId: "saliba", edition: "standard", name: "William Saliba", shortName: "Saliba",
+    nation: "France", nationCode: "FR", foot: "right", number: 17, rating: 85,
+    specialty: "Set-piece specialist", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 89, "curve": 80, "knuckle": 79, "control": 91},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#93674d", "hair": "#241d19", "beard": false, "height": 1.92},
+    portrait: "./players/saliba.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/william_saliba.jpg", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "gabriel", baseId: "gabriel", edition: "standard", name: "Gabriel Magalhães", shortName: "Gabriel",
+    nation: "Brazil", nationCode: "BR", foot: "left", number: 4, rating: 86,
+    specialty: "Set-piece specialist", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 92, "curve": 82, "knuckle": 82, "control": 88},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#9e7052", "hair": "#251d19", "beard": false, "height": 1.9},
+    portrait: "./players/gabriel.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/gabriel.jpg", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "olise", baseId: "olise", edition: "standard", name: "Michael Olise", shortName: "Olise",
+    nation: "France", nationCode: "FR", foot: "left", number: 11, rating: 91,
+    specialty: "Finesse Shot+", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 90, "curve": 96, "knuckle": 84, "control": 95},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#aa7b59", "hair": "#241b17", "beard": false, "height": 1.84},
+    portrait: "./players/olise.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/michael_olise.jpg", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "kvaratskhelia", baseId: "kvaratskhelia", edition: "standard", name: "Khvicha Kvaratskhelia", shortName: "Kvaratskhelia",
+    nation: "Georgia", nationCode: "GE", foot: "right", number: 7, rating: 92,
+    specialty: "Finesse Shot+", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 91, "curve": 95, "knuckle": 87, "control": 95},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#c59c7c", "hair": "#34271f", "beard": true, "height": 1.83},
+    portrait: "./players/kvaratskhelia.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/kvaratskhelia.jpg", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "nuno-mendes", baseId: "nuno-mendes", edition: "standard", name: "Nuno Mendes", shortName: "Nuno Mendes",
+    nation: "Portugal", nationCode: "PT", foot: "left", number: 25, rating: 89,
+    specialty: "Set-piece specialist", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 92, "curve": 89, "knuckle": 82, "control": 92},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#865d43", "hair": "#231d19", "beard": false, "height": 1.8},
+    portrait: "./players/nuno-mendes.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/nuno_mendes.jpg", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "joao-neves", baseId: "joao-neves", edition: "standard", name: "João Neves", shortName: "João Neves",
+    nation: "Portugal", nationCode: "PT", foot: "right", number: 15, rating: 88,
+    specialty: "Set-piece specialist", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 86, "curve": 90, "knuckle": 79, "control": 97},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#c49a7a", "hair": "#3f2f22", "beard": true, "height": 1.74},
+    portrait: "./players/joao-neves.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/joao_neves.png", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "mane", baseId: "mane", edition: "standard", name: "Sadio Mané", shortName: "Mané",
+    nation: "Senegal", nationCode: "SN", foot: "right", number: 10, rating: 90,
+    specialty: "Set-piece specialist", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 91, "curve": 91, "knuckle": 86, "control": 92},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#714b36", "hair": "#221c18", "beard": false, "height": 1.74},
+    portrait: "./players/mane.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/mane.jpg", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "marquinhos", baseId: "marquinhos", edition: "standard", name: "Marquinhos", shortName: "Marquinhos",
+    nation: "Brazil", nationCode: "BR", foot: "right", number: 4, rating: 86,
+    specialty: "Set-piece specialist", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 88, "curve": 84, "knuckle": 80, "control": 94},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#ad7c58", "hair": "#2a211a", "beard": true, "height": 1.83},
+    portrait: "./players/marquinhos.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/marquinhos.jpg", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "cucurella", baseId: "cucurella", edition: "standard", name: "Marc Cucurella", shortName: "Cucurella",
+    nation: "Spain", nationCode: "ES", foot: "left", number: 24, rating: 87,
+    specialty: "Set-piece specialist", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 87, "curve": 91, "knuckle": 77, "control": 93},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#c29979", "hair": "#30231b", "beard": false, "height": 1.73},
+    portrait: "./players/cucurella.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/cucurella.jpg", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "upamecano", baseId: "upamecano", edition: "standard", name: "Dayot Upamecano", shortName: "Upamecano",
+    nation: "France", nationCode: "FR", foot: "right", number: 4, rating: 87,
+    specialty: "Set-piece specialist", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 94, "curve": 81, "knuckle": 85, "control": 88},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#7f563f", "hair": "#211a17", "beard": false, "height": 1.86},
+    portrait: "./players/upamecano.webp", photoDate: null,
+    photoSource: "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/upamecano.jpg", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "juninho", baseId: "juninho", edition: "icon", name: "Juninho Pernambucano", shortName: "Juninho",
+    nation: "Brazil", nationCode: "BR", foot: "right", number: 8, rating: 98,
+    specialty: "Dead Ball+", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 96, "curve": 99, "knuckle": 99, "control": 99},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#b68a66", "hair": "#34271d", "beard": false, "height": 1.78},
+    portrait: "./players/juninho.webp", photoDate: null,
+    photoSource: "https://gettyimages.in/photos/juninho-pernambucano", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "ronaldo-nazario", baseId: "ronaldo-nazario", edition: "icon", name: "Ronaldo Nazário", shortName: "Ronaldo Nazário",
+    nation: "Brazil", nationCode: "BR", foot: "right", number: 9, rating: 96,
+    specialty: "Finesse Shot+", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 98, "curve": 94, "knuckle": 93, "control": 98},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#ad7956", "hair": "#241c18", "beard": false, "height": 1.83},
+    portrait: "./players/ronaldo-nazario.webp", photoDate: null,
+    photoSource: "https://gettyimages.com/photos/ronaldo-brazil-2002", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+  {
+    id: "pirlo", baseId: "pirlo", edition: "icon", name: "Andrea Pirlo", shortName: "Pirlo",
+    nation: "Italy", nationCode: "IT", foot: "right", number: 21, rating: 96,
+    specialty: "Dead Ball+", description: "Original fan-made training profile. Attributes are not official EA ratings.",
+    attributes: {"power": 90, "curve": 99, "knuckle": 94, "control": 99},
+    appearance: {"shirt": "#edcc38", "shorts": "#17365a", "trim": "#e5cd78", "skin": "#c59b78", "hair": "#3f2f22", "beard": true, "height": 1.77},
+    portrait: "./players/pirlo.webp", photoDate: null,
+    photoSource: "https://gettyimages.com/photos/andrea-pirlo-italy-photos", credit: "Editorial/public mirror photograph; copyright remains with the photographer. Reuse not cleared.",
+  },
+];
 /** Standard cards first, then each player's turquoise special. */
-export const PLAYERS: readonly TakerProfile[] = [...standardCards, ...iconCards, ...BASE.filter(base => SPECIAL_IDS.includes(base.id)).map(specialOf)];
+export const PLAYERS: readonly TakerProfile[] = [...standardCards, ...expansionCards.filter(p=>p.edition==='standard'), ...iconCards, ...expansionCards.filter(p=>p.edition==='icon'), ...BASE.filter(base => SPECIAL_IDS.includes(base.id)).map(specialOf)];
 
 const PLAYER_INDEX = new Map(PLAYERS.map(player => [player.id, player]));
 export const DEFAULT_PLAYER_ID = 'ronaldo';
 export function getPlayer(id: string): TakerProfile { return PLAYER_INDEX.get(id) ?? PLAYERS[0]; }
 export function isPlayerId(id: unknown): id is string { return typeof id === 'string' && PLAYER_INDEX.has(id); }
 export function playerName(player: TakerProfile): string { return player.name; }
+
+/** Gameplay bonuses never mutate card attributes/overall, including when previewing an ICON. */
+export function gameplayBonuses(player:TakerProfile) { return { speedKph:player.edition==='icon'?10:0, curve:player.edition==='icon'?5:0 }; }

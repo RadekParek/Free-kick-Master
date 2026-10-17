@@ -316,7 +316,7 @@ describe('new quality-preserving workload reductions', () => {
         }
     }
   });
-  it('enables DOF by default only in High; a disabled post stack has no sampled-depth attachment or extra pass', () => {
+  it('enables DOF by default in High and Ultra; a disabled post stack has no sampled-depth attachment or extra pass', () => {
     expect(graphicsForPreset('high').dof).toBe(true);
     expect(graphicsForPreset('balanced').dof).toBe(false);
     expect(graphicsForPreset('performance').dof).toBe(false);
@@ -363,8 +363,8 @@ describe('new quality-preserving workload reductions', () => {
 });
 
 describe('ICONs, soundtrack and transparent game-model statistics', () => {
-  it('includes four desaturated ICON identities, Carlos left-footed Power+ with 99 power and curve', () => {
-    expect(PLAYERS.filter((p) => p.edition === 'icon')).toHaveLength(4);
+  it('includes seven desaturated ICON identities, Carlos left-footed Power+ with 99 power and curve', () => {
+    expect(PLAYERS.filter((p) => p.edition === 'icon')).toHaveLength(7);
     const carlos = getPlayer('roberto-carlos');
     expect(carlos.foot).toBe('left');
     expect(carlos.attributes.power).toBe(99);

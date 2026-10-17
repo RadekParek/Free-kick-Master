@@ -16,13 +16,15 @@ import { PostStack, type PostOptions } from './post';
 import { applyStudioLight, studioEnvironment } from './pbr';
 import { advanceShot, createShotScratch } from './simulation';
 import { ReplayBuffer, RunupBuffer } from './replay';
+import { WorldLabels } from './world-labels';
+import { replayView } from './replay-view';
 import { GoalAnalysis } from './goal-analysis';
 import { sampleAnalysis, ANALYSIS_DURATION, type AnalysisFrame, type AnalysisStage } from './analysis-timeline';
 import { broadcastLens } from './camera';
 import { disposeAthleteModelCaches } from './athlete-model';
 import { disposeKitCache } from './kits';
 import { disposeIdentityCache } from './identity';
-import { getPlayer, playStyleFor } from '../players';
+import { getPlayer, playStyleFor, gameplayBonuses } from '../players';
 import { disposeSceneResources } from './resources';
 import { effectivePixelRatio, isMobileDevice, type Settings, type ShotResult } from '../state';
 
@@ -71,9 +73,11 @@ export class Arena {
   private ring: THREE.Mesh;
   private guide: Line2;
   private readonly guideGeometry = new LineGeometry();
-  private readonly guideMaterial = new LineMaterial({ color: 0x2d9cff, linewidth: 2, transparent: true, opacity: .95, depthWrite: false });
+  private readonly guideMaterial = new LineMaterial({ color: 0x2d9cff, linewidth: 2, transparent: true, opacity: .62, depthWrite: false });
   private readonly guideSegments = new Float32Array(511 * 6);
   private readonly guideBuffer = new THREE.InstancedInterleavedBuffer(this.guideSegments, 6).setUsage(THREE.DynamicDrawUsage);
+  private readonly labels:WorldLabels;
+  private readonly labelPoint=new THREE.Vector3();
   private readonly goalAnalysis = new GoalAnalysis();
   private readonly analysisFrame: AnalysisFrame = { stage: 'intro', shotTime: 0, progress: 0 };
   private analysisCameraCut = false;
@@ -120,6 +124,7 @@ export class Arena {
   constructor(private container: HTMLElement, settings: Settings, events: ArenaEvents) {
     this.settings = structuredClone(settings);
     this.events = events;
+    this.labels=new WorldLabels(container);
     this.shotSetup = this.setup(recommendedPower(settings.position));
     this.ball = launchBall(this.shotSetup);
     this.keeper = createKeeper(settings.position.x);
@@ -176,14 +181,23 @@ export class Arena {
       this.setPaused(true);
       this.events.error('The graphics context was interrupted. Reload the arena to continue.');
     });
+    this.applySurfaceDetail();
     this.resize();
     this.reset();
     this.updateCamera(1, true);
     this.raf = requestAnimationFrame(this.tick);
   }
 
+  private applySurfaceDetail() {
+    const enabled=!!this.settings.graphics.surfaceDetail;
+    this.taker.setSurfaceDetail(enabled); this.keeperModel.setSurfaceDetail(enabled);
+    for(const player of this.wallModels) player.setSurfaceDetail(enabled);
+  }
+
   private setup(power: number): ShotSetup {
+    const bonus = gameplayBonuses(getPlayer(this.settings.playerId));
     return {
+      speedBonusKph:bonus.speedKph, curveBonus:bonus.curve,
       position: { ...this.settings.position }, aim: { ...this.settings.aim },
       contact: { ...this.settings.contact }, power, foot: this.settings.foot, attributes: { ...getPlayer(this.settings.playerId).attributes }, playStyle: playStyleFor(getPlayer(this.settings.playerId).baseId),
     };
@@ -192,6 +206,7 @@ export class Arena {
   private setPhase(phase: Phase) {
     this.phase = phase;
     this.phaseTime = 0;
+    if(phase!=='replay')this.labels.hideStats();
     this.events.phase(phase);
   }
 
@@ -226,9 +241,10 @@ export class Arena {
       this.renderer.shadowMap.needsUpdate = true;
     }
     if (g.resolution !== previous.resolution) this.queueResize();
-    else if (qualityChanged || g.antialias !== previous.antialias || g.bloom !== previous.bloom) {
+    else if (qualityChanged || g.antialias !== previous.antialias || g.bloom !== previous.bloom || g.dof !== previous.dof || g.ambientOcclusion !== previous.ambientOcclusion || g.lensEffects !== previous.lensEffects) {
       this.post.configure(this.postOptions(), this.width, this.height);
     }
+    if (g.surfaceDetail !== previous.surfaceDetail) this.applySurfaceDetail();
     if (moved || playerChanged || (this.phase === 'result' && gameplayChanged)) this.reset();
     else if (this.phase === 'ready' || this.phase === 'charging') this.previewDirty = true;
   }
@@ -243,7 +259,7 @@ export class Arena {
 
   private postOptions(): PostOptions {
     const g = this.settings.graphics;
-    return { antialias: g.antialias, bloom: g.bloom, dof: g.dof, quality: this.settings.quality };
+    return { antialias: g.antialias, bloom: g.bloom, dof: g.dof, ambientOcclusion:g.ambientOcclusion, lensEffects:g.lensEffects, quality: this.settings.quality };
   }
 
   private queueResize() {
@@ -301,6 +317,7 @@ export class Arena {
       model.group.visible = i < wall.length;
       if (wall[i]) {
         wall[i].metrics = model.collisionMetrics();
+        model.setSurfaceDetail(!!this.settings.graphics.surfaceDetail);
         model.group.position.set(wall[i].x, 0, wall[i].z);
         model.group.rotation.y = Math.atan2(wall[i].x - this.settings.position.x, wall[i].z - this.settings.position.z);
         model.wallPose(0, this.time);
@@ -380,6 +397,7 @@ export class Arena {
     if (paused) this.cancelCharge();
     if (this.paused === paused) return;
     this.paused = paused;
+    this.labels.setPaused(paused);
     this.lastTick = 0;
     this.metricsStart = 0;
     this.metricsFrames = 0;
@@ -587,6 +605,7 @@ export class Arena {
     this.renderer.info.reset();
     this.post.focus(this.camera.position.distanceTo(this.phase === 'replay' && this.analysisFrame.shotTime < 0 ? this.taker.group.position : this.football.position));
     this.post.render();
+    this.updateWorldLabels(dt);
     this.metricsFrames++;
     if (!this.metricsStart) this.metricsStart = timestamp;
     if (timestamp - this.metricsStart >= 1200) {
@@ -595,6 +614,31 @@ export class Arena {
       this.metricsStart = timestamp; this.metricsFrames = 0;
     }
   };
+
+  private updateWorldLabels(dt:number) {
+    const profile=getPlayer(this.settings.playerId), r=this.lastResult, point=this.labelPoint;
+    this.taker.headWorldPosition(point);point.y+=.36;
+    this.labels.playstyle(playStyleFor(profile.baseId),!this.attract && !this.paused && (this.phase==='charging' || this.phase==='runup' || (this.phase==='flight' && this.ball.time<.25)),point,this.camera,this.width,this.height);
+    if(this.phase!=='replay' || r?.outcome!=='goal') { this.labels.hideStats();return; }
+    const {stage,progress}=this.analysisFrame;
+    let metric='distance',title='SHOT DISTANCE',value:number|undefined=r.distance,decimals=1,unit='METRES · CALCULATED';
+    point.set(this.settings.position.x,.15,this.settings.position.z);
+    if(stage==='runup') {
+      this.taker.headWorldPosition(point);
+      if(progress<.55) {metric='runup-speed';title='RECORDED RUN-UP';value=r.runupSpeed;unit='KM/H · PEAK';}
+      else {metric='player-height';title='PLAYER HEIGHT';value=r.playerHeight;decimals=2;unit='METRES · PROFILE';}
+    } else if(stage==='strike') {
+      metric='power';title='STRIKE POWER';value=r.power*100;decimals=0;unit='PERCENT · RELEASE';point.copy(this.football.position);
+    } else if(stage==='flight') {
+      if(progress<.68) {metric='shot-speed';title='BALL SPEED';value=r.speed;decimals=0;unit='KM/H · AT STRIKE';point.copy(this.football.position);}
+      else {metric='keeper-height';title='KEEPER HEIGHT';value=r.keeperHeight;decimals=2;unit='METRES · PROFILE';this.keeperModel.headWorldPosition(point);}
+    } else if(stage==='finish') {
+      metric='entry-height';title='GOAL ENTRY';value=r.point.y;decimals=2;unit='METRES · ABOVE GROUND';point.set(r.point.x,r.point.y,0);
+    } else if(stage==='overview'||stage==='done') {
+      metric='conversion';title='SIM. CONVERSION';value=r.estimatedChance;decimals=0;unit='% · GAME MODEL / 64';point.set(r.point.x,r.point.y,0);
+    }
+    this.labels.show(metric,title,value,decimals,unit,point,this.camera,this.width,this.height,dt);
+  }
 
   private refreshDynamicShadows() {
     if (!this.renderer.shadowMap.enabled) return;
@@ -680,7 +724,7 @@ export class Arena {
       keeperHeight: 1.90,
       frameHits: this.ball.frameHits,
       distance: distanceToGoal(this.shotSetup.position),
-      speed: shotSpeed(this.shotSetup.power, this.shotSetup.attributes, this.shotSetup.playStyle) * 3.6,
+      speed: shotSpeed(this.shotSetup.power, this.shotSetup.attributes, this.shotSetup.playStyle) * 3.6 + (this.shotSetup.speedBonusKph ?? 0),
       power: this.shotSetup.power,
       point: { x: point.x, y: point.y },
       technique: strikeName(this.shotSetup.contact, this.shotSetup.foot),
@@ -700,7 +744,7 @@ export class Arena {
     if (goal) {
       const previous = this.analysisFrame.stage;
       sampleAnalysis(this.replayClock, this.resultBallTime, this.analysisFrame);
-      if (previous !== this.analysisFrame.stage) { this.analysisCameraCut = true; this.events.analysis?.(this.analysisFrame.stage); }
+      if (previous !== this.analysisFrame.stage) { this.analysisCameraCut = true; this.labels.transition(this.analysisFrame.stage); this.events.analysis?.(this.analysisFrame.stage); }
       this.goalAnalysis.update(this.replayClock, this.analysisFrame.shotTime);
     }
     const sampleTime = goal ? this.analysisFrame.shotTime : this.replayClock;
@@ -743,23 +787,26 @@ export class Arena {
     } else if (replay) {
       if (this.lastResult?.outcome === 'goal') {
         const { stage, progress } = this.analysisFrame;
-        const side = p.x > 0 ? -1 : 1;
+        const {side,wide,angle}=replayView(p,this.shotSetup.aim,this.settings.foot);
         if (stage === 'intro' || stage === 'overview' || stage === 'done') {
-          this.desiredCamera.set(p.x + side * (10 + progress * 2), 9 + progress * 2, p.z + 6);
-          this.desiredLook.set(p.x * .45, .85, p.z * .45);
+          // Shot-local establish: include BOTH the strike spot and the goal, even on a
+          // portrait phone or a wide flank. The old lateral view clipped the kick origin.
+          const length=distanceToGoal(p),back=24+progress*2,orbit=side*(this.width<this.height?5:12);
+          this.desiredCamera.set(p.x+p.x/length*back+p.z/length*orbit,Math.max(15,10+length*.35),p.z+p.z/length*back-p.x/length*orbit);
+          this.desiredLook.set(p.x*.5,.85,p.z*.5);
         } else if (stage === 'runup') {
           const taker = this.taker.group.position;
-          this.desiredCamera.set(taker.x + side * 4.5, 1.8, taker.z + 4.5);
+          this.desiredCamera.set(taker.x + side * (wide ? 3.6 : 4.5), 1.45+Math.abs(angle)*.5, taker.z + (wide ? 5.5 : 4.5));
           this.desiredLook.set(taker.x, 1.05, taker.z - .5);
         } else if (stage === 'strike') {
-          this.desiredCamera.set(p.x + side * (3.5 + progress * .4), 1.3, p.z + 3.6);
-          this.desiredLook.set(p.x, .7, p.z - .3);
+          this.desiredCamera.set(p.x + side * (1.8 + progress * .15), .65, p.z + 2.1);
+          this.desiredLook.set(p.x, .34, p.z - .05);
         } else if (stage === 'flight') {
-          this.desiredCamera.set(this.ball.position.x + side * (8 + Math.sin(progress * Math.PI) * 3), 3 + Math.sin(progress * Math.PI) * 3, this.ball.position.z + 8);
+          this.desiredCamera.set(this.ball.position.x + side * ((wide ? 5.8 : 8) + Math.sin(progress * Math.PI) * 3), (wide ? 2.4 : 3) + Math.sin(progress * Math.PI) * 3, this.ball.position.z + (wide ? 10 : 8));
           this.desiredLook.set(this.ball.position.x, this.ball.position.y, this.ball.position.z);
         } else {
           const entry = this.lastResult.point;
-          this.desiredCamera.set(entry.x + side * (3.5 - progress), Math.max(1.5, entry.y + .4), 5 - progress);
+          this.desiredCamera.set(entry.x + side * ((wide ? 4.5 : 3.5) - progress), Math.max(1.5, entry.y + .4), 5 - progress);
           this.desiredLook.set(entry.x, entry.y, 0);
         }
       } else {
@@ -800,6 +847,7 @@ export class Arena {
   }
 
   dispose() {
+    this.labels.dispose();
     this.chanceWorker?.terminate();
     cancelAnimationFrame(this.raf);
     if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);

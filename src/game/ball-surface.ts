@@ -1,21 +1,91 @@
-/** Offline, deterministic spherical 32-panel pattern: twelve dark pentagons, twenty light panels.
- * Angular Voronoi seams remain continuous at the UV wrap (no pasted triangular grid). */
+/** Original unbranded four-panel ball. Flowing red, blue and green ribbons and warm
+ * metallic seam pinstripes evoke contemporary match balls; no copied logo or artwork.
+ * Direction-space sampling keeps the UV wrap continuous. Shared with the UI ball asset.
+ */
+const seamColor = [76, 67, 52],
+  goldColor = [195, 161, 89],
+  outlineColor = [26, 43, 58],
+  whiteColor = [241, 243, 238];
+const colors = [
+  [22, 38, 57],
+  [211, 47, 57],
+  [31, 104, 184],
+  [32, 145, 106],
+];
+export function surfacePixel(
+  nx: number,
+  ny: number,
+  nz: number,
+  color: Uint8ClampedArray,
+  relief: Uint8ClampedArray,
+  index: number,
+) {
+  let best = -4,
+    next = -4,
+    panel = 0;
+  for (let i = 0; i < 4; i++) {
+    const d =
+      i === 0
+        ? nx + ny + nz
+        : i === 1
+          ? nx - ny - nz
+          : i === 2
+            ? -nx + ny - nz
+            : -nx - ny + nz;
+    if (d > best) {
+      next = best;
+      best = d;
+      panel = i;
+    } else if (d > next) next = d;
+  }
+  const edge = best - next,
+    seam = edge < 0.014;
+  const ribbon = Math.abs(
+    Math.sin(Math.atan2(nz, nx) * 3 + ny * 1.6 + nx * nz * 1.8),
+  );
+  const ink = ribbon < 0.3,
+    outline = ribbon < 0.35,
+    gold = edge < 0.036;
+  const rgb = seam
+    ? seamColor
+    : gold
+      ? goldColor
+      : ink
+        ? colors[panel]
+        : outline
+          ? outlineColor
+          : whiteColor;
+  const grain = Math.sin(nx * 310 + ny * 91) * Math.sin(nz * 275 - ny * 111);
+  for (let c = 0; c < 3; c++) {
+    color[index + c] = rgb[c] + grain * 1.4;
+    relief[index + c] = (seam ? 92 : 150) + grain * 3;
+  }
+  color[index + 3] = relief[index + 3] = 255;
+}
 export function footballSurface(width = 512, height = 256) {
-  const t = (1 + Math.sqrt(5)) / 2;
-  const vertices = [[-1,t,0],[1,t,0],[-1,-t,0],[1,-t,0],[0,-1,t],[0,1,t],[0,-1,-t],[0,1,-t],[t,0,-1],[t,0,1],[-t,0,-1],[-t,0,1]];
-  const faces = [[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]];
-  const centres = [...vertices, ...faces.map(face => [0,1,2].map(axis => face.reduce((sum, v) => sum + vertices[v][axis], 0)))].map(v => { const n = Math.hypot(...v); return v.map(x => x / n); });
-  const color = new Uint8ClampedArray(width * height * 4), relief = new Uint8ClampedArray(color.length);
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const phi = (x + .5) / width * Math.PI * 2, theta = (y + .5) / height * Math.PI;
-    const nx = -Math.cos(phi) * Math.sin(theta), ny = Math.cos(theta), nz = Math.sin(phi) * Math.sin(theta);
-    let best = -2, next = -2, panel = 0;
-    centres.forEach((c, i) => { const dot = nx*c[0] + ny*c[1] + nz*c[2]; if (dot > best) { next = best; best = dot; panel = i; } else next = Math.max(next, dot); });
-    const seam = best - next < .0035, grain = ((x * 13 + y * 7) % 5) - 2;
-    const rgb = seam ? [74,78,76] : panel < 12 ? [24,31,35] : [235,236,226];
-    const index = (y * width + x) * 4;
-    for (let c = 0; c < 3; c++) { color[index+c] = rgb[c] + grain; relief[index+c] = (seam ? 88 : 150) + grain * 2; }
-    color[index+3] = relief[index+3] = 255;
+  const color = new Uint8ClampedArray(width * height * 4),
+    relief = new Uint8ClampedArray(color.length);
+  // Latitudes/longitudes are separable: no repeated per-pixel trig for sphere construction.
+  const sx = new Float64Array(width),
+    sz = new Float64Array(width);
+  for (let x = 0; x < width; x++) {
+    const phi = ((x + 0.5) / width) * Math.PI * 2;
+    sx[x] = -Math.cos(phi);
+    sz[x] = Math.sin(phi);
+  }
+  for (let y = 0; y < height; y++) {
+    const theta = ((y + 0.5) / height) * Math.PI,
+      st = Math.sin(theta),
+      ny = Math.cos(theta);
+    for (let x = 0; x < width; x++)
+      surfacePixel(
+        sx[x] * st,
+        ny,
+        sz[x] * st,
+        color,
+        relief,
+        (y * width + x) * 4,
+      );
   }
   return { color, relief };
 }
