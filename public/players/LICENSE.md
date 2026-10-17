@@ -19,3 +19,10 @@ Changes in this project: portrait crop, soft polygon background masking, resize 
 CC BY-SA 4.0 permits sharing and adaptation with attribution, an indication of changes, a license link, and share-alike licensing of adaptations. It does not grant trademark, endorsement, or athlete personality/publicity rights. No endorsement by the photographer, players, federations, EA, or FIFA is implied. Seek the relevant clearances before commercial distribution of a player-branded game.
 
 The original card UI, fan-made gameplay attributes, and procedural training-kit avatars are separate from these licensed photographs. Ratings are not official EA FC27 ratings. This project does not ship an official FC27 card database or EA card artwork.
+
+
+## Additional roster photographs — October 17, 2026
+
+Fourteen previously missing roster photos are now bundled as WebP. Full per-file source URLs are in `ADDED-PORTRAITS.json`. Five come from the pinned public `maso92/BallonDorPlayerPhotos` mirror at `fac51a580caf65dbcfebdc9e4ae768ec098094af`; nine were obtained through image search from the credited Getty/editorial or PNG-hosting source. Search results were visually checked for player identity. No image is claimed to be a current-season portrait. Some are action photos rather than studio headshots. Changes: resize and WebP encoding only; no watermark removal.
+
+**These additional images have no verified reusable photo license. They are provided for personal testing only, matching the pre-existing unlicensed roster images. A public GitHub mirror is not a copyright license. Secure permission or replace these files with properly licensed photographs before public/commercial distribution.** Image licenses do not grant athlete publicity rights.

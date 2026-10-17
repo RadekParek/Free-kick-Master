@@ -103,3 +103,7 @@ All render scales are actual percentages of the device-reported native viewport:
 Custom also offers SMAA or Off. [Upgrade notes](docs/REALISM_UPGRADE.md) cover seeded knuckle
 flight, revised aerodynamics/turf response, closed player joints/necklines, catalogue-height
 scaling, signature poses, outside-foot animation and original holographic-style shield cards.
+
+## Latest presentation update
+
+See [player realism, PlayStyles and HyperMotionV-inspired analysis](docs/PLAYSTYLE_PRESENTATION_UPDATE.md) for the complete change log, GPU/CPU optimizations, validation and explicit technology/asset-rights limitations.

@@ -62,10 +62,13 @@ export function studioEnvironment(renderer: THREE.WebGLRenderer): THREE.WebGLRen
  * was measurably more expensive for the large stadium surfaces with no visible gain there.
  */
 export function applyStudioLight(object: THREE.Object3D, environment: THREE.Texture, intensity = 0.5) {
+  const seen = new Set<THREE.MeshStandardMaterial>();
   object.traverse(child => {
     if (!(child instanceof THREE.Mesh)) return;
     for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
-      if (!(material instanceof THREE.MeshStandardMaterial)) continue;
+      if (!(material instanceof THREE.MeshStandardMaterial) || seen.has(material)) continue;
+      seen.add(material);
+      if (material.envMap === environment && material.envMapIntensity === intensity) continue;
       material.envMap = environment;
       material.envMapIntensity = intensity;
       material.needsUpdate = true;

@@ -1,12 +1,13 @@
-import { createIcons, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, AudioLines, Check, ChevronDown, Crosshair, Dumbbell, Flame, Focus, HelpCircle, Maximize, Minus, MousePointer2, Move, Plus, RotateCcw, Settings2, Shield, Smartphone, Sparkles, Trophy, Users, Volume2, VolumeX, X, Zap } from 'lucide';
+import { createIcons, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, AudioLines, Check, ChevronDown, Crosshair, Dumbbell, Flame, Focus, HelpCircle, Maximize, Minus, MousePointer2, Move, Plus, RotateCcw, Pause, Settings2, Shield, Smartphone, Sparkles, Trophy, Users, Volume2, VolumeX, X, Zap } from 'lucide';
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { PLAYERS, PHOTO_LICENSE, getPlayer, type TakerProfile } from '../players';
+import { ANALYSIS_STAGE_LABELS } from '../game/analysis-timeline';
 import { playerCard, showcaseArt, takerHud } from './player-card';
 import { Arena, type Phase } from '../game/arena';
 import { GameAudio } from '../game/audio';
 import { MusicPlayer, type MusicStatus } from '../game/music';
-import { inPenaltyBox, clamp, constrainPosition, distanceBounds, distanceToGoal, recommendedPower, strikeName, type Position } from '../game/physics';
+import { inPenaltyBox, clamp, constrainPosition, distanceBounds, distanceToGoal, strikeName, type Position } from '../game/physics';
 import { DIFFICULTIES, KEEPER_PROFILES, type Difficulty } from '../game/keeper';
 import { DEFAULT_SETTINGS, effectivePixelRatio, emptySession, graphicsForPreset, isMobileDevice, loadSettings, nextPracticeAtmosphere, recordShot, saveSettings, tierOf, type GraphicsOptions, type Preset, type RenderScale, type Settings, type ShotResult, type ShadowSize } from '../state';
 import { fkLogo, brandSymbol } from './brand';
@@ -14,7 +15,7 @@ import { FrameTask } from './frame-task';
 import { loadHumanAnatomy } from '../game/human';
 import { CONTACT_BALL_SVG, PITCH_MAP_SVG, QUICK_PITCH_MAP_SVG } from './svg';
 
-const icons = { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, AudioLines, Check, ChevronDown, Crosshair, Dumbbell, Flame, Focus, HelpCircle, Maximize, Minus, MousePointer2, Move, Plus, RotateCcw, Settings2, Shield, Smartphone, Sparkles, Trophy, Users, Volume2, VolumeX, X, Zap };
+const icons = { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, AudioLines, Check, ChevronDown, Crosshair, Dumbbell, Flame, Focus, HelpCircle, Maximize, Minus, MousePointer2, Move, Plus, RotateCcw, Pause, Settings2, Shield, Smartphone, Sparkles, Trophy, Users, Volume2, VolumeX, X, Zap };
 const icon = (name: string, className = '') => `<i data-lucide="${name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()}" class="${className}" aria-hidden="true"></i>`;
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const $$ = <T extends HTMLElement = HTMLElement>(selector: string) => [...document.querySelectorAll<T>(selector)];
@@ -80,6 +81,10 @@ export class GameApp {
     try {
       this.arena = new Arena($('#arena'), this.settings, {
         phase: phase => this.onPhase(phase),
+        analysis: stage => {
+          $('#app').dataset.analysis = stage;
+          $('#analysis-stage').textContent = ANALYSIS_STAGE_LABELS[stage];
+        },
         power: power => this.onPower(power),
         result: result => this.onResult(result),
         woodwork: () => { this.audio.result(false, true); this.haptic('impact'); },
@@ -132,11 +137,11 @@ export class GameApp {
       <!-- GAME (covers the screen) -->
       <section class="game-view" id="game-view" aria-label="Free-kick pitch" hidden>
         <header class="game-top">
-          <button class="back-button" id="back-button" aria-label="Back to main menu">${icon('ArrowLeft')}<span>BACK</span></button>
+          <button class="back-button" id="back-button" aria-label="Back to main menu">${icon('ArrowLeft')}</button>
           <div class="game-mode" id="mode-pill" hidden><span class="status-dot"></span> FREE PRACTICE</div>
           <div class="game-top-right">
             <button class="icon-button" id="fullscreen-button" aria-label="Enter fullscreen" title="Fullscreen">${icon('Maximize')}</button>
-            <button class="icon-button is-labelled" id="settings-button" aria-label="Settings">${icon('Settings2')}<span>SETTINGS</span></button>
+            <button class="icon-button" id="settings-button" aria-label="Pause and settings" title="Pause and settings">${icon('Pause')}</button>
           </div>
         </header>
         <button class="camera-turn camera-turn-left" id="camera-left" aria-label="Rotate camera left" title="Rotate camera left" disabled>${icon('ArrowLeft')}</button>
@@ -154,9 +159,15 @@ export class GameApp {
           <button id="position-button" class="setup-chip" hidden aria-label="Change kick position, distance and goalkeeper">${icon('Crosshair')}<strong id="stage-distance">24.7<span>m</span></strong><span id="keeper-hud">PRO · 4-MAN WALL</span></button>
         </div>
         
-        <div class="scene-message" id="scene-message" hidden><span id="scene-message-label">SET YOUR POWER</span><strong id="scene-message-title">Make it count.</strong></div>
         <div class="shot-result" id="shot-result" aria-live="polite" hidden><span class="result-eyebrow" id="result-eyebrow">WHAT A HIT.</span><h2 id="result-title">GOAL!</h2><p id="result-description">Right where you wanted it.</p><div class="result-meta"><span id="result-distance"></span><span id="result-speed"></span></div></div>
-        <div class="replay-label" id="replay-label" hidden><span></span> INSTANT REPLAY <b>0.55×</b></div>
+        <div class="replay-label" id="replay-label" hidden><span></span> REPLAY <b>0.55×</b></div>
+        <section class="goal-analysis" id="goal-analysis" aria-label="Goal analysis" hidden>
+          <div class="analysis-brand"><strong>HyperMotion<span>V</span></strong><small>INSPIRED · FAN-MADE REPLAY</small><i>FC / FIFA–INSPIRED PRESENTATION · NOT EA TECHNOLOGY</i></div>
+          <div class="analysis-heading"><span class="analysis-scan"></span><small id="analysis-stage">SPATIAL SCAN</small><h2>GOAL<br><em>ANALYSIS</em></h2></div>
+          <div class="analysis-timeline" aria-hidden="true"><i></i><span>01 SCAN</span><span>02 STRIKE</span><span>03 FLIGHT</span><span>04 ENTRY</span></div>
+          <div class="analysis-data"><span><small>SHOT SPEED</small><b id="analysis-speed">—</b><i>KM/H</i></span><span><small>DISTANCE</small><b id="analysis-distance">—</b><i>METRES</i></span><span><small>ENTRY HEIGHT</small><b id="analysis-height">—</b><i>METRES</i></span></div>
+          <button class="analysis-skip" id="skip-analysis" aria-label="Skip replay">SKIP ${icon('ArrowRight')}</button>
+        </section>
         <span id="atmosphere-label" hidden>FLOODLIT NIGHT</span>
         <span id="performance" class="performance" hidden></span>
 
@@ -164,12 +175,12 @@ export class GameApp {
           <button class="taker-hud" id="taker-button" aria-label="Choose free-kick taker">${takerHud(selected)}</button>
           <section class="shot-dock" aria-label="Shoot">
             <div class="power-block" id="power-block" hidden>
-              <div class="power-readout"><strong><span id="power-value">0</span><small>%</small></strong><span id="power-tip">SUGGESTED <b id="recommended-power">63%</b>${icon('ArrowDownLeft')}</span></div>
-              <div class="power-meter" id="power-meter" role="progressbar" aria-label="Shot power" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="power-fill" id="power-fill"></div><div class="power-sweetspot" id="power-sweetspot"></div></div>
+              <div class="power-readout"><strong><span id="power-value">0</span><small>%</small></strong></div>
+              <div class="power-meter" id="power-meter" role="progressbar" aria-label="Shot power" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="power-fill" id="power-fill"></div></div>
             </div>
             <div class="shot-actions">
               <button class="replay-button" id="replay-button" disabled aria-label="Replay last shot (R)" title="Replay last shot (R)">${icon('RotateCcw')}</button>
-              <button class="shoot-button" id="shoot-button" aria-label="Hold to charge, release to shoot" disabled><span class="shoot-copy"><strong id="shoot-label">Shoot!</strong><small class="sr-only" id="shoot-caption">Hold to build power, then release to strike.</small></span></button>
+              <button class="shoot-button" id="shoot-button" aria-label="Charge and release" disabled><span class="shoot-copy"><strong id="shoot-label">Shoot!</strong><small class="sr-only" id="shoot-caption">Charge and release.</small></span></button>
             </div>
           </section>
           <section class="contact-dock" aria-label="Shape your shot">
@@ -186,7 +197,7 @@ export class GameApp {
       <!-- SETTINGS (full screen, scrolls) -->
       <section class="settings-view" id="settings-view" aria-labelledby="settings-title" hidden>
         <header class="settings-head">
-          <button class="back-button" id="settings-back" aria-label="Back">${icon('ArrowLeft')}<span>BACK</span></button>
+          <button class="back-button" id="settings-back" aria-label="Back">${icon('ArrowLeft')}</button>
           <h2 id="settings-title">Settings</h2>
           <button class="text-link" id="settings-help">${icon('HelpCircle')} HOW TO PLAY</button>
         </header>
@@ -380,6 +391,7 @@ export class GameApp {
       else this.startCharge();
     });
     $('#replay-button').addEventListener('click', () => this.arena?.replay());
+    $('#skip-analysis').addEventListener('click', () => this.arena?.skipReplay());
     this.bindKeyboard();
     const modal = $<HTMLDialogElement>('#modal');
     modal.addEventListener('click', event => { if (event.target === modal) this.closeModal(); });
@@ -606,9 +618,6 @@ export class GameApp {
       button.setAttribute('aria-pressed', String(i === level));
     });
     $('#wall-count').textContent = String(penaltySpot ? 0 : s.wall);
-    const power = recommendedPower(s.position);
-    $('#recommended-power').textContent = `${Math.round(power * 100)}%`;
-    $('#power-sweetspot').style.left = `${power * 100 - 3}%`;
     this.syncSound();
     this.updateDisabled();
   }
@@ -688,7 +697,7 @@ export class GameApp {
     $('#shoot-button').classList.toggle('charging', phase === 'charging');
     $('#shoot-button').classList.toggle('next-kick', phase === 'result');
     const labels: Record<Phase, [string, string, string]> = {
-      ready: ['Shoot!', 'Hold to build power, then release to strike.', 'Hold to charge, release to shoot'],
+      ready: ['Shoot!', 'Charge and release.', 'Charge and release'],
       charging: ['Shoot!', 'Release when the power looks right.', 'Release to shoot'],
       runup: ['Shoot!', 'The taker is approaching the ball.', 'Shot starting'],
       flight: ['Shoot!', 'The ball is in flight.', 'Shot in flight'],
@@ -700,11 +709,12 @@ export class GameApp {
     $('#shoot-button').setAttribute('aria-label', labels[phase][2]);
     $<HTMLButtonElement>('#replay-button').disabled = phase !== 'result';
     $('#shot-result').hidden = phase !== 'result';
+    const analysis = phase === 'replay' && this.arena?.lastResult?.outcome === 'goal';
     $('#replay-label').hidden = phase !== 'replay';
+    $('#replay-label b').textContent = analysis ? 'ANALYSIS' : '0.55×';
+    $('#goal-analysis').hidden = !analysis;
+    if (!analysis) delete $('#app').dataset.analysis;
     $('#power-block').hidden = phase !== 'charging' && phase !== 'runup';
-    $('#scene-message').hidden = phase !== 'charging' && phase !== 'runup';
-    $('#scene-message-label').textContent = phase === 'charging' ? 'HOLD. BUILD. RELEASE.' : 'THE MOMENT IS YOURS';
-    $('#scene-message-title').textContent = phase === 'charging' ? 'Find your power.' : 'Make it count.';
     $('#app').setAttribute('data-phase', phase);
     if (phase === 'flight') { this.audio.kick(); this.haptic('impact'); }
     if (phase === 'ready') this.onPower(0);
@@ -753,6 +763,9 @@ export class GameApp {
     $('#result-description').textContent = copy[2];
     $('#result-distance').textContent = `${result.distance.toFixed(1)} M`;
     $('#result-speed').textContent = `${Math.round(result.speed)} KM/H`;
+    $('#analysis-speed').textContent = String(Math.round(result.speed));
+    $('#analysis-distance').textContent = result.distance.toFixed(1);
+    $('#analysis-height').textContent = result.point.y.toFixed(2);
     $('#shot-result').classList.toggle('is-goal', result.outcome === 'goal');
     if (this.challenge) {
       const hit = this.challenge.definition.accepts(result);
@@ -867,7 +880,7 @@ export class GameApp {
       <div class="help-steps">
         <div><span>01</span><div><h3>Find your angle.</h3><p>Open the field-map button to place the ball without leaving the pitch. Drag the stadium or use the arrow keys to aim wider, higher, or lower.</p></div>${icon('MousePointer2')}</div>
         <div><span>02</span><div><h3>Make it bend.</h3><p>Move the contact marker on the ball. Strike its left side to curl right; its right side to curl left. Low contact adds lift. High contact drives it down.</p></div>${icon('Sparkles')}</div>
-        <div><span>03</span><div><h3>Hold. Then let it fly.</h3><p>Hold the shoot button to build power. Release to strike. The lime mark suggests a starting power, not a guaranteed goal. The guide updates as you charge.</p></div>${icon('Zap')}</div>
+        <div><span>03</span><div><h3>Hold. Then let it fly.</h3><p>Hold the shoot button to build power. Release to strike. The guide updates as you charge. Spin, power and contact determine the flight.</p></div>${icon('Zap')}</div>
       </div><div class="keyboard-guide"><span><kbd>SPACE</kbd> Hold &amp; release</span><span><kbd>↑ ↓ ← →</kbd> Aim</span><span><kbd>Q / E</kbd> Rotate camera</span><span><kbd>R</kbd> Replay</span><span><kbd>ESC</kbd> Close map / settings</span></div>
       <p class="modal-footnote">Aim sets your launch direction; spin and power change where the ball actually goes. This is an original simulator inspired by the documented EA SPORTS FC control loop, not an EA product or an exact copy of its physics.</p><button class="primary-button full-width" id="help-play">LET’S FIND THE TOP CORNER ${icon('ArrowRight')}</button>`, 'help-modal');
     $('#help-play').addEventListener('click', () => this.closeModal());
@@ -879,6 +892,7 @@ export class GameApp {
   private syncPause() {
     $('#menu-music').hidden = this.view !== 'menu' || this.overlayOpen();
     const paused = !this.visible || (this.view === 'game' && this.overlayOpen());
+    $('#app').dataset.paused = String(paused);
     this.arena?.setPaused(paused);
     if (paused) this.audio.pause(); else this.audio.resume();
   }
@@ -979,8 +993,8 @@ export class GameApp {
   }
 
   private showPhotoCredits() {
-    const photographed = PLAYERS.filter((player): player is TakerProfile & { portrait: string; photoDate: string; photoSource: string; credit: string } => !!player.portrait && !!player.photoDate && !!player.photoSource && !!player.credit && player.edition === 'standard');
-    this.openModal(`<span class="modal-eyebrow">REAL PHOTOGRAPHS. PROPER CREDIT.</span><h2 id="modal-title">Player photography</h2><p class="modal-intro">Four cards use photographs bundled locally for offline play. The dates identify the actual photographs, not a live photo feed.</p><div class="photo-credit-list">${photographed.map(player => `<article><img src="${player.portrait}" alt="${player.name}" width="64" height="80"/><div><h3>${player.name}</h3><p>${player.photoDate} · ${player.credit}</p><a href="${player.photoSource}" target="_blank" rel="noopener noreferrer">Original photograph ↗</a></div></article>`).join('')}</div><p class="modal-footnote">Photographs by Bryan Berlin / WikiPortraits, licensed <a href="${PHOTO_LICENSE}" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>. Adaptations: portrait crop, soft background masking, resize, and WebP conversion; adapted photos remain CC BY-SA 4.0. Card artwork, training ratings, kit artwork and hair are original. Generic 3D head anatomy is adapted from MakeHuman CC0 assets; see the bundled models/README.md and CC0-1.0.md for provenance and the full license. Avatars are not scanned player likenesses or official EA assets. No player, photographer, federation, EA, or FIFA endorsement is implied. Image copyright licenses do not grant athlete publicity or trademark rights for commercial distribution.</p>`, 'credits-modal');
+    const photographed = PLAYERS.filter((player): player is TakerProfile & { portrait: string; photoDate: string | null; photoSource: string; credit: string } => !!player.portrait && !!player.photoSource && !!player.credit && player.edition === 'standard');
+    this.openModal(`<span class="modal-eyebrow">REAL PHOTOGRAPHS. PROPER CREDIT.</span><h2 id="modal-title">Player photography</h2><p class="modal-intro">All cards use locally bundled photographs for offline play. Source links and rights status are listed individually. Some images have no reusable license and are for personal testing only; public or commercial distribution requires rights clearance.</p><div class="photo-credit-list">${photographed.map(player => `<article><img src="${player.portrait}" alt="${player.name}" width="64" height="80"/><div><h3>${player.name}</h3><p>${player.photoDate ? `${player.photoDate} · ` : ''}${player.credit}</p><a href="${player.photoSource}" target="_blank" rel="noopener noreferrer">Original photograph ↗</a></div></article>`).join('')}</div><p class="modal-footnote">Photographs by Bryan Berlin / WikiPortraits, licensed <a href="${PHOTO_LICENSE}" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>. Adaptations: portrait crop, soft background masking, resize, and WebP conversion; adapted photos remain CC BY-SA 4.0. Card artwork, training ratings, kit artwork and hair are original. Generic 3D head anatomy is adapted from MakeHuman CC0 assets; see the bundled models/README.md and CC0-1.0.md for provenance and the full license. Avatars are original stylised likenesses, not scanned players. PlayStyle+ badge artwork is EA copyright, bundled from a pinned public mirror; see playstyles/README.md. Custom player assignments and effects are not official EA ratings. Goal analysis is inspired by broadcast replay graphics, not HyperMotionV technology. No player, photographer, federation, EA, or FIFA endorsement is implied. Image copyright licenses do not grant athlete publicity or trademark rights for commercial distribution.</p>`, 'credits-modal');
   }
 
   private showAndroid() {

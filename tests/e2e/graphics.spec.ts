@@ -15,7 +15,7 @@ test('loads CC0 anatomy offline and renders all hair/kit identities through the 
     const threePath = '/node_modules/.vite/deps/three.js';
     const playerPath = '/src/game/player.ts', rosterPath = '/src/players.ts', postPath = '/src/game/post.ts';
     const THREE = await import(threePath);
-    const { Player } = await import(playerPath), { getPlayer } = await import(rosterPath), { PostStack } = await import(postPath);
+    const { Player } = await import(playerPath), { getPlayer, PLAYERS } = await import(rosterPath), { PostStack } = await import(postPath);
     const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
     renderer.setSize(360, 600); renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -31,10 +31,11 @@ test('loads CC0 anatomy offline and renders all hair/kit identities through the 
     const post = new PostStack(renderer, scene, camera);
     post.configure({ antialias: 'fxaa', bloom: true, quality: 'high' }, 360, 600);
     const results = [];
-    for (const id of ['ronaldo', 'messi', 'mbappe', 'salah', 'haaland', 'modric', 'yamal', 'vinicius-special']) {
+    for (const { id } of PLAYERS) {
       player.setProfile(getPlayer(id)); player.idle(.5); player.updateLod(camera);
       post.render();
-      results.push({ id, ...player.group.userData.appearance });
+      const body = player.group.children[0].getObjectByName('body');
+      results.push({ id, ...player.group.userData.appearance, build: body.scale.x / body.scale.y });
     }
     const aaModes = [];
     for (const antialias of ['off', 'fxaa', 'smaa']) {
@@ -42,12 +43,14 @@ test('loads CC0 anatomy offline and renders all hair/kit identities through the 
       aaModes.push({ mode: antialias, samples: post.composer.renderTarget1.samples });
     }
     const contacts = [];
-    for (const foot of ['left', 'right']) {
+    for (const profile of PLAYERS) {
+      player.setProfile(profile);
+      const foot = profile.foot;
       player.run(1, foot, { x: foot === 'right' ? -.6 : .6, y: 0 });
       player.alignStrike(foot, { x: 0, z: 0 }, 1);
       const ankle = player.group.children[0].getObjectByName(foot === 'right' ? 'rightFoot' : 'leftFoot');
       const point = ankle.localToWorld(new THREE.Vector3(0, -.02, -.12));
-      contacts.push({ foot, x: point.x, z: point.z });
+      contacts.push({ id: profile.id, foot, x: point.x, z: point.z });
     }
     player.setProfile(getPlayer('yamal')); player.idle(0); player.updateLod(camera); post.render();
     const height = player.group.children[0].userData.height;
@@ -56,8 +59,12 @@ test('loads CC0 anatomy offline and renders all hair/kit identities through the 
     post.dispose(); renderer.dispose(); renderer.domElement.remove();
     return { results, image, aaModes, contacts, height };
   });
+  expect(rendered.results).toHaveLength(38);
+  expect(rendered.contacts).toHaveLength(38);
   expect(rendered.aaModes.map(aa => aa.samples)).toEqual([0, 0, 0]);
   expect(rendered.height).toBe(1.8);
+  expect(rendered.results.find(result => result.id === 'ronaldo')!.build).toBeCloseTo(1.04);
+  expect(rendered.results.find(result => result.id === 'yamal')!.build).toBeCloseTo(.94);
   for (const point of rendered.contacts) { expect(point.x).toBeCloseTo(0, 5); expect(point.z).toBeCloseTo(.09, 5); }
   expect(new Set(rendered.results.map(result => result.hair)).size).toBe(7);
   expect(rendered.results.find(result => result.id === 'messi')!.kit).toBe('stripes');

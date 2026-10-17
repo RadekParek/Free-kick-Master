@@ -1,0 +1,58 @@
+{
+  "dembele": {
+    "portrait": "./players/dembele.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/dembele.jpg"
+  },
+  "bruno": {
+    "portrait": "./players/bruno.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/bruno_fernandes.jpg"
+  },
+  "vitinha": {
+    "portrait": "./players/vitinha.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/vitinha.jpg"
+  },
+  "rodri": {
+    "portrait": "./players/rodri.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/rodri.jpg"
+  },
+  "lautaro": {
+    "portrait": "./players/lautaro.webp",
+    "photoSource": "https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/lautaro_martinez.jpg"
+  },
+  "saka": {
+    "portrait": "./players/saka.webp",
+    "photoSource": "https://gettyimages.com/detail/news-photo/bukayo-saka-of-england-poses-for-a-portrait-during-a-fifa-news-photo/2279615380"
+  },
+  "foden": {
+    "portrait": "./players/foden.webp",
+    "photoSource": "https://gettyimages.com.au/photos/phil-foden-england"
+  },
+  "pedri": {
+    "portrait": "./players/pedri.webp",
+    "photoSource": "https://gettyimages.ae/photos/pedri"
+  },
+  "musiala": {
+    "portrait": "./players/musiala.webp",
+    "photoSource": "https://gettyimages.com/photos/bayern-munich-portraits"
+  },
+  "dimarco": {
+    "portrait": "./players/dimarco.webp",
+    "photoSource": "https://gettyimages.pt/fotos/federico-dimarco"
+  },
+  "barella": {
+    "portrait": "./players/barella.webp",
+    "photoSource": "https://gettyimages.com.au/photos/nicolo-barella"
+  },
+  "dovbyk": {
+    "portrait": "./players/dovbyk.webp",
+    "photoSource": "https://pngdownload.io/png-image/artem-dovbyk-ukrainian-footballer-of-girona-fc-la-liga-transparent-png-image/"
+  },
+  "kulusevski": {
+    "portrait": "./players/kulusevski.webp",
+    "photoSource": "https://nytimes.com/athletic/7014133/2026/02/06/where-is-dejan-kulusevski-tottenham"
+  },
+  "hojlund": {
+    "portrait": "./players/hojlund.webp",
+    "photoSource": "https://gettyimages.de/fotos/rasmus-hojlund"
+  }
+}

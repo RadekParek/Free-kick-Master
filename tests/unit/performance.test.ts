@@ -5,15 +5,21 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 vi.mock('../../src/game/player', () => ({ Player: class {}, makeFootball: vi.fn() }));
 import { Arena } from '../../src/game/arena';
 import { Stadium } from '../../src/game/stadium';
+import { NetRipple, NET_RIPPLE_VERTEX } from '../../src/game/net-ripple';
 import { PostStack } from '../../src/game/post';
 import { DEFAULT_SETTINGS } from '../../src/state';
 import { GOAL_HEIGHT, GOAL_WIDTH } from '../../src/game/physics';
 
 // Prototype fixtures deliberately omit the costly WebGL/canvas constructors.
 function previewFixture() {
+  const guideGeometry = new LineGeometry();
+  const guideSegments = new Float32Array(511 * 6);
+  const guideBuffer = new THREE.InstancedInterleavedBuffer(guideSegments, 6);
+  guideGeometry.setAttribute('instanceStart', new THREE.InterleavedBufferAttribute(guideBuffer, 3, 0));
+  guideGeometry.setAttribute('instanceEnd', new THREE.InterleavedBufferAttribute(guideBuffer, 3, 3));
   return Object.assign(Object.create(Arena.prototype), {
     settings: structuredClone(DEFAULT_SETTINGS), phase: 'ready', previewPower: -1, previewDirty: false,
-    guide: new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(512 * 3), 3))),
+    guide: { visible: true, geometry: guideGeometry }, guideGeometry, guideSegments, guideBuffer,
     ring: new THREE.Object3D(), guidePositions: new Float32Array(512 * 3), events: { aim: vi.fn() },
   });
 }
@@ -29,7 +35,7 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
     arena.updatePreview();
     expect(setup).toHaveBeenCalledOnce();
     expect(arena.settings.aim.x).toBe(1.9);
-    expect(arena.guide.geometry.drawRange.count).toBeGreaterThan(0);
+    expect(arena.guideGeometry.instanceCount).toBeGreaterThan(0);
     arena.updatePreview();
     expect(setup).toHaveBeenCalledOnce();
   });
@@ -45,6 +51,21 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
     arena.updatePreview();
     expect(setup).toHaveBeenCalledOnce();
     expect(arena.guide.visible).toBe(true);
+  });
+
+  it('keeps the full preview for Dead Ball+ and shortens the ordinary preview', () => {
+    const arena = previewFixture(); arena.settings.playerId = 'neymar';
+    arena.updatePreview(true); const full = arena.guideGeometry.instanceCount;
+    arena.settings.playerId = 'mbappe'; arena.updatePreview(true);
+    expect(full).toBeGreaterThan(arena.guideGeometry.instanceCount);
+  });
+
+  it('moves dense grass with the ball despite the frozen stadium world matrices', () => {
+    const patch = new THREE.Object3D(); patch.matrixAutoUpdate = patch.matrixWorldAutoUpdate = false;
+    const group = new THREE.Group(); group.position.set(1, 0, 2); group.updateMatrixWorld(true);
+    const stadium = Object.assign(Object.create(Stadium.prototype), { nearGrass: patch, group });
+    stadium.setKickPosition({ x: -6, z: 24 });
+    expect(new THREE.Vector3().setFromMatrixPosition(patch.matrixWorld).toArray()).toEqual([-5, 0, 26]);
   });
 
   it('cancels paused animation frames and schedules only one on resume', () => {
@@ -71,29 +92,17 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
     expect(arena.frustum.intersectsSphere).not.toHaveBeenCalled();
   });
 
-  it('reuses trace segment storage and preserves the thick-line draw geometry', () => {
-    const geometry = new LineGeometry();
-    const segments = new Float32Array(239 * 6);
-    const buffer = new THREE.InstancedInterleavedBuffer(segments, 6);
-    geometry.setAttribute('instanceStart', new THREE.InterleavedBufferAttribute(buffer, 3, 0));
-    geometry.setAttribute('instanceEnd', new THREE.InterleavedBufferAttribute(buffer, 3, 3));
-    const arena = Object.assign(Object.create(Arena.prototype), {
-      tracePointCount: 3, tracePositions: new Float32Array([1, 2, 3, 4, 5, 6, 7, 8, 9]), traceSegments: segments,
-      traceGeometry: geometry, traceBuffer: buffer, trace: { visible: false }, settings: { guides: true },
-    });
-    const start = geometry.attributes.instanceStart;
-    arena.setTrace();
-    expect(geometry.instanceCount).toBe(2);
-    expect([...segments.slice(0, 12)]).toEqual([1, 2, 3, 4, 5, 6, 4, 5, 6, 7, 8, 9]);
-    const version = buffer.version;
-    arena.setTrace();
-    expect(buffer.version).toBe(version);
-    expect(geometry.attributes.instanceStart).toBe(start);
-    expect(geometry.drawRange.count).toBe(Infinity);
-    arena.tracePointCount = 0;
-    arena.setTrace();
-    expect(geometry.instanceCount).toBe(0);
-    expect(arena.trace.visible).toBe(false);
+  it('reuses thick preview segment storage without per-refresh geometry allocation', () => {
+    const arena = previewFixture();
+    const start = arena.guideGeometry.attributes.instanceStart;
+    arena.updatePreview(true);
+    expect(arena.guideGeometry.instanceCount).toBeGreaterThan(1);
+    const version = arena.guideBuffer.version;
+    arena.updatePreview();
+    expect(arena.guideBuffer.version).toBe(version);
+    arena.setAim({ x: 2, y: 2 }); arena.updatePreview();
+    expect(arena.guideGeometry.attributes.instanceStart).toBe(start);
+    expect(arena.guideBuffer.version).toBe(version + 1);
   });
 
   it('does not dispose shadow maps or invalidate scene materials for a bloom toggle', () => {
@@ -196,50 +205,45 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
     for (const pass of passes) expect(pass.dispose).toHaveBeenCalledOnce();
   });
 
-  it('cached net deformation matches the original wave and stops uploading when settled', () => {
-    const rest = new Float32Array([-2, 1, -2, 0, 2, -2, 3, 0.5, -2]);
-    const edge = new Float32Array(3);
-    for (let i = 0; i < 3; i++) edge[i] = Math.sin((rest[i * 3] + GOAL_WIDTH / 2) / GOAL_WIDTH * Math.PI) * Math.sin(rest[i * 3 + 1] / GOAL_HEIGHT * Math.PI);
-    const attribute = new THREE.BufferAttribute(rest.slice(), 3);
+  it('runs the original net wave on the GPU with no per-frame position or parameter uploads', () => {
+    const rest = new Float32Array([-2, 1, -2, 0, 2, -2, 3, .5, -2]);
+    const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(rest.slice(), 3));
+    const net = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial());
+    const ripple = new NetRipple(net);
+    const shader = { uniforms: {}, vertexShader: '#include <begin_vertex>', fragmentShader: '' };
+    net.material.onBeforeCompile(shader as never, {} as never);
+    expect(shader.vertexShader).toContain(NET_RIPPLE_VERTEX);
+    const uniforms = shader.uniforms as Record<string, { value: number }>;
     const stadium = Object.assign(Object.create(Stadium.prototype), {
-      netRest: rest, netEdge: edge, netWave: new Float32Array(3), netAmplitude: new Float32Array(3), netActive: false,
-      net: { geometry: { attributes: { position: attribute } } }, crowdTime: {}, flagTime: {}, grassTime: {}, crowdEnergy: {},
+      netRipple: ripple, crowdTime: {}, flagTime: {}, grassTime: {}, crowdEnergy: {},
       lastUpdate: 0, cheerStart: -100, cheerStrength: 0, confetti: { update: vi.fn() },
     });
     const impact = new THREE.Vector3(1, 1.5, -1.6);
     stadium.ripple(impact, 10);
+    const parameters = geometry.attributes.ripple as THREE.BufferAttribute;
+    const version = parameters.version;
     stadium.update(10.75);
+    expect(uniforms.uNetElapsed.value).toBe(.75);
     for (let i = 0; i < 3; i++) {
       const distance = Math.hypot(rest[i * 3] - impact.x, rest[i * 3 + 1] - impact.y);
-      const expected = rest[i * 3 + 2] - Math.sin(0.75 * 17 - distance * 2.5) * Math.exp(-0.75 * 2.2 - distance * 0.5) * 0.5 * edge[i];
-      expect(attribute.getZ(i)).toBeCloseTo(expected, 6);
+      const edge = Math.fround(Math.sin((rest[i * 3] + GOAL_WIDTH / 2) / GOAL_WIDTH * Math.PI) * Math.sin(rest[i * 3 + 1] / GOAL_HEIGHT * Math.PI));
+      const gpu = Math.sin(.75 * 17 - parameters.getX(i)) * Math.exp(-.75 * 2.2) * parameters.getY(i);
+      const reference = Math.sin(.75 * 17 - distance * 2.5) * Math.exp(-.75 * 2.2 - distance * .5) * .5 * edge;
+      expect(gpu).toBeCloseTo(reference, 6);
     }
-    stadium.update(14);
-    expect(attribute.array).toEqual(rest);
-    const version = attribute.version;
-    stadium.update(15);
-    expect(attribute.version).toBe(version);
+    stadium.update(14); stadium.update(15);
+    expect(uniforms.uNetElapsed.value).toBe(-1);
+    expect(geometry.attributes.position.array).toEqual(rest);
+    expect((geometry.attributes.position as THREE.BufferAttribute).version).toBe(0);
+    expect(parameters.version).toBe(version);
   });
-  it('does no hidden trail copying/uploads and restores the complete current trail on enable', () => {
-    const segments = new Float32Array(239 * 6);
-    const buffer = new THREE.InstancedInterleavedBuffer(segments, 6);
-    const arena = Object.assign(Object.create(Arena.prototype), {
-      tracePointCount: 3, tracePositions: new Float32Array([1, 2, 3, 4, 5, 6, 7, 8, 9]), traceSegments: segments,
-      traceGeometry: new LineGeometry(), traceBuffer: buffer, trace: { visible: true },
-      traceUploadedCount: 2, traceDirty: true, settings: { guides: false }, phase: 'flight',
-    });
-    arena.setTrace();
-    expect(buffer.version).toBe(0);
-    expect(segments.every((n: number) => n === 0)).toBe(true);
-    expect(arena.trace.visible).toBe(false);
-    expect(arena.traceDirty).toBe(false);
-    expect(arena.traceUploadedCount).toBe(0);
-    arena.settings.guides = true;
-    arena.setTrace();
-    expect([...segments.slice(0, 12)]).toEqual([1, 2, 3, 4, 5, 6, 4, 5, 6, 7, 8, 9]);
-    expect(arena.traceGeometry.instanceCount).toBe(2);
-    expect(arena.trace.visible).toBe(true);
-    expect(buffer.version).toBe(1);
+  it('records replay samples without allocating or copying a live flight trail', () => {
+    const record = vi.fn();
+    const arena = Object.assign(Object.create(Arena.prototype), { frameCounter: 0, replayFrames: { record }, ball: {}, keeper: {} });
+    arena.recordFrame(); arena.recordFrame();
+    expect(record).toHaveBeenCalledExactlyOnceWith(arena.ball, arena.keeper);
+    expect(Object.keys(arena).some(key => key.toLowerCase().includes('trace'))).toBe(false);
+    expect(Arena.prototype).not.toHaveProperty('setTrace');
   });
 
   it('writes the accelerating curved run-up into reusable scratch positions', () => {
@@ -272,7 +276,7 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
     const arena = Object.assign(Object.create(Arena.prototype), {
       container: { getBoundingClientRect: () => bounds }, settings,
       width: 400, height: 800, renderer, camera: new THREE.PerspectiveCamera(),
-      traceMaterial: { resolution: new THREE.Vector2() }, post: { configure: vi.fn() },
+      guideMaterial: { resolution: new THREE.Vector2() }, post: { configure: vi.fn() },
     });
     arena.resize();
     expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled();
@@ -281,7 +285,7 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
     arena.resize();
     expect(renderer.setDrawingBufferSize).toHaveBeenCalledExactlyOnceWith(410, 800, 1.5);
     expect(arena.camera.aspect).toBe(410 / 800);
-    expect(arena.traceMaterial.resolution.toArray()).toEqual([410, 800]);
+    expect(arena.guideMaterial.resolution.toArray()).toEqual([410, 800]);
     arena.resize();
     expect(renderer.setDrawingBufferSize).toHaveBeenCalledOnce();
     windowState.devicePixelRatio = 1;

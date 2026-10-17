@@ -9,6 +9,7 @@ import type { TakerProfile } from '../players';
 import { athleteModel, fitStature, hairGeometry, JOINTS, type AthleteMaterials, type Detail, type RigRoot } from './athlete-model';
 import { kitDesign, playerLook, type HairStyle } from './appearance';
 import { kitTexture } from './kits';
+import { faceShape, identitySurfaces, personaliseFace } from './identity';
 export type { Detail } from './athlete-model';
 
 /** Same transition distance; long lenses use camera zoom-aware distance for selection. */
@@ -68,7 +69,7 @@ function materialsFor(role: PlayerRole, variation: number): AthleteMaterials {
     sock: mat('sock', role === 'keeper' ? '#e9ad34' : '#e5e9e2', .9, true),
     boot: mat('boot', role === 'taker' ? '#d9e6dc' : '#df754c', .43),
     sole: mat('sole', '#1b2730', .68), hair: mat('hair', variation % 2 ? '#30231b' : '#211c19', .93),
-    glove: mat('glove', '#e1ebe4', .72), eyes: mat('eyes', '#b9b4a2', .53), iris: mat('iris', '#312822', .6),
+    glove: mat('glove', '#e1ebe4', .72), eyes: mat('eyes', '#ded8ce', .28), iris: mat('iris', '#312822', .3),
   };
 }
 
@@ -83,6 +84,7 @@ class Athlete implements MotionRig {
   private readonly animated: THREE.Object3D[];
   private readonly hairMesh: THREE.Mesh;
   private hairStyle: HairStyle = 'crop';
+  private identityId = '';
   private stance: 'ronaldo' | 'neymar' | 'neutral' = 'neutral';
 
   constructor(readonly role: PlayerRole, readonly detail: Detail, materials: AthleteMaterials) {
@@ -111,7 +113,13 @@ class Athlete implements MotionRig {
     }
     this.root.getObjectByName('beard')!.visible = look.beard;
     this.root.getObjectByName('features')!.scale.set(look.width, 1, look.jaw);
+    if (this.identityId !== profile.baseId) {
+      personaliseFace(this.root.getObjectByName('features')!, profile);
+      this.identityId = profile.baseId;
+    }
     fitStature(this.root, profile.appearance.height);
+    // fitStature sets a uniform scale; apply athletic build AFTER it, not before it.
+    this.body.scale.x *= faceShape(profile).build;
     this.stance = profile.baseId === 'ronaldo' || profile.baseId === 'neymar' ? profile.baseId : 'neutral';
   }
   copyPose(source: Athlete) {
@@ -153,6 +161,14 @@ export class Player {
     if (this.profileId === profile.id) return;
     this.profileId = profile.id;
     const a = profile.appearance, kit = kitDesign(profile), m = this.materials;
+    const hadIdentityMaps = !!m.skin.map;
+    const surface = identitySurfaces(profile);
+    m.skin.map = surface.skin; m.skin.normalMap = surface.pores; m.skin.normalScale.set(.1, .1);
+    m.skin.roughness = .58; m.skin.roughnessMap = surface.skin;
+    m.hair.map = surface.hair; m.hair.normalMap = surface.strands; m.hair.normalScale.set(.25, .25); m.hair.roughness = .78;
+    // The first application adds map defines; subsequent profile changes reuse the same shaders.
+    if (!hadIdentityMaps) { m.skin.needsUpdate = true; m.hair.needsUpdate = true; }
+    m.iris.color.set(['haaland', 'debruyne', 'foden', 'griezmann', 'kane'].includes(profile.baseId) ? '#566b71' : '#3e2d20');
     m.skin.color.set(a.skin); m.hair.color.set(a.hair); m.trim.color.set(kit.trim); m.sleeve.color.set(kit.base);
     m.shorts.color.set(kit.shorts); m.sock.color.set(kit.socks);
     m.jersey.color.set('#ffffff'); m.jersey.map = kitTexture(profile);
