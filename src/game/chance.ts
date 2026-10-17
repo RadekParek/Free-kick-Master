@@ -5,7 +5,7 @@ import {
   type ShotSetup,
   type WallPlayer,
 } from './physics';
-import { createKeeper, type Difficulty, type KeeperState } from './keeper';
+import { createKeeper, resetKeeper, type Difficulty, type KeeperState } from './keeper';
 import { advanceShot, createShotScratch } from './simulation';
 
 export const CHANCE_SAMPLES = 64;
@@ -28,22 +28,20 @@ export function estimateConversion(
   };
   const scratch = createShotScratch(),
     penalty = inPenaltyBox(setup.position);
+  // One independent workspace per request, reused only between its sequential trials.
+  const trial: ShotSetup = { ...setup, aim: { ...setup.aim }, contact: { ...setup.contact } };
+  const keeper = Object.assign(createKeeper(setup.position.x), configuration);
+  let ball: ReturnType<typeof launchBall> | undefined;
   let goals = 0;
   for (let i = 0; i < CHANCE_SAMPLES; i++) {
-    const ball = launchBall({
-      ...setup,
-      aim: {
-        x: setup.aim.x + (random() - 0.5) * 0.64,
-        y: setup.aim.y + (random() - 0.5) * 0.32,
-      },
-      power: clamp(setup.power + (random() - 0.5) * 0.06, 0.06, 1),
-      contact: {
-        x: clamp(setup.contact.x + (random() - 0.5) * 0.07, -1, 1),
-        y: clamp(setup.contact.y + (random() - 0.5) * 0.07, -1, 1),
-      },
-      seed: Math.floor(random() * 4294967296),
-    });
-    const keeper = Object.assign(createKeeper(setup.position.x), configuration);
+    trial.aim.x = setup.aim.x + (random() - 0.5) * 0.64;
+    trial.aim.y = setup.aim.y + (random() - 0.5) * 0.32;
+    trial.power = clamp(setup.power + (random() - 0.5) * 0.06, 0.06, 1);
+    trial.contact.x = clamp(setup.contact.x + (random() - 0.5) * 0.07, -1, 1);
+    trial.contact.y = clamp(setup.contact.y + (random() - 0.5) * 0.07, -1, 1);
+    trial.seed = Math.floor(random() * 4294967296);
+    ball = launchBall(trial, ball);
+    resetKeeper(keeper, setup.position.x);
     for (let tick = 0; tick < 1000; tick++) {
       const event = advanceShot(
         ball,

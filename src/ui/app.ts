@@ -61,12 +61,14 @@ export class GameApp {
   private modalReturnFocus: HTMLElement | null = null;
   private powerPointer: number | null = null;
   private visible = !document.hidden;
+  private powerHud: { value: HTMLElement; fill: HTMLElement; meter: HTMLElement } | undefined;
   private lastPowerPercent = -1;
   private lastOverpowered = false;
 
   async mount() {
     $('#app').innerHTML = this.layout();
     drawIcons();
+    this.powerHud = { value: $('#power-value'), fill: $('#power-fill'), meter: $('#power-meter') };
     this.bindUI();
     this.syncUI();
     this.audio.enabled = this.settings.sound;
@@ -746,10 +748,11 @@ export class GameApp {
     if (percent === this.lastPowerPercent && overpowered === this.lastOverpowered) return;
     this.lastPowerPercent = percent;
     this.lastOverpowered = overpowered;
-    $('#power-value').textContent = String(percent);
-    $('#power-fill').style.width = `${percent}%`;
-    $('#power-meter').setAttribute('aria-valuenow', String(percent));
-    $('#power-meter').classList.toggle('overpowered', overpowered);
+    const hud = this.powerHud!;
+    hud.value.textContent = String(percent);
+    hud.fill.style.width = `${percent}%`;
+    hud.meter.setAttribute('aria-valuenow', String(percent));
+    hud.meter.classList.toggle('overpowered', overpowered);
   }
 
   private onResult(result: ShotResult) {
@@ -956,14 +959,20 @@ export class GameApp {
       <div class="player-grid" aria-label="Free-kick takers">${PLAYERS.map(player => playerCard(player, player.id === selection)).join('')}</div>
       <div class="roster-selection"><div><span class="hud-eyebrow">SELECTED PLAYER</span><h3 id="selected-player-name">${selected.name}${selected.edition === 'special' ? ' <em class="handwritten">turquoise</em>' : ''}</h3><p id="selected-player-description">${selected.description}</p></div><button class="primary-button" id="confirm-player">TAKE THE KICK ${icon('ArrowRight')}</button></div>
       <div class="roster-footnote"><span>Fan-made training ratings, not official FC ratings. Double-click a card to take it. Licensed photographs are credited in the photo credits.</span><button class="text-link" id="roster-credits">PHOTO CREDITS &amp; LICENSES ${icon('ArrowUpRight')}</button></div>`, 'players-modal');
-    const cards = () => $$<HTMLButtonElement>('.player-card[data-player]');
-    cards().forEach(button => button.addEventListener('dblclick', () => {
+    // Scoped to this modal instance: reopening gets fresh nodes, never a stale global cache.
+    const cards = $$<HTMLButtonElement>('.player-card[data-player]');
+    const searchEntries = cards.map(card => {
+      const player = getPlayer(card.dataset.player!);
+      const text = `${player.name} ${player.nation} ${player.specialty} ${player.edition === 'special' ? 'turquoise special' : player.edition === 'icon' ? 'icon heritage' : ''}`.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return { card, player, text };
+    });
+    cards.forEach(button => button.addEventListener('dblclick', () => {
       button.click();
       $('#confirm-player').click();
     }));
-    cards().forEach(button => button.addEventListener('click', () => {
+    cards.forEach(button => button.addEventListener('click', () => {
       selection = button.dataset.player!;
-      cards().forEach(card => {
+      cards.forEach(card => {
         card.classList.toggle('selected', card.dataset.player === selection);
         card.setAttribute('aria-pressed', String(card.dataset.player === selection));
       });
@@ -976,9 +985,7 @@ export class GameApp {
     const filterPlayers = () => {
       const query = $<HTMLInputElement>('#player-search').value.trim().toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       let count = 0;
-      cards().forEach(card => {
-        const player = getPlayer(card.dataset.player!);
-        const text = `${player.name} ${player.nation} ${player.specialty} ${player.edition === 'special' ? 'turquoise special' : player.edition === 'icon' ? 'icon heritage' : ''}`.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      searchEntries.forEach(({ card, player, text }) => {
         card.hidden = !text.includes(query) || (footFilter !== 'all' && player.foot !== footFilter) || (editionFilter !== 'all' && player.edition !== editionFilter);
         if (!card.hidden) count++;
       });

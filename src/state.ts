@@ -63,6 +63,13 @@ export interface Settings {
   quality: Quality;
   graphics: GraphicsOptions;
 }
+/** Complete owned snapshot of the flat Settings schema and its four nested value records.
+ * Keep this list in sync when adding nested settings; no shared mutable UI/game records. */
+export function cloneSettings(settings: Settings): Settings {
+  return { ...settings, position: { ...settings.position }, aim: { ...settings.aim },
+    contact: { ...settings.contact }, graphics: { ...settings.graphics } };
+}
+
 export interface ShotResult {
   frameHits?: number;
   runupSpeed?: number;

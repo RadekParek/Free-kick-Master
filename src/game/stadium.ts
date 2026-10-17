@@ -745,15 +745,17 @@ export class Stadium {
   dispose() { this.disposed = true; }
 
   update(time: number) {
-    this.photoMotion.value.set(Math.cos(time*1.8),Math.sin(time*1.8));
+    if (this.photoCrowdReady) this.photoMotion.value.set(Math.cos(time*1.8),Math.sin(time*1.8));
     this.flagTime.value = time;
     this.grassWind.value.set(Math.cos(time*1.7),Math.sin(time*1.7),Math.cos(time*3.1),Math.sin(time*3.1));
     const dt = this.lastUpdate ? Math.min(0.1, Math.max(0, time - this.lastUpdate)) : 1 / 30;
     this.lastUpdate = time;
     const cheer = time - this.cheerStart;
     this.crowdEnergy.value = cheer < 6 ? Math.exp(-cheer / 2.2) * this.cheerStrength : 0;
-    const bob = time*(1.6+this.crowdEnergy.value*5);
-    this.crowdMotion.value.set(Math.cos(-time*2.1),Math.sin(-time*2.1),Math.cos(bob),Math.sin(bob));
+    if (!this.photoCrowdReady) {
+      const bob = time*(1.6+this.crowdEnergy.value*5);
+      this.crowdMotion.value.set(Math.cos(-time*2.1),Math.sin(-time*2.1),Math.cos(bob),Math.sin(bob));
+    }
     this.confetti.update(dt, time);
     this.netRipple.update(time);
   }

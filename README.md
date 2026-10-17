@@ -2,7 +2,9 @@
 
 **The pitch is yours.** An original, playable 3D free-kick practice game for the browser and Android, built from an empty repository.
 
-Latest: [Ultra, Android performance and spatial replay update](docs/ULTRA_ANDROID_UPDATE.md).
+Latest: [Performance-only update — 30 quality-preserving optimizations](docs/PERFORMANCE_ONLY_UPDATE.md).
+
+Previous feature update: [Ultra, Android performance and spatial replay](docs/ULTRA_ANDROID_UPDATE.md).
 
 ## Play
 
@@ -89,6 +91,8 @@ EA documents the **aim → contact/spin → hold/release power** loop and trajec
 [Mechanics research and explicit approximations](docs/MECHANICS.md) · [Architecture](docs/ARCHITECTURE.md) · [Third-party notices](docs/THIRD_PARTY.md)
 
 ## Performance and roster expansion
+
+The [18 October performance-only changelog](docs/PERFORMANCE_ONLY_UPDATE.md) lists 30 additional changes, reproducible CPU measurements and exact GPU pixel comparisons. It retains native resolution, presets, models, effects and animation cadence. Run `node scripts/performance-benchmark.mjs` for the pinned-baseline CPU comparison; this is not a device-FPS benchmark.
 
 Static stadium pieces are spatially batched by material with frozen transforms; distant crowds use one baked mesh with a procedural fallback. Guide/trail GPU buffers are reused, aim-preview updates are coalesced, invisible work is skipped, and paused scenes stop scheduling frames. Net deformation is cached and graphics changes rebuild only affected resources. Visible scenes retain the display frame rate; these optimizations do not change graphics preset values or add adaptive downscaling. See [the performance optimizations and verification notes](docs/PERFORMANCE.md). No physical-device frame-rate guarantee is made.
 

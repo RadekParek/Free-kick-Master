@@ -38,6 +38,12 @@ export function createKeeper(ballX: number): KeeperState {
   const x = ballX <= 0 ? 0.72 : -0.72;
   return { x, targetX: x, targetY: 1.2, velocityX: 0, dive: 0, direction: 1, glove: { x, y: 1.2, z: KEEPER_Z }, reacted: false };
 }
+/** Reset dynamics only; yaw and measured anatomy describe the same configured keeper. */
+export function resetKeeper(k: KeeperState, ballX: number): void {
+  const x = ballX <= 0 ? 0.72 : -0.72;
+  k.x = k.targetX = x; k.targetY = 1.2; k.velocityX = k.dive = 0;
+  k.direction = 1; k.glove.x = x; k.glove.y = 1.2; k.glove.z = KEEPER_Z; k.reacted = false;
+}
 /** Body yaw for the keeper: he turns part of the way toward the shot's angle, so the stance follows the spot. */
 export function keeperYaw(spot: { x: number; z: number }): number {
   // Yaw that faces the spot from the keeper: the model's forward is (-sin yaw, -cos yaw).

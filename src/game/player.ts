@@ -84,6 +84,7 @@ class Athlete implements MotionRig {
   readonly leftArm: THREE.Object3D; readonly rightArm: THREE.Object3D;
   readonly leftForearm: THREE.Object3D; readonly rightForearm: THREE.Object3D;
   private readonly animated: THREE.Object3D[];
+  private readonly deferred: DeferredBone[];
   private readonly hairMesh: THREE.Mesh;
   private hairStyle: HairStyle = 'crop';
   private identityId = '';
@@ -100,6 +101,7 @@ class Athlete implements MotionRig {
     this.leftForearm = this.root.getObjectByName('leftForearm')!; this.rightForearm = this.root.getObjectByName('rightForearm')!;
     this.leftFoot = this.root.getObjectByName('leftFoot')!; this.rightFoot = this.root.getObjectByName('rightFoot')!;
     this.animated = JOINTS.map(name => this.root.getObjectByName(name)!);
+    this.deferred = this.animated.filter((bone): bone is DeferredBone => bone instanceof DeferredBone);
     this.hairMesh = new THREE.Mesh(hairGeometry(this.hairStyle, detail), materials.hair);
     this.hairMesh.name = 'hairstyle'; this.hairMesh.castShadow = detail === 'high'; this.hairMesh.receiveShadow = true;
     this.hairMesh.matrixAutoUpdate = false;
@@ -124,11 +126,13 @@ class Athlete implements MotionRig {
     this.body.scale.x *= faceShape(profile).build;
     this.stance = profile.baseId === 'ronaldo' || profile.baseId === 'neymar' ? profile.baseId : 'neutral';
   }
-  flushPose() { for(const bone of this.animated) if(bone instanceof DeferredBone)bone.flushRotation(); }
+  flushPose() { for (const bone of this.deferred) bone.flushRotation(); }
   copyPose(source: Athlete) {
     for (let i = 0; i < this.animated.length; i++) {
-      this.animated[i].position.copy(source.animated[i].position);
-      this.animated[i].quaternion.copy(source.animated[i].quaternion);
+      const target = this.animated[i], origin = source.animated[i];
+      if (!target.position.equals(origin.position)) target.position.copy(origin.position);
+      // Quaternion.copy otherwise repeats quaternion -> Euler synchronization on static joints.
+      if (!target.quaternion.equals(origin.quaternion)) target.quaternion.copy(origin.quaternion);
     }
   }
   idle(time: number) { idlePose(this, time, this.role, this.stance); }
