@@ -69,10 +69,10 @@ describe('custom PlayStyle+ effects and identity fixes', () => {
   });
 });
 describe('per-defender no-jump roll', () => {
-  it('rolls exactly the bottom quarter of uniformly distributed random values', () => {
+  it('rolls exactly the bottom fifteen percent of uniformly distributed random values', () => {
     const wall = Array.from({ length: 100 }, (_, x) => ({ x, z: 10 })); let sample = 0;
     rollWallJump(wall, () => (sample++ + .5) / 100);
-    expect(wall.filter(p => defenderJump(p, .49) === 0)).toHaveLength(25);
+    expect(wall.filter(p => defenderJump(p, .49) === 0)).toHaveLength(15);
     expect(wallJump(.49)).toBeCloseTo(.36);
   });
   it('uses the same non-jump decision in collision detection, without re-rolling', () => {

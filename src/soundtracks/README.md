@@ -1,30 +1,28 @@
 # Custom soundtracks
 
-These three existing recordings are bundled by Vite for offline playback:
+Five user-supplied recordings are bundled by Vite for offline playback:
 
 - `01-feet-dont-fail-me-now.mp3` — Feet Don't Fail Me Now
 - `02-haya-haya.mp3` — Hayya Hayya (Better Together)
 - `06-ai-seu-te-pego.mp3` — Ai Se Eu Te Pego
+- `../Worms - Ashnikko (EAFC 24 SOUNDTRACK).mp3` — Worms · Ashnikko
+- `../MC-L-Da-SnapYT.App.mp3` — Parado no bailão · MC L da Vinte & MC Gury
 
-The game attempts playback immediately on opening (unless Background music was saved as off).
-Web browsers may require a tap or keypress before allowing audible playback; the game retries
-on those gestures without skipping the selected song. Capacitor's Android host allows media
-autoplay; physical-device verification is still recommended.
+The two new original files are referenced in place, not duplicated into this directory.
+The game attempts playback immediately unless Background music was saved as off. Browsers
+may require a tap/key before audible playback; the selected song is retained for that retry.
 
-Each launch shuffles the playlist. All songs play once per shuffled cycle; the next cycle is
-reshuffled and never immediately repeats the previous song. Previous retraces listening history
-(up to 100 songs); at the beginning it restarts the first song. Next moves forward. The song-title
-button toggles music on/off, or starts playback if the browser blocked it.
+Each launch shuffles all five tracks. Every song plays once per cycle; cycles never immediately
+repeat the last song. Previous retraces up to 100 selections; Next moves forward. The title
+button toggles music or unlocks browser-blocked playback. Only the selected recording loads.
+Unreadable recordings are skipped with a bounded retry count.
 
-Controls appear only in the main menu, not in gameplay, settings, or dialogs. Playback continues
-through those screens: full volume in the menu and 75% in play/practice. Backgrounding the game
-pauses music; returning resumes at the same position, respecting the saved music toggle.
-You can also toggle it in Settings → Visuals & Sound → Background music.
+The **same controls move between the main menu and gameplay**, retaining queue, listeners,
+current audio element and position. Music is 100% volume in the menu and 75% in practice/play.
+Controls hide in dialogs/settings and during cinematic analysis; playback continues.
+Backgrounding pauses playback; returning respects the saved music toggle. Settings → Visuals
+& Sound also exposes Background music. Native-device audio/thermal verification is recommended.
 
-Only the selected song is loaded. Missing bundled files are filtered out; unreadable songs are
-skipped, stopping after a failed cycle rather than retrying indefinitely.
-
-To change the soundtrack, place appropriately licensed audio here and update `PLAYLIST` in
-`src/game/music.ts` (file name and display title), then rebuild. Files elsewhere in `src/` are not
-part of this playlist. These are user-supplied recordings; this project does not grant rights to
-redistribute them.
+Update the `PLAYLIST` and explicit Vite glob in `src/game/music.ts` when adding files outside
+this directory. No remote playback/CDN is used. These recordings were supplied by the repository
+owner; this project does **not** grant redistribution rights to copyrighted music.

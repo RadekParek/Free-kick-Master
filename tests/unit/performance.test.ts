@@ -178,7 +178,7 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
       phase: 'charging', cameraYawOffset: 0.4, phaseTime: 0, power: 0.6,
       setup: vi.fn(() => ({})), settings: structuredClone(DEFAULT_SETTINGS),
       guide: { visible: true }, ring: { visible: true },
-      replayFrames: { clear: vi.fn() }, resultBallTime: 0, lastResult: { outcome: 'goal' },
+      replayFrames: { clear: vi.fn() }, runupFrames:{clear:vi.fn(),record:vi.fn()}, football:{quaternion:new THREE.Quaternion()}, taker:{group:new THREE.Group()}, chanceJob:0, resultBallTime: 0, lastResult: { outcome: 'goal' },
       tracePointCount: 10, traceUploadedCount: 8, setTrace: vi.fn(),
       events: { phase: vi.fn() },
     });
@@ -215,7 +215,7 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
     expect(shader.vertexShader).toContain(NET_RIPPLE_VERTEX);
     const uniforms = shader.uniforms as Record<string, { value: number }>;
     const stadium = Object.assign(Object.create(Stadium.prototype), {
-      netRipple: ripple, crowdTime: {}, flagTime: {}, grassTime: {}, crowdEnergy: {},
+      netRipple: ripple, crowdMotion:{value:new THREE.Vector4()},photoMotion:{value:new THREE.Vector2()}, flagTime: {}, grassWind:{value:new THREE.Vector4()}, crowdEnergy: {},
       lastUpdate: 0, cheerStart: -100, cheerStrength: 0, confetti: { update: vi.fn() },
     });
     const impact = new THREE.Vector3(1, 1.5, -1.6);
@@ -239,9 +239,9 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
   });
   it('records replay samples without allocating or copying a live flight trail', () => {
     const record = vi.fn();
-    const arena = Object.assign(Object.create(Arena.prototype), { frameCounter: 0, replayFrames: { record }, ball: {}, keeper: {} });
+    const arena = Object.assign(Object.create(Arena.prototype), { frameCounter: 0, football:{quaternion:new THREE.Quaternion()}, replayFrames: { record }, ball: {}, keeper: {} });
     arena.recordFrame(); arena.recordFrame();
-    expect(record).toHaveBeenCalledExactlyOnceWith(arena.ball, arena.keeper);
+    expect(record).toHaveBeenCalledExactlyOnceWith(arena.ball, arena.keeper, arena.football.quaternion);
     expect(Object.keys(arena).some(key => key.toLowerCase().includes('trace'))).toBe(false);
     expect(Arena.prototype).not.toHaveProperty('setTrace');
   });

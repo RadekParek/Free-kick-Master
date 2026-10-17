@@ -201,7 +201,7 @@ describe('a goalkeeper that reacts, not a random success roll', () => {
     expect(keeperSaves({ x: keeper.x, y: 1, z: 0.7 }, keeper)).toBe(true);
     expect(keeperSaves({ x: -3.3, y: 2.1, z: 0.7 }, keeper)).toBe(false);
   });
-  it('gives penalty kicks a much earlier, faster predictive read and extra save reach', () => {
+  it('gives penalty kicks a much earlier, faster predictive read without invisible collision reach', () => {
     const setup = { ...base, position: PENALTY_SPOT, aim: { x: 2.2, y: 1.5 } };
     const ball = launchBall(setup);
     ball.time = 0.1;
@@ -215,7 +215,7 @@ describe('a goalkeeper that reacts, not a random success roll', () => {
     expect(simulate(setup, 'rookie', 0, true).keeper.reacted).toBe(true);
     const justWideOfBody = { x: penalty.x + 0.52, y: 1, z: 0.7 };
     expect(keeperSaves(justWideOfBody, penalty)).toBe(false);
-    expect(keeperSaves(justWideOfBody, penalty, true)).toBe(true);
+    expect(keeperSaves(justWideOfBody, penalty, true)).toBe(false);
   });
   it('produces both scoreable shots and saves with the real simulation', () => {
     const outcomes = new Set<string>();

@@ -80,7 +80,17 @@ jobs:
               throw new Error(`Offline PlayStyle artwork/provenance differs: ${name}`);
             }
           }
-          console.log('All portraits, PlayStyle artwork, crowd, anatomy and notices are bundled byte-for-byte.');
+          const files = (root, prefix = '') => readdirSync(`${root}/${prefix}`, { withFileTypes: true }).flatMap(entry => {
+            const path = `${prefix}${entry.name}`;
+            return entry.isDirectory() ? files(root, `${path}/`) : [path];
+          });
+          const output = files('dist');
+          for (const path of output) {
+            if (!readFileSync(`dist/${path}`).equals(readFileSync(`${bundled}/${path}`))) throw new Error(`Offline build differs: ${path}`);
+          }
+          if (output.filter(path => path.endsWith('.mp3')).length !== 5) throw new Error('Expected all five bundled soundtracks');
+          if (!output.some(path => /assets\/chance-worker-[^/]+\.js$/.test(path))) throw new Error('Offline shot-chance worker missing');
+          console.log(`${output.length} build files, including all five songs and the simulation worker, bundled byte-for-byte.`);
           NODE
       - name: Set up Gradle caching
         uses: gradle/actions/setup-gradle@v6.4.0

@@ -184,12 +184,15 @@ export class Player {
     this.group.position.x += (ball.x - this.strikePoint.x) * blend;
     this.group.position.z += (ball.z + .09 - this.strikePoint.z) * blend;
   }
+  collisionMetrics() { const rig=this.rigs[0]; return { scale: rig.body.scale.y, rootY: rig.root.position.y, yScale: this.group.scale.y }; }
   updateLod(camera: THREE.Camera) {
     if (!this.group.visible) return;
     this.group.updateWorldMatrix(true, false);
+    const wasLow = this.rigs[1].root.visible;
     this.group.update(camera);
+    if (!wasLow && this.rigs[1].root.visible) this.rigs[1].copyPose(this.rigs[0]);
   }
-  private syncPose() { this.rigs[1].copyPose(this.rigs[0]); }
+  private syncPose() { if (this.rigs[1].root.visible) this.rigs[1].copyPose(this.rigs[0]); }
   idle(time: number) { this.rigs[0].idle(time); this.syncPose(); }
   prepare(time: number, charge: number) { this.rigs[0].prepare(time, charge); this.syncPose(); }
   run(phase: number, foot: Foot, contact?: Contact) { this.rigs[0].run(phase, foot, contact); this.syncPose(); }

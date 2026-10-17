@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test('attempts autoplay, plays bundled songs, navigates history and stays menu-only', async ({ page }) => {
+test('attempts autoplay, plays bundled songs, navigates history and supports menu and gameplay controls', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
@@ -28,7 +28,7 @@ test('attempts autoplay, plays bundled songs, navigates history and stays menu-o
   await expect.poll(() => page.evaluate(() => window.testPlayCalls)).toBeGreaterThan(0);
   await expect(page.locator('#menu-music')).toBeVisible();
   const first = await page.locator('#music-title').textContent();
-  expect(first).toMatch(/Feet Don't Fail Me Now|Hayya Hayya|Ai Se Eu Te Pego/);
+  expect(first).toMatch(/Feet Don't Fail Me Now|Hayya Hayya|Ai Se Eu Te Pego|Worms|Parado no bailão/);
   // Keyboard is also an audio unlock gesture (no pointer-only startup requirement).
   await page.keyboard.press('Shift');
   await expect.poll(() => page.evaluate(() => !window.testMusic.paused && window.testMusic.currentTime > 0)).toBe(true);
@@ -53,7 +53,8 @@ test('attempts autoplay, plays bundled songs, navigates history and stays menu-o
   await page.keyboard.press('Escape');
   await expect(page.locator('#menu-music')).toBeVisible();
   await page.locator('#menu-practice').click();
-  await expect(page.locator('#menu-music')).toBeHidden();
+  await expect(page.locator('#game-music-slot #menu-music')).toBeVisible();
+  expect(await page.evaluate(() => window.testMusic.paused)).toBe(false);
   expect(await page.evaluate(() => window.testMusic.volume)).toBe(0.75);
   await page.locator('#back-button').click();
   await expect(page.locator('#menu-music')).toBeVisible();
@@ -117,4 +118,16 @@ test('a blocked browser can start music with the song-title button', async ({ pa
   await expect.poll(() => page.evaluate(() => !window.testMusic.paused && window.testMusic.currentTime > 0)).toBe(true);
   await expect(page.locator('#music-title')).toHaveText(first!);
   await expect(page.locator('#music-state')).toHaveText('NOW PLAYING · SHUFFLE');
+});
+
+
+test('all five bundled songs decode locally, including Worms and Parado no bailão',async({page})=>{
+  await page.goto('/');await expect(page.locator('#app')).toHaveClass('is-ready');await page.keyboard.press('Shift');
+  const titles:string[]=[];
+  for(let i=0;i<5;i++){
+    await expect.poll(()=>page.evaluate(()=>window.testMusic.readyState)).toBeGreaterThanOrEqual(2);
+    titles.push((await page.locator('#music-title').textContent())!);
+    if(i<4)await page.locator('#music-next').click();
+  }
+  expect(new Set(titles).size).toBe(5);expect(titles.join(' ')).toContain('Worms');expect(titles.join(' ')).toContain('Parado no bailão');
 });

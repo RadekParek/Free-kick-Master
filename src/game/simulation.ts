@@ -1,8 +1,9 @@
+import { keeperBodyHits } from './body-colliders';
 import {
   BALL_RADIUS, FIXED_DT, classifyGoalCrossing, crossingAtZ, hitsWall,
   frameContact, integrateBall, reboundFromFrame, type BallState, type Outcome, type Vec3, type WallPlayer,
 } from './physics';
-import { KEEPER_Z, keeperSaves, updateKeeper, type Difficulty, type KeeperState } from './keeper';
+import { KEEPER_Z, updateKeeper, type Difficulty, type KeeperState } from './keeper';
 
 /** Frame contact is feedback, not a terminal result. A goal can follow in the SAME tick. */
 export interface ShotEvent { outcome: Outcome; point: Vec3; continues?: boolean; frameImpact?: Vec3 }
@@ -29,11 +30,14 @@ export function advanceShot(ball: BallState, keeper: KeeperState, wall: WallPlay
       return { outcome: 'wall', point: { ...end }, frameImpact };
     }
     const atKeeper = crossingAtZ(previous, end, KEEPER_Z) ?? (ball.frameHits ? crossingAtZ(end, previous, KEEPER_Z) : null);
-    if (atKeeper && keeperSaves(atKeeper, keeper, penalty)) {
+    // Broad phase covers the complete posed keeper depth, including the outstretched hands.
+    if (Math.min(previous.z,end.z)<=KEEPER_Z+1.2 && Math.max(previous.z,end.z)>=KEEPER_Z-1.2 &&
+        Math.min(previous.x,end.x)<=keeper.x+2.3 && Math.max(previous.x,end.x)>=keeper.x-2.3 &&
+        keeperBodyHits(previous,end,keeper,ball.time)) {
       ball.velocity.z = Math.abs(ball.velocity.z) * 0.22;
       ball.velocity.x = keeper.direction * 2.4;
       ball.velocity.y = 1.3;
-      return { outcome: 'saved', point: atKeeper, frameImpact };
+      return { outcome: 'saved', point: atKeeper ?? { ...end }, frameImpact };
     }
     const frame = frameContact(previous, end);
     const atGoal = crossingAtZ(previous, end, -BALL_RADIUS);

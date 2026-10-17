@@ -45,7 +45,12 @@ export function identitySurfaces(profile: TakerProfile): Surfaces {
   return surfaces;
 }
 
-const FACE_SHAPES: Record<string, [number, number, number, number]> = {
+const FACE_SHAPES: Record<string, [number, number, number, number, number?]> = {
+  'roberto-carlos': [.008, 1.10, 1.12, 1.15, 1.04], ronaldinho: [.009, 1.17, 1.02, 1.01, 1.16],
+  zidane: [.013, .96, 1.02, 1.03, 1.0], beckham: [.006, .98, 1.09, 1.01, .97],
+  debruyne: [.004, .96, 1.05, 1.01, 1.01], kane: [.012, .98, 1.11, 1.05, 1.0],
+  modric: [.008, .94, .96, .94, .98], bellingham: [.006, 1.02, 1.07, 1.02, 1.02],
+  vinicius: [.006, 1.13, 1.0, .98, 1.04], lewandowski: [.008, .97, 1.08, 1.04, 1.0],
   ronaldo: [.006, .94, 1.08, 1.04], messi: [.008, 1.08, 1.03, .97],
   haaland: [.003, .98, 1.12, 1.09], mbappe: [-.003, 1.13, 1.05, 1.04],
   yamal: [.001, 1.03, .94, .94], salah: [.009, 1.05, .98, .98],
@@ -56,8 +61,8 @@ const FACE_SHAPES: Record<string, [number, number, number, number]> = {
 export function faceShape(profile: TakerProfile) {
   const seed = identitySeed(profile.baseId);
   const unit = (shift: number) => ((seed >>> shift) & 31) / 31;
-  const [nose, noseWidth, chin, build] = FACE_SHAPES[profile.baseId] ?? [unit(0) * .01 - .002, .92 + unit(5) * .16, .94 + unit(10) * .14, .95 + unit(15) * .1];
-  return { nose, noseWidth, chin, build, mouth: .94 + unit(20) * .12 };
+  const [nose, noseWidth, chin, build, mouth] = FACE_SHAPES[profile.baseId] ?? [unit(0) * .01 - .002, .92 + unit(5) * .16, .94 + unit(10) * .14, .95 + unit(15) * .1];
+  return { nose, noseWidth, chin, build, mouth: mouth ?? .94 + unit(20) * .12 };
 }
 
 /** Copy only the taker's face buffers, never the shared wall/keeper templates. Reuse on profile changes. */

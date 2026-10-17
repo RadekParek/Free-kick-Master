@@ -7,15 +7,53 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 
+// Expand the fixed golden-angle disk once in JS: no driver-dependent loop unrolling,
+// sine/cosine/square-root kernel construction in millions of fragment invocations.
+const DOF_GATHER = Array.from({length:12},(_,i)=>{
+  const a=i*2.399963,r=Math.sqrt((i+.5)/12);
+  return `{
+    vec2 tap=uv+vec2(${(Math.cos(a)*r).toFixed(8)},${(Math.sin(a)*r).toFixed(8)})*radius/uPixels;
+    float sampleZ=viewDepth(tap);
+    float weight=1.-smoothstep(.15,max(.3,z*.04),z-sampleZ);
+    sum+=texture2D(tDiffuse,tap)*weight;weights+=weight;
+  }`;
+}).join('\n');
+
 export type PostQuality = 'high' | 'balanced' | 'low';
-export interface PostOptions { antialias: 'off' | 'fxaa' | 'smaa'; bloom: boolean; quality: PostQuality }
+export interface PostOptions { antialias: 'off' | 'fxaa' | 'smaa'; bloom: boolean; dof?: boolean; quality: PostQuality }
 
 /** Tone mapping -> sRGB -> broadcast grade in ONE draw, with AA still after sRGB.
  * Extending OutputPass retains Three.js' exposure and output-colour-space define management.
  */
 export class BroadcastOutputPass extends OutputPass {
-  constructor() {
+  declare uniforms: Record<string, THREE.IUniform>;
+  constructor(readonly dof = false) {
     super();
+    if (dof) {
+      this.uniforms.tDepth = { value: null };
+      this.uniforms.uLens = { value: new THREE.Vector4(.05, 450, 15, .04) };
+      this.uniforms.uPixels = { value: new THREE.Vector2(1, 1) };
+      this.material.uniforms = this.uniforms;
+      this.material.fragmentShader = `uniform sampler2D tDepth;
+        uniform vec4 uLens; uniform vec2 uPixels;
+        float viewDepth(vec2 uv) { float z = texture2D(tDepth, uv).x; return uLens.x*uLens.y/(uLens.y-z*(uLens.y-uLens.x)); }
+        vec4 lensSample(vec2 uv) {
+          vec4 centre = texture2D(tDiffuse, uv);
+          float z = viewDepth(uv), focus = max(uLens.z, .1), f = uLens.w;
+          // Thin-lens circle of confusion: 24 mm sensor height, f/2.8; bounded 8-pixel radius.
+          float radius = min(8., abs(f*f*(z-focus)/(2.8*z*max(.05,focus-f)))/.024*uPixels.y*.5);
+          if (radius < .35) return centre;
+          vec4 sum = centre; float weights = 1.;
+          // Depth rejection protects sharp foreground silhouettes.
+          ${DOF_GATHER}
+          return sum/weights;
+        }
+` + this.material.fragmentShader;
+      // Function declaration needs tDiffuse before lensSample; OutputShader's own declaration is removed.
+      this.material.fragmentShader = this.material.fragmentShader.replace('uniform sampler2D tDiffuse;', '');
+      this.material.fragmentShader = 'precision highp float;\nuniform sampler2D tDiffuse;\n' + this.material.fragmentShader;
+      this.material.fragmentShader = this.material.fragmentShader.replace('texture2D( tDiffuse, vUv )', 'lensSample(vUv)');
+    }
     this.material.name = 'BroadcastOutput';
     // Add grading after OutputShader's conversion, not before ACES or after antialiasing.
     const end = this.material.fragmentShader.lastIndexOf('}');
@@ -31,6 +69,11 @@ export class BroadcastOutputPass extends OutputPass {
       gl_FragColor.rgb = clamp(col, 0.0, 1.0);
     }`;
     this.material.depthTest = false; this.material.depthWrite = false;
+  }
+  override render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget, deltaTime = 0, maskActive = false) {
+    // Bind the ACTUAL RenderPass source after composer swaps, never a stale ping-pong attachment.
+    if (this.dof) this.uniforms.tDepth.value = readBuffer.depthTexture;
+    super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
   }
 }
 
@@ -55,8 +98,8 @@ export class PostStack {
    * FXAA runs on the tone-mapped sRGB image; SMAA remains an optional sharper alternative.
    */
   configure(options: PostOptions, width: number, height: number) {
-    const { antialias, bloom, quality } = options;
-    const key = `${antialias}|${bloom}`;
+    const { antialias, bloom, quality, dof = false } = options;
+    const key = `${antialias}|${bloom}|${dof}`;
     if (key === this.key) {
       // Quality only changes bloom strength, not pass topology or render targets.
       if (this.bloom) this.bloom.strength = quality === 'high' ? 0.16 : 0.1;
@@ -66,6 +109,7 @@ export class PostStack {
     this.dispose();
     this.key = key;
     const target = new THREE.WebGLRenderTarget(width, height, { type: THREE.HalfFloatType, samples: 0 });
+    if (dof) target.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
     const composer = this.composer = new EffectComposer(this.renderer, target);
     this.pixelRatio = this.renderer.getPixelRatio();
     composer.addPass(new RenderPass(this.scene, this.camera));
@@ -73,7 +117,7 @@ export class PostStack {
       this.bloom = new UnrealBloomPass(new THREE.Vector2(width, height), quality === 'high' ? 0.16 : 0.1, 0.5, 0.92);
       composer.addPass(this.bloom);
     }
-    this.grade = new BroadcastOutputPass();
+    this.grade = new BroadcastOutputPass(dof);
     composer.addPass(this.grade);
     if (antialias !== 'off') {
       this.aa = antialias === 'smaa' ? new SMAAPass() : new ShaderPass(FXAAShader);
@@ -91,9 +135,17 @@ export class PostStack {
     if (width !== this.width || height !== this.height) this.composer.setSize(width, height);
     if (this.aa instanceof ShaderPass) this.aa.uniforms.resolution.value.set(
       1 / Math.max(1, Math.floor(width * pixelRatio)), 1 / Math.max(1, Math.floor(height * pixelRatio)));
+    if (this.grade?.dof) this.grade.uniforms.uPixels.value.set(Math.max(1, width * pixelRatio), Math.max(1, height * pixelRatio));
     this.width = width;
     this.height = height;
     this.pixelRatio = pixelRatio;
+  }
+
+  /** Camera-tracked thin-lens focus. Pausing stops this along with the simulation. */
+  focus(distance: number) {
+    if (!this.grade?.dof || !(this.camera instanceof THREE.PerspectiveCamera)) return;
+    const lens = this.grade.uniforms.uLens.value as THREE.Vector4;
+    lens.set(this.camera.near, this.camera.far, Math.max(.15, distance), .024/(2*Math.tan(THREE.MathUtils.degToRad(this.camera.fov)*.5)));
   }
 
   render() {

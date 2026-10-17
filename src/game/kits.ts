@@ -14,7 +14,7 @@ export function kitTexture(profile: TakerProfile): THREE.CanvasTexture {
   ctx.fillStyle = k.base; ctx.fillRect(0, 0, size, size);
   if (k.pattern === 'stripes') {
     ctx.fillStyle = k.secondary;
-    for (let x = -16; x < size; x += 64) ctx.fillRect(x, 0, 32, size);
+    for (let x = -size/24; x < size; x += size/6) ctx.fillRect(x, 0, size/12, size);
   } else if (k.pattern === 'checks') {
     ctx.fillStyle = k.secondary;
     for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if ((x + y) % 2 === 0) ctx.fillRect(x * 64, y * 64, 64, 64);
@@ -22,6 +22,16 @@ export function kitTexture(profile: TakerProfile): THREE.CanvasTexture {
     ctx.strokeStyle = k.secondary; ctx.lineWidth = 55;
     for (const offset of [-512, 0, 512]) { ctx.beginPath(); ctx.moveTo(offset, -40); ctx.lineTo(offset + 512, 552); ctx.stroke(); }
   }
+  // National collar, shoulder piping, side ventilation and title stars are baked, not extra draws.
+  const stars:Record<string,number> = { BR:5,AR:3,FR:2,DE:4,IT:4,GB:1,ES:1 };
+  ctx.fillStyle=k.trim;
+  for(let i=0;i<(stars[k.code] ?? 0);i++) {
+    const x=294+(i-((stars[k.code]??0)-1)/2)*6,y=91;
+    ctx.beginPath();for(let n=0;n<10;n++){const a=-Math.PI/2+n*Math.PI/5,r=n%2?1.1:2.6;ctx.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r);}ctx.closePath();ctx.fill();
+  }
+  ctx.strokeStyle=k.trim;ctx.lineWidth=6;ctx.beginPath();ctx.ellipse(256,25,35,22,0,0,Math.PI);ctx.stroke();
+  for(const x of [168,344]) {ctx.fillStyle=k.secondary;ctx.fillRect(x-3,160,6,330);}
+  for(let y=190;y<450;y+=8)for(const x of [179,333]) {ctx.fillStyle='rgba(12,25,24,.08)';ctx.fillRect(x,y,1,2);}
   // Panel seams, collar piping and fine knit all bake into this single opaque surface.
   ctx.strokeStyle = k.trim; ctx.lineWidth = 4;
   for (const x of [150, 362]) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + (x < 256 ? -12 : 12), size); ctx.stroke(); }

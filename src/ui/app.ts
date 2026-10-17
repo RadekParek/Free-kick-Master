@@ -85,6 +85,7 @@ export class GameApp {
           $('#app').dataset.analysis = stage;
           $('#analysis-stage').textContent = ANALYSIS_STAGE_LABELS[stage];
         },
+        chance: chance => { $('#analysis-chance').textContent = chance === null ? '—' : String(chance); },
         power: power => this.onPower(power),
         result: result => this.onResult(result),
         woodwork: () => { this.audio.result(false, true); this.haptic('impact'); },
@@ -161,11 +162,12 @@ export class GameApp {
         
         <div class="shot-result" id="shot-result" aria-live="polite" hidden><span class="result-eyebrow" id="result-eyebrow">WHAT A HIT.</span><h2 id="result-title">GOAL!</h2><p id="result-description">Right where you wanted it.</p><div class="result-meta"><span id="result-distance"></span><span id="result-speed"></span></div></div>
         <div class="replay-label" id="replay-label" hidden><span></span> REPLAY <b>0.55×</b></div>
+        <div id="game-music-slot"></div>
         <section class="goal-analysis" id="goal-analysis" aria-label="Goal analysis" hidden>
           <div class="analysis-brand"><strong>HyperMotion<span>V</span></strong><small>INSPIRED · FAN-MADE REPLAY</small><i>FC / FIFA–INSPIRED PRESENTATION · NOT EA TECHNOLOGY</i></div>
           <div class="analysis-heading"><span class="analysis-scan"></span><small id="analysis-stage">SPATIAL SCAN</small><h2>GOAL<br><em>ANALYSIS</em></h2></div>
-          <div class="analysis-timeline" aria-hidden="true"><i></i><span>01 SCAN</span><span>02 STRIKE</span><span>03 FLIGHT</span><span>04 ENTRY</span></div>
-          <div class="analysis-data"><span><small>SHOT SPEED</small><b id="analysis-speed">—</b><i>KM/H</i></span><span><small>DISTANCE</small><b id="analysis-distance">—</b><i>METRES</i></span><span><small>ENTRY HEIGHT</small><b id="analysis-height">—</b><i>METRES</i></span></div>
+          <div class="analysis-timeline" aria-hidden="true"><i></i><span>01 SCAN</span><span>02 RUN-UP</span><span>03 STRIKE</span><span>04 FLIGHT</span><span>05 ENTRY</span></div>
+          <div class="analysis-data"><span><small>SHOT SPEED</small><b id="analysis-speed">—</b><i>KM/H</i></span><span><small>DISTANCE</small><b id="analysis-distance">—</b><i>METRES</i></span><span><small>ENTRY HEIGHT</small><b id="analysis-height">—</b><i>METRES</i></span><span><small>RUN-UP SPEED</small><b id="analysis-runup">—</b><i>KM/H · PEAK</i></span><span><small>SHOT POWER</small><b id="analysis-power">—</b><i>PERCENT</i></span><span><small>PLAYER HEIGHT</small><b id="analysis-player-height">—</b><i>METRES</i></span><span><small>KEEPER HEIGHT</small><b id="analysis-keeper-height">—</b><i>METRES</i></span><span title="64 seeded simulations with small execution variations, using the current wall and keeper. Uncalibrated game-model estimate, NOT real-world xG."><small>SIM. CONVERSION</small><b id="analysis-chance">…</b><i>% · MODEL / 64</i></span></div>
           <button class="analysis-skip" id="skip-analysis" aria-label="Skip replay">SKIP ${icon('ArrowRight')}</button>
         </section>
         <span id="atmosphere-label" hidden>FLOODLIT NIGHT</span>
@@ -236,6 +238,7 @@ export class GameApp {
                 <label class="setting-row"><span><strong>Render resolution</strong><small>Every percentage is relative to your full native resolution. 75% renders 56% as many pixels; 50% renders 25%.</small></span><select id="gfx-resolution" aria-label="Render resolution"></select></label>
                 <label class="setting-row"><span><strong>Anti-aliasing</strong><small>FXAA: fast, single-pass smoothing. SMAA: sharper edges, more GPU work. No multisampling.</small></span><select id="gfx-aa" aria-label="Anti-aliasing"><option value="off">Off</option><option value="fxaa">FXAA · fast</option><option value="smaa">SMAA · sharp</option></select></label>
                 <label class="setting-row"><span><strong>Bloom</strong><small>Glow from the floodlights and the ball.</small></span><input type="checkbox" id="gfx-bloom"/><span class="toggle" aria-hidden="true"></span></label>
+                <label class="setting-row"><span><strong>Depth of field</strong><small>Depth-aware lens blur with ball tracking. On by default only in High; optional in Custom.</small></span><input type="checkbox" id="gfx-dof"/><span class="toggle" aria-hidden="true"></span></label>
                 <label class="setting-row"><span><strong>Shadows</strong><small>Shadow map size. Off removes dynamic shadows.</small></span><select id="gfx-shadows" aria-label="Shadow map size"><option value="0">Off</option><option value="512">512</option><option value="1024">1024 (max)</option></select></label>
               </div>
               <label class="setting-row"><span><strong>Stadium atmosphere</strong><small>A new light on the beautiful game</small></span><select id="setting-atmosphere" aria-label="Stadium atmosphere"><option value="night">Floodlit night</option><option value="sunset">Golden hour</option><option value="day">Clear day</option></select></label>
@@ -314,6 +317,7 @@ export class GameApp {
     };
     $('#gfx-resolution').addEventListener('change', event => custom({ resolution: Number((event.target as HTMLSelectElement).value) as RenderScale }));
     $('#gfx-aa').addEventListener('change', event => custom({ antialias: (event.target as HTMLSelectElement).value as GraphicsOptions['antialias'] }));
+    $('#gfx-dof').addEventListener('change', event => custom({ dof: (event.target as HTMLInputElement).checked }));
     $('#gfx-bloom').addEventListener('change', event => custom({ bloom: (event.target as HTMLInputElement).checked }));
     $('#gfx-shadows').addEventListener('change', event => custom({ shadows: Number((event.target as HTMLSelectElement).value) as ShadowSize }));
     $('#setting-atmosphere').addEventListener('change', event => {
@@ -578,6 +582,7 @@ export class GameApp {
     $('#custom-graphics').hidden = g.preset !== 'custom';
     this.syncResolutionOptions();
     $<HTMLSelectElement>('#gfx-aa').value = g.antialias;
+    $<HTMLInputElement>('#gfx-dof').checked = g.dof;
     $<HTMLInputElement>('#gfx-bloom').checked = g.bloom;
     $<HTMLSelectElement>('#gfx-shadows').value = String(g.shadows);
     $<HTMLSelectElement>('#setting-atmosphere').value = s.atmosphere;
@@ -766,6 +771,11 @@ export class GameApp {
     $('#analysis-speed').textContent = String(Math.round(result.speed));
     $('#analysis-distance').textContent = result.distance.toFixed(1);
     $('#analysis-height').textContent = result.point.y.toFixed(2);
+    $('#analysis-runup').textContent = result.runupSpeed?.toFixed(1) ?? '—';
+    $('#analysis-power').textContent = String(Math.round(result.power * 100));
+    $('#analysis-player-height').textContent = result.playerHeight?.toFixed(2) ?? '—';
+    $('#analysis-keeper-height').textContent = result.keeperHeight?.toFixed(2) ?? '—';
+    $('#analysis-chance').textContent = result.estimatedChance === undefined ? '…' : String(result.estimatedChance);
     $('#shot-result').classList.toggle('is-goal', result.outcome === 'goal');
     if (this.challenge) {
       const hit = this.challenge.definition.accepts(result);
@@ -890,7 +900,10 @@ export class GameApp {
   private overlayOpen() { return $<HTMLDialogElement>('#modal').open || this.settingsOpen(); }
   /** Single place that decides whether the 3D arena runs interactively. Menu backgrounds always animate. */
   private syncPause() {
-    $('#menu-music').hidden = this.view !== 'menu' || this.overlayOpen();
+    const music = $('#menu-music');
+    const slot = this.view === 'game' ? $('#game-music-slot') : $('.menu-bottom');
+    if (music.parentElement !== slot) slot.append(music);
+    music.hidden = !['menu', 'game'].includes(this.view) || this.overlayOpen();
     const paused = !this.visible || (this.view === 'game' && this.overlayOpen());
     $('#app').dataset.paused = String(paused);
     this.arena?.setPaused(paused);
@@ -929,12 +942,12 @@ export class GameApp {
     let selection = this.settings.playerId;
     const selected = getPlayer(selection);
     const specials = PLAYERS.filter(player => player.edition === 'special').length;
-    this.openModal(`<div class="roster-heading"><span class="modal-eyebrow">THE DIFFERENCE IS IN THE DETAILS</span><h2 id="modal-title">Choose your <em>taker.</em></h2><p>${PLAYERS.filter(player => player.edition === 'standard').length} players. ${specials} turquoise specials with diffraction foil and handwritten names.</p><span class="roster-count">${String(PLAYERS.length).padStart(2, '0')} <small>CARDS</small></span></div>
+    this.openModal(`<div class="roster-heading"><span class="modal-eyebrow">THE DIFFERENCE IS IN THE DETAILS</span><h2 id="modal-title">Choose your <em>taker.</em></h2><p>${PLAYERS.filter(player => player.edition === 'standard').length} players. 4 ICON tributes. ${specials} turquoise specials with diffraction foil and handwritten names.</p><span class="roster-count">${String(PLAYERS.length).padStart(2, '0')} <small>CARDS</small></span></div>
       <div class="roster-toolbar"><label class="player-search-label">${icon('Focus')}<input type="search" id="player-search" placeholder="Search player or nation" aria-label="Search players" autocomplete="off"/></label>
         <div class="roster-filters" aria-label="Filter players">
           <button data-roster-filter="all" aria-pressed="true">ALL FEET</button><button data-roster-filter="right" aria-pressed="false">RIGHT</button><button data-roster-filter="left" aria-pressed="false">LEFT</button>
           <span class="roster-divider" aria-hidden="true"></span>
-          <button data-edition-filter="all" aria-pressed="true">ALL</button><button data-edition-filter="standard" aria-pressed="false">STANDARD</button><button data-edition-filter="special" aria-pressed="false" class="turquoise">TURQUOISE · ${specials}</button>
+          <button data-edition-filter="all" aria-pressed="true">ALL</button><button data-edition-filter="standard" aria-pressed="false">STANDARD</button><button data-edition-filter="icon" aria-pressed="false">ICONS · 4</button><button data-edition-filter="special" aria-pressed="false" class="turquoise">TURQUOISE · ${specials}</button>
         </div></div>
       <div id="roster-empty" class="roster-empty" role="status" hidden>No players match. Try another name, nation or filter.</div>
       <div class="player-grid" aria-label="Free-kick takers">${PLAYERS.map(player => playerCard(player, player.id === selection)).join('')}</div>
@@ -962,7 +975,7 @@ export class GameApp {
       let count = 0;
       cards().forEach(card => {
         const player = getPlayer(card.dataset.player!);
-        const text = `${player.name} ${player.nation} ${player.specialty} ${player.edition === 'special' ? 'turquoise special' : ''}`.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const text = `${player.name} ${player.nation} ${player.specialty} ${player.edition === 'special' ? 'turquoise special' : player.edition === 'icon' ? 'icon heritage' : ''}`.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         card.hidden = !text.includes(query) || (footFilter !== 'all' && player.foot !== footFilter) || (editionFilter !== 'all' && player.edition !== editionFilter);
         if (!card.hidden) count++;
       });
@@ -993,8 +1006,8 @@ export class GameApp {
   }
 
   private showPhotoCredits() {
-    const photographed = PLAYERS.filter((player): player is TakerProfile & { portrait: string; photoDate: string | null; photoSource: string; credit: string } => !!player.portrait && !!player.photoSource && !!player.credit && player.edition === 'standard');
-    this.openModal(`<span class="modal-eyebrow">REAL PHOTOGRAPHS. PROPER CREDIT.</span><h2 id="modal-title">Player photography</h2><p class="modal-intro">All cards use locally bundled photographs for offline play. Source links and rights status are listed individually. Some images have no reusable license and are for personal testing only; public or commercial distribution requires rights clearance.</p><div class="photo-credit-list">${photographed.map(player => `<article><img src="${player.portrait}" alt="${player.name}" width="64" height="80"/><div><h3>${player.name}</h3><p>${player.photoDate ? `${player.photoDate} · ` : ''}${player.credit}</p><a href="${player.photoSource}" target="_blank" rel="noopener noreferrer">Original photograph ↗</a></div></article>`).join('')}</div><p class="modal-footnote">Photographs by Bryan Berlin / WikiPortraits, licensed <a href="${PHOTO_LICENSE}" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>. Adaptations: portrait crop, soft background masking, resize, and WebP conversion; adapted photos remain CC BY-SA 4.0. Card artwork, training ratings, kit artwork and hair are original. Generic 3D head anatomy is adapted from MakeHuman CC0 assets; see the bundled models/README.md and CC0-1.0.md for provenance and the full license. Avatars are original stylised likenesses, not scanned players. PlayStyle+ badge artwork is EA copyright, bundled from a pinned public mirror; see playstyles/README.md. Custom player assignments and effects are not official EA ratings. Goal analysis is inspired by broadcast replay graphics, not HyperMotionV technology. No player, photographer, federation, EA, or FIFA endorsement is implied. Image copyright licenses do not grant athlete publicity or trademark rights for commercial distribution.</p>`, 'credits-modal');
+    const photographed = PLAYERS.filter((player): player is TakerProfile & { portrait: string; photoDate: string | null; photoSource: string; credit: string } => !!player.portrait && !!player.photoSource && !!player.credit && player.edition !== 'special');
+    this.openModal(`<span class="modal-eyebrow">REAL PHOTOGRAPHS. PROPER CREDIT.</span><h2 id="modal-title">Player photography</h2><p class="modal-intro">All cards use locally bundled photographs for offline play. Source links and rights status are listed individually. Some images have no reusable license and are for personal testing only; public or commercial distribution requires rights clearance.</p><div class="photo-credit-list">${photographed.map(player => `<article><img src="${player.portrait}" alt="${player.name}" width="64" height="80"/><div><h3>${player.name}</h3><p>${player.photoDate ? `${player.photoDate} · ` : ''}${player.credit}</p><a href="${player.photoSource}" target="_blank" rel="noopener noreferrer">Original photograph ↗</a></div></article>`).join('')}</div><p class="modal-footnote">The CC BY-SA subset is photographed by Bryan Berlin / WikiPortraits, licensed <a href="${PHOTO_LICENSE}" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>. Adaptations: portrait crop, soft background masking, resize, and WebP conversion; adapted photos remain CC BY-SA 4.0. Card artwork, training ratings, kit artwork and hair are original. Generic 3D head anatomy is adapted from MakeHuman CC0 assets; see the bundled models/README.md and CC0-1.0.md for provenance and the full license. Avatars are original stylised likenesses, not scanned players. PlayStyle+ badge artwork is EA copyright, bundled from a pinned public mirror; see playstyles/README.md. Custom player assignments and effects are not official EA ratings. Goal analysis is inspired by broadcast replay graphics, not HyperMotionV technology. No player, photographer, federation, EA, or FIFA endorsement is implied. Image copyright licenses do not grant athlete publicity or trademark rights for commercial distribution.</p>`, 'credits-modal');
   }
 
   private showAndroid() {

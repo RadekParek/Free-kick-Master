@@ -537,7 +537,7 @@ dialog::backdrop { background: #04080cc8; backdrop-filter: blur(3px); }
 .analysis-heading { position: absolute; top: 17%; left: 0; }
 .analysis-data { position: absolute; right: 0; bottom: 26px; }
 .analysis-timeline { position: absolute; bottom: 0; left: 0; display: flex; gap: 16px; padding-top: 9px; border-top: 1px solid #eefff74d; font-size: 7px; font-weight: 800; letter-spacing: 1.2px; }
-.analysis-timeline > i { position: absolute; top: -1px; left: 0; width: 100%; height: 2px; background: #caff76; transform: scaleX(0); transform-origin: left; animation: analysis-progress 8.2s linear forwards; }
+.analysis-timeline > i { position: absolute; top: -1px; left: 0; width: 100%; height: 2px; background: #caff76; transform: scaleX(0); transform-origin: left; animation: analysis-progress 8.6s linear forwards; }
 .goal-analysis::before { content: ''; position: absolute; inset: -20% -6%; background: #caff76; transform: scaleX(0); transform-origin: left; animation: analysis-wipe .65s ease-out both; }
 #app[data-analysis='intro'] .analysis-heading { opacity: 0; }
 #app[data-analysis='intro'] .analysis-data, #app[data-analysis='strike'] .analysis-data { opacity: .45; }
@@ -558,3 +558,60 @@ dialog::backdrop { background: #04080cc8; backdrop-filter: blur(3px); }
 @media (prefers-reduced-motion: reduce) { .goal-analysis::before, .analysis-timeline > i { animation: none; } }
 
 #app[data-paused='true'] .analysis-timeline > i, #app[data-paused='true'] .goal-analysis::before { animation-play-state: paused; }
+
+/* Heritage ICON: original ivory/etched-gold art; no suggestion these are official FC ratings. */
+.player-card.is-icon { background: linear-gradient(150deg,#fffbed 0%,#ddd6c2 28%,#fffdf4 48%,#b7a77d 75%,#f0e8ce); color:#302d22; }
+.is-icon .card-foil { background: repeating-linear-gradient(120deg,#fff9df00 0 12px,#b1996055 13px,#fff7dc00 15px 32px); }
+.is-icon .card-frame { border-color:#a88a4b; box-shadow:inset 0 0 0 2px #fff7df88; }
+.is-icon .card-shade { background:linear-gradient(0deg,#e6dcc0 2%,#f5ecd8ee 27%,#ede6d433 52%,transparent 65%); }
+.is-icon .card-portrait,.showcase-art.is-icon img,.mini-card.is-icon > img { filter:grayscale(1) contrast(1.06); }
+.is-icon .card-name { color:#302c21; font-family:var(--condensed); text-shadow:0 1px #fffcf1; }
+.is-icon .card-edition,.is-icon .card-specialty,.is-icon .card-country,.is-icon .card-stats small { color:#605437; }
+.is-icon .card-stats b,.is-icon .card-rating strong { color:#302b20; text-shadow:0 1px #fff5d8; }
+.is-icon .card-stats { border-color:#8c77435c; }
+.player-card > .playstyle-badge { position:absolute; right:9%; top:20%; z-index:5; margin:0; }
+.player-card > .playstyle-badge img { width:27px;height:27px; }
+.mini-card .playstyle-badge { left:auto;right:3px;bottom:6px; }
+.player-card .card-foil { transition:transform .45s ease,opacity .3s; }
+@media (hover:hover) { .player-card:hover .card-foil { transform:translate3d(4px,-5px,0) scale(1.05); } }
+.player-card:active { transform:scale(.975); }
+#game-music-slot { position:absolute;right:20px;top:76px;z-index:5; }
+#game-music-slot .menu-music { width:225px;max-width:40vw;padding:5px 8px;background:#11252b99;border:1px solid #d4e1cd20;border-radius:8px; }
+#game-music-slot .menu-music small { font-size:6px; }
+#game-music-slot .menu-music span { font-size:9px; }
+#game-music-slot .menu-music svg { width:12px;height:12px; }
+#app[data-phase='replay'] #game-music-slot { visibility:hidden; }
+.goal-analysis { inset:12% 4% 14%; }
+.analysis-data { display:grid;grid-template-columns:repeat(4,minmax(65px,1fr));gap:13px 22px;max-width:560px;bottom:35px;padding:12px 18px;background:linear-gradient(90deg,#102029cf,#10202920); }
+.analysis-data b { font-size:34px; }
+.analysis-data small { font-size:7px;letter-spacing:1px; }
+.analysis-data i { font-size:7px;letter-spacing:1.1px; }
+.analysis-heading { transition:opacity .25s,transform .25s; }
+#app[data-analysis='intro'] .analysis-heading { transform:translateX(-18px); }
+#app[data-analysis='runup'] .analysis-data { opacity:.6; }
+#app[data-analysis='finish'] .analysis-data { border-color:#fff;color:#fff; }
+#app[data-analysis='finish'] .analysis-heading { transform:translateX(8px); }
+@media (max-width:650px) {
+  #game-music-slot { right:12px;top:66px; }
+  .analysis-data { left:0;right:0;max-width:none;gap:10px 8px;padding:10px;bottom:45px;grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .analysis-data b { font-size:27px; }
+  .analysis-data small { font-size:6px;letter-spacing:.45px; }
+  .analysis-data i { font-size:6px;letter-spacing:.4px; }
+  .analysis-heading { top:23%; }
+}
+@media (max-height:500px) and (min-width:651px) {
+  #game-music-slot { top:60px; }
+  .goal-analysis { inset:15% 4% 12%; }
+  .analysis-heading h2 { font-size:35px; }
+  .analysis-brand > strong { font-size:28px; }
+  .analysis-data { gap:7px 14px;bottom:30px;padding:8px 12px;max-width:420px; }
+  .analysis-data b { font-size:25px; }
+}
+@media (prefers-reduced-motion:reduce) { .player-card,.player-card .card-foil,.analysis-heading { transition:none; } }
+
+.is-icon .card-info { gap:2px; }
+.is-icon .card-name { font-size:clamp(16px,1.65vw,23px);white-space:nowrap;letter-spacing:0; }
+.is-icon .card-specialty { display:none; }
+.is-icon .card-shade { inset:48% 0 0;background:linear-gradient(transparent,#f3ebda 40%,#d9cdad); }
+.is-icon .card-rating { left:7%;padding:3px;background:#f8f0dddc;border-radius:4px; }
+.is-icon > .playstyle-badge img { background:transparent; }
