@@ -222,7 +222,7 @@ export class GameApp {
             <div class="settings-list">
               <label class="setting-row"><span><strong>Graphics preset</strong><small>Phones use a lower-cost Balanced profile; Performance cuts resolution further.</small></span><select id="setting-preset" aria-label="Graphics preset"><option value="high">High</option><option value="balanced">Balanced</option><option value="performance">Performance</option><option value="custom">Custom</option></select></label>
               <div id="custom-graphics" class="custom-graphics" hidden>
-                <label class="setting-row"><span><strong>Render resolution</strong><small>Pixels rendered before scaling. Phones cap device pixel ratio at 2× for lower GPU load.</small></span><select id="gfx-resolution" aria-label="Render resolution"></select></label>
+                <label class="setting-row"><span><strong>Render resolution</strong><small>Native (100%) uses the full display resolution. Reduced phone modes keep a 2× pixel-ratio budget to save power.</small></span><select id="gfx-resolution" aria-label="Render resolution"></select></label>
                 <label class="setting-row"><span><strong>Multisample anti-aliasing</strong><small>Smooths geometry edges. Costs GPU time.</small></span><select id="gfx-msaa" aria-label="Multisample anti-aliasing"><option value="0">Off</option><option value="2">2x</option></select></label>
                 <label class="setting-row"><span><strong>SMAA</strong><small>Cheap edge smoothing on the final image.</small></span><input type="checkbox" id="gfx-smaa"/><span class="toggle" aria-hidden="true"></span></label>
                 <label class="setting-row"><span><strong>Bloom</strong><small>Glow from the floodlights and the ball.</small></span><input type="checkbox" id="gfx-bloom"/><span class="toggle" aria-hidden="true"></span></label>
@@ -393,6 +393,7 @@ export class GameApp {
     });
     document.addEventListener('visibilitychange', () => this.setVisible(!document.hidden));
     window.addEventListener('pagehide', () => this.settingsSave.flush());
+    window.addEventListener('resize', () => this.syncResolutionOptions());
     window.addEventListener('blur', () => { this.powerPointer = null; this.arena?.cancelCharge(); });
     const unlockAudio = (event: Event) => {
       if (this.visible && !(this.view === 'game' && this.overlayOpen())) this.audio.unlock();
@@ -565,20 +566,7 @@ export class GameApp {
     const g = s.graphics;
     $<HTMLSelectElement>('#setting-preset').value = g.preset;
     $('#custom-graphics').hidden = g.preset !== 'custom';
-    // Each option shows its effective pixel size after the phone DPR cap and selected scale.
-    const dpr = window.devicePixelRatio || 1;
-    const mobile = isMobileDevice();
-    const resolution = $<HTMLSelectElement>('#gfx-resolution');
-    const resolutionKey = `${innerWidth}|${innerHeight}|${dpr}|${mobile}`;
-    if (resolution.dataset.viewport !== resolutionKey) {
-      resolution.dataset.viewport = resolutionKey;
-      resolution.innerHTML = ([[1, mobile ? 'Phone max' : 'Native'], [0.75, '75%'], [0.5, 'Half']] as const)
-        .map(([scale, label]) => {
-          const ratio = effectivePixelRatio(dpr, scale, mobile);
-          return `<option value="${scale}">${label} · ${Math.round(innerWidth * ratio)} × ${Math.round(innerHeight * ratio)}</option>`;
-        }).join('');
-    }
-    resolution.value = String(g.resolution);
+    this.syncResolutionOptions();
     $<HTMLSelectElement>('#gfx-msaa').value = String(g.msaa);
     $<HTMLInputElement>('#gfx-smaa').checked = g.smaa;
     $<HTMLInputElement>('#gfx-bloom').checked = g.bloom;
@@ -626,6 +614,23 @@ export class GameApp {
     $('#power-sweetspot').style.left = `${power * 100 - 3}%`;
     this.syncSound();
     this.updateDisabled();
+  }
+
+  private syncResolutionOptions() {
+    // Match the renderer: Native bypasses the phone DPR cap; reduced modes keep it.
+    const dpr = window.devicePixelRatio || 1;
+    const mobile = isMobileDevice();
+    const resolution = $<HTMLSelectElement>('#gfx-resolution');
+    const resolutionKey = `${innerWidth}|${innerHeight}|${dpr}|${mobile}`;
+    if (resolution.dataset.viewport !== resolutionKey) {
+      resolution.dataset.viewport = resolutionKey;
+      resolution.innerHTML = ([[1, 'Native (100%)'], [0.75, mobile ? '75% (capped)' : '75%'], [0.5, mobile ? 'Half (capped)' : 'Half']] as const)
+        .map(([scale, label]) => {
+          const ratio = effectivePixelRatio(dpr, scale, mobile);
+          return `<option value="${scale}">${label} · ${Math.floor(innerWidth * ratio)} × ${Math.floor(innerHeight * ratio)}</option>`;
+        }).join('');
+    }
+    resolution.value = String(this.settings.graphics.resolution);
   }
 
   private syncContact() {

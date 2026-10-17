@@ -271,3 +271,22 @@ Final local verification for this pass: **122 unit tests + TypeScript pass**, **
 E2E tests pass**, and **production build / Capacitor Android sync pass**. Both anatomy files
 and their license notices match the Android asset bundle byte-for-byte. Android Gradle APK/lint
 compilation and physical-device GPU profiling have not been run locally for this pass.
+
+## Native phone resolution fix — 17 October 2026
+
+Native (100%) now bypasses the mobile 2× DPR cap. A 772×360 CSS viewport at DPR 4 can
+select and actually allocate a 3088×1440 drawing buffer, rather than being limited to
+1544×720. The reduced 75%/Half phone modes retain the existing capped power-saving budget,
+and default presets are unchanged. The option labels explicitly distinguish Native from
+capped modes and use the same floor rounding as Three.js. Labels refresh on resize/rotation
+without replacing option nodes on unrelated setup input.
+
+Tests verify the DPR calculation, native preference persistence, actual 3088×1440 canvas
+backing-buffer allocation, portrait rotation to 1440×3088, and returning to capped modes.
+Native means the resolution exposed by Android/WebView or the browser for the game viewport;
+it cannot override an Android FHD display mode or include space occupied by browser chrome.
+Rendering four times as many pixels as the old 2× cap on a DPR-4 phone costs more GPU work;
+Native is an explicit quality choice, not the new default or a promised FPS improvement.
+
+Validation: TypeScript + all 127 unit tests, all 17 browser tests, production build, and
+Capacitor Android asset sync passed. No physical-phone FPS or thermal benchmark was run.

@@ -84,6 +84,45 @@ test('uses the phone graphics budget and caps high-DPI rendering on a mobile dev
   await context.close();
 });
 
+test('offers and renders the full 3088 × 1440 phone resolution, including after rotation', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 772, height: 360 }, isMobile: true, hasTouch: true, deviceScaleFactor: 4 });
+  try {
+    const page = await context.newPage();
+    await page.addInitScript(() => localStorage.setItem('fkm.settings.v1', JSON.stringify({ quality: 'low', sound: false, music: false })));
+    await page.goto('/');
+    await expect(page.locator('#app')).toHaveClass('is-ready');
+    await page.locator('#menu-practice').click();
+    // Settings pause gameplay, allowing us to verify real backing-buffer dimensions without
+    // requiring software WebGL to sustain a native-resolution frame rate in the test worker.
+    await page.locator('#settings-button').click();
+    await page.locator('[data-settings-tab="graphics"]').click();
+    await page.locator('#setting-preset').selectOption('custom');
+    const resolution = page.locator('#gfx-resolution');
+    await expect(resolution.locator('option[value="1"]')).toHaveText('Native (100%) · 3088 × 1440');
+    await resolution.selectOption('1');
+    const canvas = page.locator('#arena canvas');
+    await expect(canvas).toHaveAttribute('width', '3088');
+    await expect(canvas).toHaveAttribute('height', '1440');
+
+    await page.setViewportSize({ width: 360, height: 772 });
+    await expect(resolution.locator('option[value="1"]')).toHaveText('Native (100%) · 1440 × 3088');
+    await expect(canvas).toHaveAttribute('width', '1440');
+    await expect(canvas).toHaveAttribute('height', '3088');
+    await expect(resolution).toHaveValue('1');
+
+    await resolution.selectOption('0.75');
+    await expect(canvas).toHaveAttribute('width', '540');
+    await expect(canvas).toHaveAttribute('height', '1158');
+    await resolution.selectOption('0.5');
+    await expect(canvas).toHaveAttribute('width', '360');
+    await expect(canvas).toHaveAttribute('height', '772');
+    await resolution.selectOption('1');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('fkm.settings.v1')!).graphics)).toMatchObject({ preset: 'custom', resolution: 1 });
+  } finally {
+    await context.close();
+  }
+});
+
 test('loads actual WebGL full-screen, adjusts pitch, contact, difficulty and remembers preferences', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
