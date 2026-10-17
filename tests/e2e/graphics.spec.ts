@@ -29,22 +29,40 @@ test('loads CC0 anatomy offline and renders all hair/kit identities through the 
     const key = new THREE.DirectionalLight('#fff0dd', 3); key.position.set(-2, 4, -4); scene.add(key);
     const player = new Player('taker'); scene.add(player.group);
     const post = new PostStack(renderer, scene, camera);
-    post.configure({ msaa: 0, smaa: true, bloom: true, quality: 'high' }, 360, 600);
+    post.configure({ antialias: 'fxaa', bloom: true, quality: 'high' }, 360, 600);
     const results = [];
-    for (const id of ['ronaldo', 'messi', 'mbappe', 'salah', 'haaland', 'modric', 'vinicius-special']) {
+    for (const id of ['ronaldo', 'messi', 'mbappe', 'salah', 'haaland', 'modric', 'yamal', 'vinicius-special']) {
       player.setProfile(getPlayer(id)); player.idle(.5); player.updateLod(camera);
       post.render();
       results.push({ id, ...player.group.userData.appearance });
     }
+    const aaModes = [];
+    for (const antialias of ['off', 'fxaa', 'smaa']) {
+      post.configure({ antialias, bloom: false, quality: 'high' }, 360, 600); post.render();
+      aaModes.push({ mode: antialias, samples: post.composer.renderTarget1.samples });
+    }
+    const contacts = [];
+    for (const foot of ['left', 'right']) {
+      player.run(1, foot, { x: foot === 'right' ? -.6 : .6, y: 0 });
+      player.alignStrike(foot, { x: 0, z: 0 }, 1);
+      const ankle = player.group.children[0].getObjectByName(foot === 'right' ? 'rightFoot' : 'leftFoot');
+      const point = ankle.localToWorld(new THREE.Vector3(0, -.02, -.12));
+      contacts.push({ foot, x: point.x, z: point.z });
+    }
+    player.setProfile(getPlayer('yamal')); player.idle(0); player.updateLod(camera); post.render();
+    const height = player.group.children[0].userData.height;
     // Keep the final canvas for a visual attachment; release the secondary GPU allocations.
     const image = renderer.domElement.toDataURL('image/png');
     post.dispose(); renderer.dispose(); renderer.domElement.remove();
-    return { results, image };
+    return { results, image, aaModes, contacts, height };
   });
+  expect(rendered.aaModes.map(aa => aa.samples)).toEqual([0, 0, 0]);
+  expect(rendered.height).toBe(1.8);
+  for (const point of rendered.contacts) { expect(point.x).toBeCloseTo(0, 5); expect(point.z).toBeCloseTo(.09, 5); }
   expect(new Set(rendered.results.map(result => result.hair)).size).toBe(7);
   expect(rendered.results.find(result => result.id === 'messi')!.kit).toBe('stripes');
   expect(rendered.results.find(result => result.id === 'modric')!.kit).toBe('checks');
   expect(rendered.results.find(result => result.id === 'vinicius-special')!.kit).toBe('sash');
-  await testInfo.attach('braided-special-kit', { body: Buffer.from(rendered.image.split(',')[1], 'base64'), contentType: 'image/png' });
+  await testInfo.attach('blonde-yamal-game-model', { body: Buffer.from(rendered.image.split(',')[1], 'base64'), contentType: 'image/png' });
   expect(errors).toEqual([]);
 });

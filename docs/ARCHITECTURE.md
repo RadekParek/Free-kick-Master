@@ -43,7 +43,7 @@ A shot setup is captured at release. Setup controls are disabled through chargin
 
 Physics advances at 120 Hz. Render frames add to an accumulator; the maximum render delta is 100 ms to avoid a spiral of death after a stall. Replay snapshots are captured every other physics step (60 Hz) and never re-run the keeper's decisions. Strongly underpowered attempts terminate after 5 simulated seconds; live frame rebounds have an eight-second limit so a slow deflection can still score.
 
-Flight and goal/save decisions are deterministic for a captured setup and wall layout. The wall gap is randomized once per kick; visual generation, synthesized noise, and soundtrack shuffle also use randomness. The turf/crowd generators use fixed seeds.
+Flight and goal/save decisions are deterministic for a captured setup (including its wake seed) and wall layout. Each live release samples a new seed once; the nominal guide uses seed zero. Replays sample recorded states, not fresh randomness. The wall gap is randomized once per kick; visual generation, synthesized noise, and soundtrack shuffle also use randomness. The turf/crowd generators use fixed seeds.
 
 ## Mobile/performance
 
@@ -53,7 +53,7 @@ A single WebGL renderer is resized with `ResizeObserver`; resize bursts are coal
 - Distant crowds use a generated texture on upright row strips merged into one mesh. Procedural instanced spectators remain an asset-load fallback, not a second visible crowd.
 - The trajectory guide and shot trace reuse bounded typed-array GPU buffers. Defensive-wall positions are cached rather than allocated on every physics tick.
 - Visible scenes render at the display rate. Paused gameplay overlays and backgrounding cancel animation-frame scheduling; the visible menu background remains animated.
-- Desktop rendering uses device pixel ratio multiplied by the selected render scale. The explicit Native (100%) option uses the full device pixel ratio on phones too. Reduced phone modes cap device pixel ratio at 2× before scaling; their Balanced preset renders at 75%, uses 512 px shadows and skips bloom, while Performance renders at 50% with no shadows or post AA/bloom. The settings and FPS monitor show the effective render size/ratio. Performance also comes from batching, distance-based LOD (high/low athlete rigs), spatial batching of stands, and culling.
+- Every device uses its full device pixel ratio multiplied by the selected render scale: 100%, 75%, or 50%. There is no DPR cap or adaptive downscale; their Balanced preset renders at 75%, uses 512 px shadows and skips bloom, while Performance renders at 50% with no shadows or post AA/bloom. The settings and FPS monitor show the effective render size/ratio. Performance also comes from batching, distance-based LOD (high/low athlete rigs), spatial batching of stands, and culling.
 - The shot-local camera and taker positioning handle wide angles and portrait phones without cropping the entire kicker out of view. Landscape uses a narrower broadcast lens for a larger keeper at the same approximate camera distance; optional left/right orbit controls reset to centre when a shot is released.
 - An in-game field-map popover shares the settings pitch map and can reposition the free kick without opening Settings. High-frequency map/slider changes update the arena once per frame.
 - Goal-net deformation runs only briefly after a goal. All fonts, portraits, crowd imagery, scripts, and audio generation are local/offline assets. Android haptics tolerate unsupported hardware.
@@ -81,7 +81,7 @@ ball and keeper dimensions, aim, shot physics and collisions are unchanged. The 
 and replay have independent lenses. Optics are cached on resize, not recomputed per frame.
 
 The fused `BroadcastOutputPass` retains Three.js output exposure/colour-space handling, then
-applies the broadcast grade before optional SMAA. One full-screen sampling pass is removed.
+applies the broadcast grade before optional single-pass FXAA or SMAA. One full-screen sampling pass is removed.
 The stadium uses the same light count, shadow-map budget and refresh cadence with rebalanced
 warm key / cool sky fill / turf bounce. Opaque atlas crowd strips now sway and cheer in their
 vertex shader, anchored at their seats, without a second crowd or buffer uploads.
@@ -97,3 +97,15 @@ keyed by the base player identity. Special editions retain that identity and the
 kit. Kit lettering and patterns are baked in one bounded opaque atlas rather than transparent
 number/crest meshes. These are nation-inspired training kits and generic anatomy, not licensed
 jerseys, proprietary player scans, or a claim of EA/FC visual parity.
+
+
+## October 17 realism and scaling update
+
+See [REALISM_UPGRADE.md](REALISM_UPGRADE.md) for the request-by-request changes, physical
+assumptions and fidelity limits. Graphics preferences now store `antialias: off | fxaa | smaa`;
+legacy custom MSAA preferences migrate to FXAA. All composer targets have zero samples.
+`ball-surface.ts` generates the offline spherical panel/seam texture. Head decoding closes
+the extraction's neck boundary; rigid limb sections have end caps and overlapping joint
+surfaces. Both LODs fit the catalogue's sole-to-skull height, excluding hair. Replay storage
+also captures topspin so rendered rolling follows the recorded ball rather than a speed-based
+visual spin invented during replay.

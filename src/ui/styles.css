@@ -486,3 +486,25 @@ dialog::backdrop { background: #04080cc8; backdrop-filter: blur(3px); }
 @media (max-height: 500px) and (min-width: 761px) {
   .menu-music { width: 260px; }
 }
+
+
+/* Original elite shield cards: embossed geometric frame, guilloché and diffraction foil.
+   No continuous per-card JS, GPU canvas, or unlicensed game artwork. */
+.player-card { isolation: isolate; clip-path: polygon(0 9%, 9% 3%, 33% 3%, 50% 0, 67% 3%, 91% 3%, 100% 9%, 97% 85%, 83% 93%, 50% 100%, 17% 93%, 3% 85%); background: radial-gradient(ellipse at 52% 18%, #fff7d0, transparent 58%), linear-gradient(135deg, #f8e4ac, #a4813f 45%, #ebce8c 75%, #776032); }
+.card-frame { position: absolute; inset: 5%; border: 1px solid #fff1be9c; border-radius: 36% 36% 20% 20% / 6% 6% 12% 12%; box-shadow: inset 0 0 0 3px #785c2c44, 0 0 0 3px #fff4ce33; pointer-events: none; z-index: 2; }
+.card-lines { background: repeating-conic-gradient(from 25deg at 50% 25%, #fff6cf19 0deg 1deg, transparent 1deg 7deg); opacity: .75; }
+.card-rating { top: 15%; left: 10%; }
+.card-rating strong { font-weight: 700; text-shadow: 0 1px #fff6c9; }
+.card-info { bottom: 10%; left: 12%; right: 12%; }
+.card-name.handwritten { font-family: var(--hand); font-weight: 700; font-size: clamp(23px, 2.8vw, 35px); letter-spacing: -.5px; transform: rotate(-3deg); transform-origin: left center; text-shadow: 0 1px #fff6cf66; }
+.card-stats { padding: 6px 0; }
+.card-country { font-size: 6px; letter-spacing: .25px; }
+.player-card.is-special { background: radial-gradient(ellipse at 55% 20%, #f1fff7, transparent 55%), conic-gradient(from 150deg at 40% 40%, #116e73, #8dffe9, #41cfcd, #21859d, #85f7df, #116e73); }
+.is-special .card-lines { background: repeating-conic-gradient(from 15deg at 50% 24%, #e4ffff66 0deg .5deg, transparent .5deg 9deg); }
+.is-special .card-frame { border-color: #c5fff5cc; box-shadow: inset 0 0 0 3px #0b6b6b66, 0 0 0 3px #b0ffed55; }
+.card-hologram { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: .26; mix-blend-mode: screen; background: repeating-linear-gradient(125deg, transparent 0 8px, #b0ffff6b 9px, transparent 10px 17px), linear-gradient(115deg, #71ffe7 8%, transparent 22%, #b59bff 36%, #fff7b5 49%, #75fff3 63%, transparent 78%); background-size: 100% 100%, 220% 220%; transition: background-position .7s ease, opacity .4s; }
+.player-card.is-special:is(:hover, :focus-visible, .selected) .card-hologram { background-position: 0 0, 100% 70%; opacity: .48; }
+.card-seal { position: absolute; z-index: 3; right: 11%; top: 49%; width: 27px; height: 32px; border: 1px solid #dbfff5; border-radius: 50%; display: grid; place-items: center; color: #defff8; background: conic-gradient(#125d70, #b4ffdc, #75b7ee, #af93e5, #125d70); box-shadow: 0 1px 8px #063c4c77; font-size: 17px; }
+.card-seal small { font: 800 6px var(--condensed); color: #093e45; margin-top: -9px; }
+.player-card:focus-visible { filter: brightness(1.12); }
+@media (prefers-reduced-motion: reduce) { .card-hologram, .player-card { transition: none; } }

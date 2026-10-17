@@ -1,4 +1,11 @@
-# Performance changes — 14 October 2026
+# Performance changes — history and current behavior
+
+**Current behavior (17 October):** all render scales are fractions of full native DPR, with
+no mobile cap. MSAA has been removed in favor of FXAA/SMAA/off. See
+[REALISM_UPGRADE.md](REALISM_UPGRADE.md) for the latest changes. Earlier DPR-cap entries below
+are historical and superseded.
+
+## 14 October baseline
 
 The earlier passes remove redundant work without reducing scene detail. The mobile pass caps
 shadows at 1024 px, gives phones a lower-cost Balanced/Performance profile, and limits very high
@@ -290,3 +297,27 @@ Native is an explicit quality choice, not the new default or a promised FPS impr
 
 Validation: TypeScript + all 127 unit tests, all 17 browser tests, production build, and
 Capacitor Android asset sync passed. No physical-phone FPS or thermal benchmark was run.
+
+
+## True native percentages and cheaper smoothing — 17 October 2026
+
+- All devices now use `validDeviceDpr * renderScale`. For 3088×1440 native, 75% is
+  2316×1080 and 50% is 1544×720 (56.25% and 25% of native pixel count respectively).
+- High uses native + FXAA, bloom and 1024 shadows. Balanced uses 75% + FXAA without bloom;
+  phone Balanced shadows remain 512. Performance uses 50%, no AA/bloom/dynamic shadows.
+- The HDR targets have zero MSAA samples. FXAA adds one full-screen pass after the fused
+  output/grade; optional SMAA retains its three internal edge/weight/blend stages. AA modes
+  are exclusive, never stacked. Legacy saved multisampling migrates to FXAA.
+- Reference elevation uses the same quadratic drag as flight; a single-entry calibration
+  cache avoids repeating the solve while only release power changes during charging.
+- Hair remains cached and opaque with one merged draw. Curl detail uses small rooted clumps,
+  not oversized beads. Joint caps and neckline sealing trade a little geometry for no holes;
+  shared buffers/LOD, palette sharing and hidden-rig pruning remain intact.
+- The ball now has spherical 32-panel colour/seam maps, separate relief (rather than treating
+  black paint as a depression), lower anisotropy and 48×32 tessellation versus 64×48 before.
+- Card diffraction is CSS only and transitions on hover/focus/selection; no per-frame JS,
+  continuously animated 38-card shader, extra asset download or AA render target.
+
+True 75% on a DPR-4 phone is more work than the old misleading capped mode. These changes
+remove unnecessary GPU work; they do not guarantee higher FPS at higher real resolution.
+Physical-phone FPS, battery and thermal measurements still need a real device.

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { athleteModel, hairGeometry, JOINTS, RigRoot, type AthleteMaterials, type Surface } from '../../src/game/athlete-model';
+import { athleteModel, fitStature, hairGeometry, JOINTS, RigRoot, type AthleteMaterials, type Surface } from '../../src/game/athlete-model';
 import { decodeHumanHead, loadHumanAnatomy } from '../../src/game/human';
 import { BroadcastOutputPass, PostStack } from '../../src/game/post';
 import { broadcastLens } from '../../src/game/camera';
@@ -38,6 +38,36 @@ describe('offline anatomy and original kit identity', () => {
     expect(g.attributes.normal.count).toBe(g.attributes.position.count);
     expect(g.attributes.position.array.every(Number.isFinite)).toBe(true);
     expect(g.boundingSphere!.radius).toBeLessThan(.3);
+  });
+  it.each(['high', 'low'] as const)('matches every catalogue height at %s detail, with soles grounded and opaque surfaces', detail => {
+    for (const profile of PLAYERS) {
+      const r = athleteModel('taker', detail, palette());
+      fitStature(r, profile.appearance.height); r.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(r, true);
+      expect(bounds.min.y).toBeCloseTo(0, 3);
+      expect(bounds.max.y).toBeCloseTo(profile.appearance.height, 3);
+      r.traverse(o => { if (o instanceof THREE.Mesh) expect((o.material as THREE.Material).transparent).toBe(false); });
+      expect(r.getObjectByName('leftFoot')).toBeTruthy(); expect(r.getObjectByName('rightFoot')).toBeTruthy();
+    }
+  });
+  it('closes torso section ends without boundary holes or backface tricks', () => {
+    const g = (athleteModel('taker', 'high', palette()).getObjectByName('torso') as THREE.Mesh).geometry;
+    const p = g.attributes.position, edges = new Map<string, number>();
+    const key = (i: number) => [p.getX(i),p.getY(i),p.getZ(i)].map(v => Math.round(v * 1e6)).join(',');
+    for (let i = 0; i < g.index!.count; i += 3) {
+      const tri = [0,1,2].map(n => key(g.index!.getX(i+n)));
+      for (let n = 0; n < 3; n++) { const edge = [tri[n],tri[(n+1)%3]].sort().join('|'); edges.set(edge, (edges.get(edge) ?? 0) + 1); }
+    }
+    expect([...edges.values()].every(count => count === 2)).toBe(true);
+  });
+  it.each(['high', 'low'])('seals the imported %s head neckline against hollow-neck views', detail => {
+    const g = decodeHumanHead(asset(detail)), counts = new Map<string, number>();
+    for (let i = 0; i < g.index!.count; i += 3) for (let j = 0; j < 3; j++) {
+      const a = g.index!.getX(i+j), b = g.index!.getX(i+(j+1)%3), key = [a,b].sort((x,y) => x-y).join('/');
+      counts.set(key, (counts.get(key) ?? 0)+1);
+    }
+    // The simplified low asset has a couple of shared non-manifold edges, but no open boundary.
+    expect([...counts.values()].every(n => n >= 2)).toBe(true);
   });
   it('rejects truncated, invalid-index and non-finite human assets', () => {
     expect(() => decodeHumanHead(new ArrayBuffer(4))).toThrow('Truncated');
@@ -116,11 +146,23 @@ describe('render work and broadcast compression', () => {
     expect(pass.material.depthWrite).toBe(false);
     const renderer = { getPixelRatio: () => 1 } as THREE.WebGLRenderer;
     const post = new PostStack(renderer, new THREE.Scene(), new THREE.PerspectiveCamera());
-    post.configure({ msaa: 0, smaa: false, bloom: false, quality: 'high' }, 800, 600);
+    post.configure({ antialias: 'off', bloom: false, quality: 'high' }, 800, 600);
     const composer = (post as unknown as { composer: { passes: unknown[] } }).composer;
     expect(composer.passes).toHaveLength(2); // RenderPass + fused output/grade (formerly 3)
     expect(composer.passes[1]).toBeInstanceOf(BroadcastOutputPass);
     post.dispose(); pass.dispose();
+  });
+  it('uses a single FXAA pass with zero MSAA samples and refreshes native-relative texels on resize', () => {
+    let ratio = 2;
+    const post = new PostStack({ getPixelRatio: () => ratio } as THREE.WebGLRenderer, new THREE.Scene(), new THREE.PerspectiveCamera());
+    post.configure({ antialias: 'fxaa', bloom: false, quality: 'high' }, 800, 600);
+    const stack = post as unknown as { composer: { passes: unknown[]; renderTarget1: THREE.WebGLRenderTarget }; aa: { uniforms: { resolution: { value: THREE.Vector2 } } } };
+    expect(stack.composer.passes).toHaveLength(3);
+    expect(stack.composer.renderTarget1.samples).toBe(0);
+    expect(stack.aa.uniforms.resolution.value.toArray()).toEqual([1/1600, 1/1200]);
+    ratio = 4; post.setSize(772, 360);
+    expect(stack.aa.uniforms.resolution.value.toArray()).toEqual([1/3088, 1/1440]);
+    post.dispose();
   });
   it.each([[1280, 800], [390, 844], [844, 390]])('enlarges distant players without scaling geometry at %ix%i', (w, h) => {
     const lens = broadcastLens(w, h);

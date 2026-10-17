@@ -24,27 +24,39 @@ That official source does **not** disclose exact launch equations, input curves,
 | Contact | A draggable 2D marker on a ball changes sidespin, topspin/backspin, and elevation. | Original coefficients and touch mapping. |
 | Foot | Left/right kicking animation and inside/outside curl naming. | Physical contact direction remains consistent. The selected player supplies original training attributes, not official EA traits. |
 | Power | Hold for up to 1.65 s to fill 0–100%; release. Over-holding releases automatically at 2.05 s. | Original timing and 16–37 m/s base speed, multiplied by the selected player’s power attribute. |
-| Trajectory | Same integration as live flight, at suggested power when idle and actual power when charging. | Full visual training assist; does not reproduce a particular PlayStyle. |
+| Trajectory | Same integration as live flight, at suggested power when idle and actual power when charging; nominal seed zero for knuckles. | Nominal training assist, not an exact predictor of a randomly seeded knuckle wake or a particular PlayStyle. |
 | Keeper | Deterministic, delayed read of the ball's current velocity with capped movement and arm reach. | Original five-level AI, not FC27 difficulty settings. |
-| Wall | 0–5 defenders, 9.15 m centre distance, synchronized jump, swept expanded-box collisions. | Articulated visuals with simplified body collision volumes. |
-| Goal/frame | 7.32 m wide, 2.44 m high, ball radius 0.11 m, swept frame tests, full-ball goal-line crossing. | Post impacts are resolved as woodwork; subsequent ricochet goals are not modeled. |
+| Wall | 0–5 defenders, 10.5 m centre distance, synchronized jump, swept expanded-box collisions. | Articulated visuals with simplified body collision volumes. |
+| Goal/frame | 7.32 m wide, 2.44 m high, ball radius 0.11 m, swept frame tests, full-ball goal-line crossing. | Swept, dissipative frame contacts can continue into ricochet goals; an attempt is counted once. |
 | Replay | Recorded ball and keeper states at 60 samples/s, played at 0.55×. | Visual replay, not a newly simulated second attempt. |
 
-The gameplay camera keeps roughly the same shot-local position but uses a narrower 35° landscape lens (40° on short landscape screens) so the goal and keeper read larger, with portrait framing retained. In-game left/right controls add a bounded orbit; releasing a shot restores the neutral camera for the attempt. This is presentation tuning inspired by broadcast-style football cameras, not a claim of FC27 camera equivalence.
+The gameplay camera uses a 24° landscape lens (28° for short landscape, 38° portrait),
+with a matching dolly-back to preserve the foreground athlete while enlarging distant subjects.
+This is real perspective compression, not scaled-up people or a post-process crop.
+In-game left/right controls add a bounded orbit; releasing restores the neutral camera.
 
 ## Flight model
 
-`src/game/physics.ts` uses SI units. A fixed 1/120 s integrator applies gravity (9.81 m/s²), linear drag, a decaying Magnus-style force, and deterministic multi-frequency wake perturbations for a near-central contact above 64% power. Contact affects both launch elevation and in-flight acceleration. Turf bounces lose energy and spin.
+`src/game/physics.ts` uses SI units. A fixed 1/120 s integrator applies gravity (9.81 m/s²), speed-dependent quadratic drag, saturated Magnus lift, spin decay, and seeded multi-frequency wake perturbations for a near-central contact above 64% power. Contact affects both launch elevation and in-flight acceleration. The fake extra gravity after the apex is removed. Turf bounces dissipate energy and exchange tangential slip with spin; rolling uses a bounded approximately constant resistance.
 
-A reference elevation is solved for the **suggested power**, with no spin. This only converts the aiming control into a useful launch angle. It does **not** solve the actual powered/spinning shot to land at the target. Changing power or contact can send the ball wide, over, short, into a wall, or into a keeper's reach. The preview uses precisely the same integration as live flight but intentionally does not simulate defensive collisions: the player must read the wall and keeper.
+A reference elevation is solved for the **suggested power**, with no spin. This only converts the aiming control into a useful launch angle. It does **not** solve the actual powered/spinning shot to land at the target. Changing power or contact can send the ball wide, over, short, into a wall, or into a keeper's reach. The preview uses the same integrator with a stable nominal wake seed; live knuckle attempts have different captured seeds. It intentionally does not simulate defensive collisions: the player must read the wall and keeper.
 
 `src/game/simulation.ts` is the shared, tested live-shot stepper: integrate, react keeper, swept wall collision, swept keeper-plane reach test, goal-frame collision, then whole-ball goal crossing. No random success or save probability is used. A 5-second flight limit safely resolves very weak/wide attempts.
 
 ## Version 2 tuning and player attributes
 
-The side-force coefficient is **0.0068**, up from **0.005** (+36%). Vertical spin retains 0.005, so more sidespin does not unexpectedly change the topspin tuning. Keeper spin anticipation uses the same new side coefficient.
+The October 17 model uses a 0.43 kg, 0.11 m radius ball, air density 1.225 kg/m³ and
+`F_drag = 0.5 ρ A Cd(v) |v| v`. Cd smoothly decreases from approximately 0.29 to 0.15
+through the 18 m/s drag-crisis region. Spin lift saturates at a lift coefficient of 0.28.
+These are plausible engineering approximations, not measurements of a particular branded ball.
 
-Central contact within radius 0.17 and power above 64% activates a low-spin wake. The lateral force blends 8.8 and 15.4 rad/s components (base amplitudes 19 and 6 m/s²); vertical wake uses 9.7 rad/s with amplitude 7.5 m/s² and a downward bias. A 0.2 s envelope introduces the wake after launch. The force is lateral to the actual flight, not fixed to the world x axis. A reference 30 m / 72% shot is unit-tested for >0.6 m lateral excursion, at least three lateral-velocity sign changes, and >0.25 m late dip relative to its non-knuckling counterpart. The old high-frequency micro-jitter was much less visible.
+Central contact within radius 0.17 and power above 64% activates an unsteady wake. Smooth
+8.8/15.4 rad/s lateral components (6/2 m/s² reference amplitudes) and a 9.7 rad/s vertical
+component (3 m/s²) are modulated by speed, player attribute and the attempt's phase seed.
+There is no mandatory downward bias and no steering toward the frame or away from the keeper.
+Each live attempt samples one new seed at release; fixed seeds repeat exactly and replay
+never resimulates the wake. Identical controls therefore need not produce identical knuckles.
+Ordinary curl trajectories are not given random aiming errors.
 
 `src/players.ts` contains **fan-made training ratings**, not current FC27 ratings. They change real flight:
 

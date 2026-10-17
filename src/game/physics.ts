@@ -1,4 +1,4 @@
-/** Original, deterministic set-piece physics. All distances are metres, time is seconds. */
+/** Seeded, fixed-step set-piece physics. All distances are metres, time is seconds. */
 import type { TakerAttributes } from '../players';
 export interface Vec3 { x: number; y: number; z: number }
 export interface Position { x: number; z: number }
@@ -12,6 +12,8 @@ export interface ShotSetup {
   power: number;
   foot: Foot;
   attributes?: TakerAttributes;
+  /** Per-attempt wake seed. Omitted for a stable nominal trajectory guide. */
+  seed?: number;
 }
 export interface BallState {
   position: Vec3;
@@ -20,6 +22,7 @@ export interface BallState {
   topSpin: number;
   knuckle: boolean;
   knuckleStrength: number;
+  wakePhase?: number;
   time: number;
   bounces: number;
   frameHits: number;
@@ -34,11 +37,16 @@ export const FIXED_DT = 1 / 120;
 export const GRAVITY = 9.81;
 /** Aim intentionally reaches well beyond the frame and below ground for low drives and misses. */
 export const AIM_LIMITS = { x: 22, yMin: -1.25, yMax: 10.5 } as const;
-const DRAG = 0.16;
+export const BALL_MASS = 0.43;
+export const AIR_DENSITY = 1.225;
+const AERO = 0.5 * AIR_DENSITY * Math.PI * BALL_RADIUS ** 2 / BALL_MASS;
+/** Smooth drag crisis for a panelled size-5 ball. Not a per-brand wind-tunnel fit. */
+export function dragCoefficient(speed: number): number { return 0.15 + 0.14 / (1 + Math.exp((speed - 18) / 2.5)); }
+
 /** Distance from the kick to the defensive wall. Slightly further back than the 9.15 m law. */
 export const WALL_DISTANCE = 10.5;
-export const SIDE_MAGNUS = 0.011; // ~16% more curve than the previous tuning.
-const TOP_MAGNUS = 0.005;
+export const SIDE_MAGNUS = AERO * 1.05 * BALL_RADIUS;
+const TOP_MAGNUS = SIDE_MAGNUS;
 export const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export const distanceToGoal = (p: Position) => Math.hypot(p.x, p.z);
@@ -71,20 +79,31 @@ export function distanceBounds(position: Position): { min: number; max: number }
   return { min, max };
 }
 
+let referenceCache: { distance: number; height: number; speed: number; angle: number } | undefined;
+
 /** Aiming sets elevation for a reference power, NOT a homing target for the actual shot. */
 function referenceElevation(distance: number, height: number, speed: number): number {
+  if (referenceCache?.distance === distance && referenceCache.height === height && referenceCache.speed === speed) return referenceCache.angle;
   let low = -0.12;
   let high = 1.18;
-  for (let i = 0; i < 22; i++) {
+  // Solve the nominal no-spin trajectory using the same speed-dependent drag and gravity.
+  // Fixed 60 Hz calibration is bounded and allocation-free (only when a guide is refreshed).
+  for (let i = 0; i < 16; i++) {
     const angle = (low + high) / 2;
-    const vHorizontal = speed * Math.cos(angle);
-    const ratio = clamp(1 - DRAG * distance / vHorizontal, 0.001, 1);
-    const t = -Math.log(ratio) / DRAG;
-    const y = BALL_RADIUS + (speed * Math.sin(angle) + GRAVITY / DRAG) * (1 - ratio) / DRAG - GRAVITY * t / DRAG;
+    let vx = speed * Math.cos(angle), vy = speed * Math.sin(angle), x = 0, y = BALL_RADIUS;
+    for (let n = 0; n < 360 && x < distance; n++) {
+      const drag = AERO * dragCoefficient(Math.hypot(vx, vy)) * Math.hypot(vx, vy);
+      vx -= drag * vx / 60; vy -= (GRAVITY + drag * vy) / 60;
+      const dx = vx / 60;
+      const fraction = Math.min(1, (distance - x) / Math.max(dx, 1e-6));
+      x += dx; y += vy / 60 * fraction;
+    }
     if (y < height) low = angle;
     else high = angle;
   }
-  return (low + high) / 2;
+  const angle = (low + high) / 2;
+  referenceCache = { distance, height, speed, angle };
+  return angle;
 }
 
 export function launchBall(setup: ShotSetup): BallState {
@@ -106,6 +125,8 @@ export function launchBall(setup: ShotSetup): BallState {
     topSpin: cy * 22,
     knuckle: Math.hypot(cx, cy) < 0.17 && setup.power > 0.64,
     knuckleStrength: (setup.attributes ? 0.6 + (setup.attributes.knuckle - 60) * 0.017 : 1) * (0.75 + clamp((setup.power - 0.64) / 0.36, 0, 1) * 0.25),
+    // A stateless hash: repeatable for tests/replay, distinct for independently seeded live kicks.
+    wakePhase: (((((setup.seed ?? 0) >>> 0) * 0.61803398875) % 1) * Math.PI * 2),
     time: 0,
     bounces: 0,
     frameHits: 0,
@@ -119,23 +140,25 @@ export function cloneBall(ball: BallState): BallState {
 export function integrateBall(ball: BallState, dt = FIXED_DT): void {
   const v = ball.velocity;
   const horizontalSpeed = Math.hypot(v.x, v.z);
-  const decay = Math.exp(-ball.time * 0.13);
-  let ax = -DRAG * v.x + SIDE_MAGNUS * ball.sideSpin * -v.z * decay;
-  let az = -DRAG * v.z + SIDE_MAGNUS * ball.sideSpin * v.x * decay;
-  let ay = -GRAVITY - DRAG * v.y - TOP_MAGNUS * ball.topSpin * horizontalSpeed * decay;
-  if (v.y < 0) ay *= 1.2; // the ball drops faster after its apex
-  if (ball.knuckle) {
-    // Low-frequency wake transitions cause visible lateral direction changes.
-    // Unlike tiny high-frequency jitter, this produces measurable late movement.
-    // Still deterministic; the ball is never steered toward the goal or away from a keeper.
-    const t = ball.time;
-    const wake = Math.min(1, t / 0.2) * ball.knuckleStrength;
-    const sideForce = (Math.cos(t * 8.8) * 19 + Math.sin(t * 15.4) * 6) * wake;
+  const speed3 = Math.hypot(v.x, v.y, v.z);
+  const drag = AERO * dragCoefficient(speed3) * speed3;
+  // Lift saturates at large spin ratios rather than growing without bound.
+  const liftLimit = Math.min(1, .28 / Math.max(.001, 1.05 * BALL_RADIUS * Math.hypot(ball.sideSpin, ball.topSpin) / Math.max(1, speed3)));
+  let ax = -drag * v.x + SIDE_MAGNUS * ball.sideSpin * -v.z * liftLimit;
+  let az = -drag * v.z + SIDE_MAGNUS * ball.sideSpin * v.x * liftLimit;
+  let ay = -GRAVITY - drag * v.y - TOP_MAGNUS * ball.topSpin * horizontalSpeed * liftLimit;
+  if (ball.knuckle && ball.position.y > BALL_RADIUS) {
+    const t = ball.time, phase = ball.wakePhase ?? 0;
+    const wake = Math.min(1, t / 0.2) * ball.knuckleStrength * Math.min(1, (speed3 / 27) ** 2);
+    // Smooth, bounded unsteady wake; no per-step random force and no goal/keeper steering.
+    const sideForce = (Math.cos(t * 8.8 + phase) * 6 + Math.sin(t * 15.4 + phase * 1.7) * 2) * wake;
     const speed = Math.max(1, horizontalSpeed);
     ax += -v.z / speed * sideForce;
     az += v.x / speed * sideForce;
-    ay += (Math.sin(t * 9.7 + 0.6) * 10.5 - 1.6) * wake;
+    ay += Math.sin(t * 9.7 + .6 + phase) * 3 * wake;
   }
+  const spinDecay = Math.exp(-dt * .12);
+  ball.sideSpin *= spinDecay; ball.topSpin *= spinDecay;
   v.x += ax * dt;
   v.y += ay * dt;
   v.z += az * dt;
@@ -145,19 +168,28 @@ export function integrateBall(ball: BallState, dt = FIXED_DT): void {
   ball.time += dt;
   if (ball.position.y < BALL_RADIUS) {
     ball.position.y = BALL_RADIUS;
-    if (v.y < -0.7) {
-      v.y = -v.y * 0.43;
-      v.x *= 0.81;
-      v.z *= 0.81;
+    const impactSpeed = Math.max(0, -v.y);
+    if (impactSpeed > .7) {
+      const restitution = clamp(.7 - impactSpeed * .008, .54, .7);
+      v.y = impactSpeed * restitution;
+      // Coulomb friction exchanges slip velocity with spin; it cannot reverse sliding.
+      const slip = horizontalSpeed - ball.topSpin * BALL_RADIUS;
+      const impulse = clamp(slip / 3.5, -.22 * (1 + restitution) * impactSpeed, .22 * (1 + restitution) * impactSpeed);
+      const scale = horizontalSpeed > 1e-5 ? Math.max(0, horizontalSpeed - impulse) / horizontalSpeed : 0;
+      v.x *= scale; v.z *= scale;
+      ball.topSpin += 2.5 * impulse / BALL_RADIUS;
       ball.bounces++;
     } else {
       v.y = 0;
-      const friction = Math.max(0, 1 - dt * 1.8);
-      v.x *= friction;
-      v.z *= friction;
+      // Rolling resistance is approximately constant, not a heavy exponential brake.
+      const speed = Math.hypot(v.x, v.z);
+      const next = Math.max(0, speed - .65 * dt);
+      const scale = speed > 0 ? next / speed : 0;
+      v.x *= scale; v.z *= scale;
+      ball.topSpin = next / BALL_RADIUS;
     }
-    ball.sideSpin *= 0.985;
-    ball.topSpin *= 0.985;
+    ball.sideSpin *= Math.exp(-dt * 3);
+
   }
 }
 

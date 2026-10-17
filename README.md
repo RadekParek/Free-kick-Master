@@ -94,3 +94,12 @@ The curated catalogue is in `src/players.ts`. To add a player, add a validated p
 ## Stack
 
 TypeScript · Three.js · Vite · Capacitor 7 · Vitest · Playwright. All rendering and gameplay run locally; no personal data is sent anywhere.
+
+
+### Native scaling and realism update (17 October)
+
+All render scales are actual percentages of the device-reported native viewport: 100%, 75%,
+50%, with no hidden phone cap. High now uses native resolution and fast FXAA instead of MSAA;
+Custom also offers SMAA or Off. [Upgrade notes](docs/REALISM_UPGRADE.md) cover seeded knuckle
+flight, revised aerodynamics/turf response, closed player joints/necklines, catalogue-height
+scaling, signature poses, outside-foot animation and original holographic-style shield cards.

@@ -24,7 +24,7 @@ import { disposeSceneResources } from './resources';
 import { effectivePixelRatio, isMobileDevice, type Settings, type ShotResult } from '../state';
 
 /** Real penalty run-ups take about 1.2 to 1.4 s; the taker reaches the ball at this run progress. */
-const RUNUP_SECONDS = 1.3;
+const RUNUP_SECONDS = 1.65;
 const RUNUP_PROGRESS_END = 0.9;
 const CAMERA_ROTATION_STEP = Math.PI / 18;
 const CAMERA_ROTATION_LIMIT = Math.PI / 3;
@@ -116,8 +116,8 @@ export class Arena {
     this.shotSetup = this.setup(recommendedPower(settings.position));
     this.ball = launchBall(this.shotSetup);
     this.keeper = createKeeper(settings.position.x);
-    // Native resolution is always used; MSAA is only needed on low-density screens.
-    // Canvas MSAA is off: anti-aliasing comes from the post pipeline so the settings can change it live.
+    // Native-relative resolution and post-process AA are user controlled.
+    // No canvas or HDR-target MSAA: avoid multisampled buffers and resolves on phones.
     this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'high-performance' });
     this.renderer.info.autoReset = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -222,7 +222,7 @@ export class Arena {
       this.renderer.shadowMap.needsUpdate = true;
     }
     if (g.resolution !== previous.resolution) this.queueResize();
-    else if (qualityChanged || g.msaa !== previous.msaa || g.smaa !== previous.smaa || g.bloom !== previous.bloom) {
+    else if (qualityChanged || g.antialias !== previous.antialias || g.bloom !== previous.bloom) {
       this.post.configure(this.postOptions(), this.width, this.height);
     }
     if (moved || playerChanged || (this.phase === 'result' && gameplayChanged)) this.reset();
@@ -241,7 +241,7 @@ export class Arena {
 
   private postOptions(): PostOptions {
     const g = this.settings.graphics;
-    return { msaa: g.msaa, smaa: g.smaa, bloom: g.bloom, quality: this.settings.quality };
+    return { antialias: g.antialias, bloom: g.bloom, quality: this.settings.quality };
   }
 
   private queueResize() {
@@ -320,7 +320,7 @@ export class Arena {
     // Every attempt leaves the next camera view at the familiar broadcast angle.
     this.cameraYawOffset = 0;
     this.power = clamp(this.power, 0.06, 1);
-    this.shotSetup = this.setup(this.power);
+    this.shotSetup = { ...this.setup(this.power), seed: Math.floor(Math.random() * 0x100000000) };
     this.guide.visible = false;
     this.ring.visible = false;
     this.replayFrames.clear();
@@ -428,7 +428,7 @@ export class Arena {
     const p = this.settings.position;
     const side = this.settings.foot === 'right' ? -1 : 1;
     const t = Math.min(1, Math.max(0, run) / RUNUP_PROGRESS_END);
-    const e = t * t * (3 - 2 * t); // eased: the approach accelerates, then settles at the ball
+    const e = t ** 1.35; // accelerate into the plant instead of stopping before the strike
     const length = distanceToGoal(p);
     const back = lerp(4.8, 0.21, e);
     // The lateral offset falls off faster than the distance, which bends the approach into an arc.
@@ -469,6 +469,8 @@ export class Arena {
     attribute.needsUpdate = true;
   }
 
+  private readonly spinAxis = new THREE.Vector3();
+  private readonly spinRotation = new THREE.Quaternion();
   private readonly frustum = new THREE.Frustum();
   private readonly viewProjection = new THREE.Matrix4();
   private readonly viewSphere = new THREE.Sphere(new THREE.Vector3(), 1.4);
@@ -507,7 +509,9 @@ export class Arena {
     } else if (this.phase === 'runup') {
       const progress = Math.min(1, this.phaseTime / RUNUP_SECONDS);
       this.positionTaker(progress);
-      this.taker.run(progress, this.settings.foot);
+      this.taker.run(progress, this.settings.foot, this.settings.contact);
+      const plant = clamp((progress - .88) / .12, 0, 1);
+      this.taker.alignStrike(this.settings.foot, this.shotSetup.position, plant * plant * (3 - 2 * plant));
       this.keeperModel.keeperPose(this.keeper, this.time, Math.max(0, (progress - 0.55) / 0.45));
       if (progress >= 1) {
         this.ball = launchBall(this.shotSetup);
@@ -521,7 +525,7 @@ export class Arena {
         this.stepShot();
         this.accumulator -= FIXED_DT;
       }
-      this.taker.followThrough(this.ball.time, this.settings.foot);
+      this.taker.followThrough(this.ball.time, this.settings.foot, this.settings.contact);
       const jump = wallJump(this.ball.time);
       this.wallModels.forEach(p => { if (this.inView(p.group)) p.wallPose(jump, this.ball.time); });
       this.keeperModel.keeperPose(this.keeper, this.time);
@@ -533,14 +537,20 @@ export class Arena {
           this.accumulator -= FIXED_DT;
         }
       }
-      this.taker.react(this.lastResult!.outcome, this.phaseTime, this.ball.time, this.settings.foot);
+      this.taker.react(this.lastResult!.outcome, this.phaseTime, this.ball.time, this.settings.foot, this.settings.contact);
       this.wallModels.forEach(p => { if (this.inView(p.group)) p.wallPose(0, this.time); });
       this.keeperModel.keeperRecover(this.keeper, this.time, this.phaseTime, this.lastResult!.outcome);
     } else if (this.phase === 'replay') this.stepReplay(dt);
     this.football.position.set(this.ball.position.x, this.ball.position.y, this.ball.position.z);
     if (this.phase === 'flight' || this.phase === 'result' || this.phase === 'replay') {
-      this.football.rotation.x -= dt * (this.ball.knuckle ? 1.3 : Math.hypot(this.ball.velocity.x, this.ball.velocity.z) * 2.8);
-      this.football.rotation.y += dt * this.ball.sideSpin;
+      const v = this.ball.velocity, speed = Math.max(.001, Math.hypot(v.x, v.z));
+      const roll = this.ball.knuckle ? 1.3 : this.ball.topSpin;
+      this.spinAxis.set(v.z / speed * roll, this.ball.sideSpin, -v.x / speed * roll);
+      const angularSpeed = this.spinAxis.length();
+      if (angularSpeed > .001) {
+        this.spinRotation.setFromAxisAngle(this.spinAxis.multiplyScalar(1 / angularSpeed), angularSpeed * dt);
+        this.football.quaternion.premultiply(this.spinRotation);
+      }
     }
     this.ballShadow.position.set(this.ball.position.x, 0.022, this.ball.position.z);
     this.ballShadow.scale.setScalar(1 + this.ball.position.y * 0.18);
@@ -590,13 +600,17 @@ export class Arena {
         this.ball.position.z = -2.05;
         this.ball.velocity.z = Math.abs(this.ball.velocity.z) * 0.1;
       }
-      if (this.ball.position.z > -BALL_RADIUS) {
-        this.ball.position.z = -BALL_RADIUS;
-        this.ball.velocity.z = 0;
+      const half = GOAL_WIDTH / 2 - BALL_RADIUS;
+      if (Math.abs(this.ball.position.x) > half) {
+        this.ball.position.x = Math.sign(this.ball.position.x) * half;
+        this.ball.velocity.x = -Math.sign(this.ball.position.x) * Math.abs(this.ball.velocity.x) * .18;
       }
-      this.ball.position.x = clamp(this.ball.position.x, -GOAL_WIDTH / 2 + 0.15, GOAL_WIDTH / 2 - 0.15);
-      this.ball.position.y = Math.min(this.ball.position.y, GOAL_HEIGHT - 0.1);
-      this.ball.velocity.x *= 0.98;
+      if (this.ball.position.y > GOAL_HEIGHT - BALL_RADIUS) {
+        this.ball.position.y = GOAL_HEIGHT - BALL_RADIUS;
+        this.ball.velocity.y = -Math.abs(this.ball.velocity.y) * .18;
+      }
+      // The front is open: a scored ball may rebound back out, without recounting the goal.
+
     }
     this.recordFrame();
   }
@@ -662,10 +676,10 @@ export class Arena {
       const elapsed = this.ball.time - this.resultBallTime;
       if (elapsed >= 0 && this.lastResult) {
         this.keeperModel.keeperRecover(this.keeper, this.ball.time, elapsed, this.lastResult.outcome);
-        this.taker.react(this.lastResult.outcome, elapsed, this.ball.time, this.settings.foot);
+        this.taker.react(this.lastResult.outcome, elapsed, this.ball.time, this.settings.foot, this.settings.contact);
       } else {
         this.keeperModel.keeperPose(this.keeper, this.ball.time);
-        this.taker.followThrough(this.ball.time, this.settings.foot);
+        this.taker.followThrough(this.ball.time, this.settings.foot, this.settings.contact);
       }
       const jump = wallJump(this.ball.time);
       this.wallModels.forEach(p => { if (p.group.visible) p.wallPose(jump, this.ball.time); });

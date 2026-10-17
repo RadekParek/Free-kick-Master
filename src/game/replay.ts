@@ -2,7 +2,7 @@ import { lerp, type BallState } from './physics';
 import type { KeeperState } from './keeper';
 
 // Fixed-capacity, full-precision recording. No per-sample objects or per-frame replay clones.
-const STRIDE = 19;
+const STRIDE = 20;
 export class ReplayBuffer {
   private readonly data: Float64Array;
   length = 0;
@@ -19,7 +19,7 @@ export class ReplayBuffer {
     d[i++] = keeper.dive; d[i++] = keeper.direction;
     d[i++] = keeper.glove.x; d[i++] = keeper.glove.y; d[i++] = keeper.glove.z;
     d[i++] = Number(keeper.reacted);
-    d[i] = keeper.velocityX;
+    d[i++] = keeper.velocityX; d[i] = ball.topSpin;
   }
   /** Sample into the existing state objects. Continuous keeper motion is interpolated too. */
   sample(frame: number, ball: BallState, keeper: KeeperState): boolean {
@@ -35,6 +35,7 @@ export class ReplayBuffer {
     keeper.glove.x = lerp(d[a + 14], d[b + 14], t); keeper.glove.y = lerp(d[a + 15], d[b + 15], t); keeper.glove.z = lerp(d[a + 16], d[b + 16], t);
     keeper.reacted = Boolean(d[a + 17]);
     keeper.velocityX = lerp(d[a + 18], d[b + 18], t);
+    ball.topSpin = lerp(d[a + 19], d[b + 19], t);
     return true;
   }
 }

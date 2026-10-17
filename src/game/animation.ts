@@ -1,16 +1,20 @@
 import type { Object3D } from 'three';
 import type { KeeperState } from './keeper';
-import { clamp, lerp, type Foot, type Outcome } from './physics';
+import { clamp, lerp, type Contact, type Foot, type Outcome } from './physics';
 
 export type PlayerRole = 'taker' | 'wall' | 'keeper';
 export interface MotionRig {
+  leftFoot?: Object3D; rightFoot?: Object3D;
   body: Object3D; head: Object3D; torso: Object3D;
   leftLeg: Object3D; rightLeg: Object3D; leftShin: Object3D; rightShin: Object3D;
   leftArm: Object3D; rightArm: Object3D; leftForearm: Object3D; rightForearm: Object3D;
 }
 const smooth = (x: number) => { const t = clamp(x, 0, 1); return t * t * (3 - 2 * t); };
 
-export function idlePose(rig: MotionRig, time: number, role: PlayerRole = 'taker') {
+export type Stance = 'neutral' | 'ronaldo' | 'neymar';
+
+export function idlePose(rig: MotionRig, time: number, role: PlayerRole = 'taker', stance: Stance = 'neutral') {
+  rig.leftFoot?.rotation.set(0, 0, 0); rig.rightFoot?.rotation.set(0, 0, 0);
   const breath = Math.sin(time * 2.2), shift = Math.sin(time * 0.85);
   rig.body.position.set(shift * 0.012, breath * 0.007, 0);
   rig.head.rotation.set(0.025 * breath, Math.sin(time * 0.55) * 0.09, -shift * 0.018);
@@ -24,18 +28,29 @@ export function idlePose(rig: MotionRig, time: number, role: PlayerRole = 'taker
   rig.rightShin.rotation.set(Math.max(0, Math.sin(time * 2.6 + Math.PI)) * 0.035, 0, 0);
   rig.leftArm.rotation.set(-0.12 + Math.sin(time * 1.7) * 0.04, 0, -0.16);
   rig.rightArm.rotation.set(0.07 + Math.sin(time * 1.7 + 1) * 0.04, 0, 0.16);
+  if (role === 'taker' && stance === 'ronaldo') {
+    rig.leftLeg.rotation.z = -.14; rig.rightLeg.rotation.z = .14;
+    rig.leftArm.rotation.z = -.12; rig.rightArm.rotation.z = .12;
+    rig.head.rotation.x = -.08; rig.body.rotation.x = .025;
+  } else if (role === 'taker' && stance === 'neymar') {
+    rig.body.rotation.z = -.045; rig.body.rotation.y = .12;
+    rig.leftLeg.rotation.x = .12; rig.rightShin.rotation.x = -.1;
+    rig.leftForearm.rotation.x = .38; rig.head.rotation.y = -.12;
+  }
   if (role === 'wall') {
     rig.leftArm.rotation.x = -0.25;
     rig.rightArm.rotation.x = -0.25;
     rig.leftArm.rotation.z = -0.32;
     rig.rightArm.rotation.z = 0.32;
   }
-  rig.torso.rotation.z = Math.sin(time * 1.4) * 0.012;
+  rig.torso.rotation.set(0, 0, Math.sin(time * 1.4) * .012);
 }
 
-export function runPose(rig: MotionRig, phase: number, foot: Foot) {
+export function runPose(rig: MotionRig, phase: number, foot: Foot, contact: Contact = { x: 0, y: 0 }) {
   // Approach: the stride quickens and the body leans over the ball; the strike is a
   // backswing with a flexed knee, a hip turn, and a whip through the ball.
+  rig.leftFoot?.rotation.set(0, 0, 0); rig.rightFoot?.rotation.set(0, 0, 0);
+  const outside = contact.x * (foot === 'right' ? 1 : -1) < -.12;
   const kickStart = 0.7;
   const approach = Math.min(phase, kickStart) / kickStart;
   // Cadence rises through the run: about five steps from the start to the plant.
@@ -55,7 +70,7 @@ export function runPose(rig: MotionRig, phase: number, foot: Foot) {
   rig.torso.rotation.set(0, 0, 0);
   rig.leftForearm.rotation.set(0.45 + 0.25 * Math.max(0, -swing), 0, 0);
   rig.rightForearm.rotation.set(0.45 + 0.25 * Math.max(0, swing), 0, 0);
-  rig.body.rotation.set(-0.06 - 0.14 * approach, -sign * 0.06 * approach, 0);
+  rig.body.rotation.set(0.06 + 0.14 * approach, -sign * 0.06 * approach, 0);
   rig.leftLeg.rotation.set(swing * amp, 0, 0);
   rig.rightLeg.rotation.set(-swing * amp, 0, 0);
   rig.leftShin.rotation.x = Math.min(0, -swing) * 1.0 * (0.4 + approach);
@@ -67,7 +82,7 @@ export function runPose(rig: MotionRig, phase: number, foot: Foot) {
     const k = (phase - kickStart) / (1 - kickStart);
     const back = smooth(k / 0.55);
     const whip = smooth((k - 0.55) / 0.25);
-    const leg = whip > 0 ? -1.35 + (1.7 + 1.35) * whip : -0.95 - 0.4 * back;
+    const leg = whip > 0 ? -1.35 + (.22 + 1.35) * whip : -0.95 - 0.4 * back;
     const knee = -1.4 * (whip > 0 ? 1 - whip : back);
     striking.rotation.set(leg, 0, sign * -0.1 * (1 - whip));
     strikingShin.rotation.x = knee;
@@ -75,24 +90,35 @@ export function runPose(rig: MotionRig, phase: number, foot: Foot) {
     supportShin.rotation.x = -0.2;
     armForward.rotation.set(-0.7 - 0.5 * whip, 0, foot === 'right' ? -0.95 : 0.95);
     armBack.rotation.set(0.6 + 0.4 * back, 0, foot === 'right' ? 0.95 : -0.95);
-    rig.body.rotation.x = -0.2 - 0.1 * whip;
+    const ankle = foot === 'right' ? rig.rightFoot : rig.leftFoot;
+    ankle?.rotation.set(.14 * whip, sign * (outside ? .52 : -.28) * whip, -sign * .12 * whip);
+    striking.rotation.y = sign * (outside ? .28 : -.2) * whip;
+    striking.rotation.z += sign * (outside ? -.18 : .1) * whip;
+    rig.torso.rotation.y = -sign * .12 * back;
+    rig.body.rotation.x = .14 + .08 * whip;
     rig.body.rotation.y = sign * (0.25 * whip - 0.12 * back);
     rig.body.rotation.z = sign * (0.14 * back - 0.08 * whip);
   }
 }
 
 /** Settle from the exact contact pose, rather than snapping back to idle at impact. */
-export function followThroughPose(rig: MotionRig, time: number, foot: Foot) {
-  runPose(rig, 1, foot);
+export function followThroughPose(rig: MotionRig, time: number, foot: Foot, contact: Contact = { x: 0, y: 0 }) {
+  runPose(rig, 1, foot, contact);
   const settle = smooth(time / 0.85);
   const striking = foot === 'right' ? rig.rightLeg : rig.leftLeg;
   const support = foot === 'right' ? rig.leftLeg : rig.rightLeg;
-  striking.rotation.x = lerp(1.7, -0.04, settle);
+  // Contact is low at the ball. The high swing happens AFTER contact, not before it.
+  const lift = Math.sin(Math.PI * clamp(time / .65, 0, 1)) * .9 * (1 - settle);
+  striking.rotation.x = lerp(.22, -0.04, settle) + lift;
+  striking.rotation.y *= 1 - settle;
+  if (rig.leftFoot) rig.leftFoot.rotation.set(rig.leftFoot.rotation.x * (1 - settle), rig.leftFoot.rotation.y * (1 - settle), rig.leftFoot.rotation.z * (1 - settle));
+  if (rig.rightFoot) rig.rightFoot.rotation.set(rig.rightFoot.rotation.x * (1 - settle), rig.rightFoot.rotation.y * (1 - settle), rig.rightFoot.rotation.z * (1 - settle));
   support.rotation.x = lerp(-0.2, 0.03, settle);
   rig.leftShin.rotation.x *= 1 - settle;
   rig.rightShin.rotation.x *= 1 - settle;
   rig.body.rotation.x *= 1 - settle;
   rig.body.rotation.y *= 1 - settle;
+  rig.torso.rotation.y *= 1 - settle;
   rig.body.rotation.z *= 1 - settle;
   rig.leftLeg.rotation.z *= 1 - settle;
   rig.rightLeg.rotation.z *= 1 - settle;
@@ -105,8 +131,8 @@ export function followThroughPose(rig: MotionRig, time: number, foot: Foot) {
   rig.head.rotation.x = lerp(-0.26, 0.035, settle); // Eyes follow the departing ball.
 }
 
-export function preparePose(rig: MotionRig, time: number, charge: number) {
-  idlePose(rig, time);
+export function preparePose(rig: MotionRig, time: number, charge: number, stance: Stance = 'neutral') {
+  idlePose(rig, time, 'taker', stance);
   const ready = smooth(charge * 3);
   rig.body.position.y -= 0.025 * ready;
   rig.body.rotation.x = -0.035 * ready;
@@ -115,8 +141,8 @@ export function preparePose(rig: MotionRig, time: number, charge: number) {
   rig.rightForearm.rotation.x += 0.2 * ready;
 }
 
-export function reactionPose(rig: MotionRig, outcome: Outcome, elapsed: number, shotTime: number, foot: Foot) {
-  followThroughPose(rig, shotTime, foot);
+export function reactionPose(rig: MotionRig, outcome: Outcome, elapsed: number, shotTime: number, foot: Foot, contact?: Contact) {
+  followThroughPose(rig, shotTime, foot, contact);
   const blend = smooth((elapsed - 0.18) / 0.65);
   if (outcome === 'goal') {
     const pump = Math.sin(Math.max(0, elapsed - 0.6) * 7) * Math.exp(-Math.max(0, elapsed - 1.2));
@@ -159,6 +185,11 @@ export function keeperPose(rig: MotionRig, k: KeeperState, time: number, prepara
     const angle = k.direction * smooth(k.dive) * (k.targetY < 0.8 ? 1.1 : 0.94);
     rig.body.rotation.z = angle;
     rig.body.position.set(Math.sin(angle), 0.9 + (k.glove.y - 1.1) * 0.35 - Math.cos(angle), 0);
+    // Push off the near leg, tuck the trailing knee, then extend through the catch.
+    const push = Math.sin(Math.PI * clamp(k.dive * 2, 0, 1));
+    rig.body.position.y += push * .09;
+    rig.leftShin.rotation.x = -.2 - (k.direction > 0 ? .55 : .25) * push;
+    rig.rightShin.rotation.x = -.2 - (k.direction < 0 ? .55 : .25) * push;
     const extension = smooth(k.dive * 2.5);
     const reach = clamp(k.glove.y - 0.7, 0, 1.8);
     rig.leftArm.rotation.z = lerp(-0.5, -k.direction * (1.6 + reach * 0.38), extension);
@@ -185,8 +216,8 @@ export function keeperPose(rig: MotionRig, k: KeeperState, time: number, prepara
     rig.rightLeg.rotation.z = 0.07 - shuffle * 0.12 + stride * 0.14;
     rig.leftLeg.rotation.x = -0.18 + stride * 0.16;
     rig.rightLeg.rotation.x = -0.18 - stride * 0.16;
-    rig.leftShin.rotation.x = 0.18 + Math.max(0, -stride) * 0.38 + kneeLift * 0.14;
-    rig.rightShin.rotation.x = 0.18 + Math.max(0, stride) * 0.38 + kneeLift * 0.14;
+    rig.leftShin.rotation.x = -.18 - Math.max(0, -stride) * .38 - kneeLift * .14;
+    rig.rightShin.rotation.x = -.18 - Math.max(0, stride) * .38 - kneeLift * .14;
     rig.leftArm.rotation.z = -0.5 - stride * 0.08;
     rig.rightArm.rotation.z = 0.5 - stride * 0.08;
     rig.leftArm.rotation.x = 0.35 + stride * 0.16;
