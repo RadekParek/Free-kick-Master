@@ -1,6 +1,18 @@
 # Third-party notices and asset provenance
 
-The stadium geometry, procedural turf/ball, training kits, articulated 3D avatars, UI/card layout, logo, launcher art, and synthesized sound routines are original. No EA code, official FC card artwork, ripped player scans, game textures, or commercial stadium models are bundled. The presentation is FC-inspired, not an EA/FIFA product or endorsement.
+The stadium geometry, procedural turf/ball, training-kit artwork, articulated body rigs and hair, UI/card layout, logo, launcher art, and synthesized sound routines are original. Generic head anatomy is adapted from MakeHuman CC0 assets as detailed below. No EA code, official FC card artwork, ripped player scans, game textures, or commercial stadium models are bundled. The presentation is FC-inspired, not an EA/FIFA product or endorsement.
+
+## Human anatomy
+
+`public/models/human-head-{high,low}.bin` are modified **CC0 1.0** MakeHuman base-mesh
+and young-adult-male target data. The upstream application source is AGPL, but the bundled
+base mesh and targets are explicitly CC0; no MakeHuman application code is included.
+Attribution, the pinned source revision, transformations, and reproduction commands are in
+[the bundled model notice](../public/models/README.md); the full license is in
+[CC0-1.0.md](../public/models/CC0-1.0.md). The head is generic anatomy, **not a celebrity scan**.
+Hair/kit selection is inspired by player identity, not a claim of scanned likeness or official
+current-season jersey accuracy. International training designs use original lettering,
+colours and patterns, not copied crests, brand marks or sponsor artwork.
 
 ## Custom soundtrack
 

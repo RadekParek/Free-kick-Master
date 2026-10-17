@@ -10,7 +10,11 @@ src/
     keeper.ts            Five profiles, delayed anticipation, physical reach volumes
     simulation.ts        Shared live/test collision + outcome stepper
     stadium.ts           Pitch, net, three atmospheres, batched stands, Mexican-wave crowd energy, flags and confetti
-    player.ts            Articulated athletes at high and low detail under THREE.LOD (switch at 30 m)
+    player.ts            Shared high/low athlete materials, procedural poses and profile selection
+    athlete-model.ts     Shared anatomical body templates, opaque fitted hair, pre-render LOD selection
+    human.ts             Validated offline CC0 head decoding and one-time preload (fallback on failure)
+    appearance.ts / kits.ts  Base-ID hair identities and bounded nation-inspired opaque kit atlases
+    camera.ts            Long-lens broadcast compression without rescaling gameplay objects
     arena.ts             Three.js rendering, state machine, pointer aim, replay
     animation.ts         Pure procedural poses, shared by both athlete detail rigs
     replay.ts            Bounded full-precision recording and in-place interpolation
@@ -23,6 +27,7 @@ src/
     brand.ts / svg.ts    Original FK logo and pitch/contact SVG graphics
 public/players/          Licensed offline WebP portraits and attribution
 public/textures/         Generated anonymous crowd texture
+public/models/           Compact CC0 head LODs, attribution, reproduction and full license
 android/                 Native offline Capacitor host and Gradle wrapper
 ```
 
@@ -66,3 +71,29 @@ Only preferences (including player, atmosphere and sound), personal-best streak,
 - Unit tests exercise the exact shared physics/keeper stepper: power/spin sensitivity, deterministic knuckle flight, preview agreement, geometry and swept collisions, valid placement, difficulty ordering, scoreable/saveable scenarios, and finite resolution across extreme positions.
 - Chromium tests use a real WebGL canvas, interact through the actual DOM, score/replay/reset a shot, test pause cancellation and challenge setup, and exercise a real CDP touch gesture plus exact viewport-filling canvas and portrait/landscape bounds. Player tests check local photo loading, filtering, selection, persistence, preferred foot, pause/resume, and in-game attribution. Visual-options tests cover atmosphere, graphics presets, guides, and FPS monitoring. A complete five-attempt challenge test verifies its completion dialog and return to practice.
 - APK compilation and Android lint run in `.github/workflows/android.yml`. Physical-device graphics/performance validation remains a separate required release step.
+
+
+## Broadcast presentation pass (16 October 2026)
+
+The distant goal/keeper use actual perspective compression: a narrower field of view paired
+with a dolly back. Foreground magnification remains approximately constant; physical goal,
+ball and keeper dimensions, aim, shot physics and collisions are unchanged. The attract view
+and replay have independent lenses. Optics are cached on resize, not recomputed per frame.
+
+The fused `BroadcastOutputPass` retains Three.js output exposure/colour-space handling, then
+applies the broadcast grade before optional SMAA. One full-screen sampling pass is removed.
+The stadium uses the same light count, shadow-map budget and refresh cadence with rebalanced
+warm key / cool sky fill / turf bounce. Opaque atlas crowd strips now sway and cheer in their
+vertex shader, anchored at their seats, without a second crowd or buffer uploads.
+
+New athletes use original, anatomically shaped body surfaces plus a compact, validated CC0
+head. Outfield/keeper templates share vertex/index buffers across instances; each player's
+high/low rigs share one material palette. The visible LOD is selected before world-matrix
+propagation, allowing hidden rig subtrees to skip all descendant matrix work without a stale
+pose when they reappear. Both poses still derive from the same clock/animation equations.
+
+Seven opaque hairstyle families, fitted beard surfaces and per-profile head proportions are
+keyed by the base player identity. Special editions retain that identity and their turquoise
+kit. Kit lettering and patterns are baked in one bounded opaque atlas rather than transparent
+number/crest meshes. These are nation-inspired training kits and generic anatomy, not licensed
+jerseys, proprietary player scans, or a claim of EA/FC visual parity.

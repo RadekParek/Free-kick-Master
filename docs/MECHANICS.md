@@ -72,7 +72,7 @@ Only penalty kicks receive the deliberate difficulty buff: reaction delay is red
 
 ## Scope and honest limitations
 
-This is a playable stylized 3D training game, not a AAA football engine. It has no full match, official EA player/card database, imported motion capture, multiplayer, wind, teammate runs, free-kick passing, or exact FC controller compatibility. Four selectable real players use openly licensed portrait photos and original attributes; their 3D avatars are approximate, procedural models, not scanned faces. Free-kick placement is limited to the attacking training half, with a separate penalty-spot scenario; it is not unrestricted match play. Collisions and animations are intentionally simplified for offline mobile performance.
+This is a playable stylized 3D training game, not a AAA football engine. It has no full match, official EA player/card database, imported motion capture, multiplayer, wind, teammate runs, free-kick passing, or exact FC controller compatibility. Four selectable real players use openly licensed portrait photos and original attributes; their 3D avatars use articulated original bodies and generic CC0 MakeHuman head anatomy, not scanned celebrity faces. Hair and international training-kit patterns vary by player identity. Free-kick placement is limited to the attacking training half, with a separate penalty-spot scenario; it is not unrestricted match play. Collisions and animations are intentionally simplified for offline mobile performance.
 
 The primary next calibration step is a **user-supplied gameplay capture and concrete control observations** from the desired FC27 mode/platform. That can help tune feel and presentation, but still cannot establish identical proprietary physics from the public guide alone.
 

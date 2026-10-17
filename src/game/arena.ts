@@ -16,6 +16,9 @@ import { PostStack, type PostOptions } from './post';
 import { applyStudioLight, studioEnvironment } from './pbr';
 import { advanceShot, createShotScratch } from './simulation';
 import { ReplayBuffer } from './replay';
+import { broadcastLens } from './camera';
+import { disposeAthleteModelCaches } from './athlete-model';
+import { disposeKitCache } from './kits';
 import { getPlayer } from '../players';
 import { disposeSceneResources } from './resources';
 import { effectivePixelRatio, isMobileDevice, type Settings, type ShotResult } from '../state';
@@ -87,6 +90,7 @@ export class Arena {
   private lastTick = 0;
   private raf = 0;
   private chargeTime = 0;
+  private lens = broadcastLens(1, 1);
   private width = 1;
   private height = 1;
   private previewPower = -1;
@@ -264,8 +268,9 @@ export class Arena {
     this.traceMaterial.resolution.set(this.width, this.height);
     this.post.configure(this.postOptions(), this.width, this.height);
     this.camera.aspect = this.width / this.height;
-    // A narrower broadcast lens makes the keeper feel larger without moving the kick-local camera.
-    this.camera.fov = this.width < this.height ? 50 : this.height < 500 ? 40 : 35;
+    // Recompute optics only on resize, not twice per animation frame.
+    this.lens = broadcastLens(this.width, this.height);
+    this.camera.fov = this.lens.fov;
     this.camera.updateProjectionMatrix();
   }
 
@@ -542,6 +547,10 @@ export class Arena {
     (this.ballShadow.material as THREE.MeshBasicMaterial).opacity = Math.max(0.05, 0.32 - this.ball.position.y * 0.055);
     this.stadium.update(this.time);
     this.updateCamera(dt);
+    // Camera and LODs must be current before the renderer updates scene matrices.
+    this.camera.updateMatrixWorld();
+    this.taker.updateLod(this.camera); this.keeperModel.updateLod(this.camera);
+    for (const player of this.wallModels) player.updateLod(this.camera);
     this.refreshDynamicShadows();
     if (this.traceDirty) this.setTrace();
     this.renderer.info.reset();
@@ -689,8 +698,8 @@ export class Arena {
       const forward = this.phase === 'flight' || this.phase === 'result' ? Math.min(2.3, this.ball.time * 1.8) : 0;
       const portrait = this.width < this.height;
       const length = distanceToGoal(p);
-      const back = (portrait ? 13.2 : 9.7) - forward;
-      const lateral = portrait ? (this.settings.foot === 'right' ? -.45 : .45) : .65;
+      const back = this.lens.back - forward;
+      const lateral = portrait ? (this.settings.foot === 'right' ? -.45 : .45) : (this.settings.foot === 'right' ? -.25 : .25);
       this.desiredCamera.set(p.x + p.x / length * back + p.z / length * lateral, 2.5, p.z + p.z / length * back - p.x / length * lateral);
       // Constant camera pitch and shot-local positioning also frame wide spots/portrait phones.
       this.desiredLook.set(0, 1.2, 0);
@@ -707,6 +716,8 @@ export class Arena {
       this.desiredCamera.x = this.desiredLook.x + dx * cosine + dz * sine;
       this.desiredCamera.z = this.desiredLook.z - dx * sine + dz * cosine;
     }
+    const lens = this.attract ? 35 : this.phase === 'replay' ? 34 : this.lens.fov;
+    if (this.camera.fov !== lens) { this.camera.fov = lens; this.camera.updateProjectionMatrix(); }
     const blend = snap ? 1 : 1 - Math.exp(-dt * 4.5);
     this.camera.position.lerp(this.desiredCamera, blend);
     this.lookAt.lerp(this.desiredLook, blend);
@@ -721,6 +732,7 @@ export class Arena {
     this.stadium.dispose();
     disposeSceneResources(this.scene, new Set([this.studio.texture]));
     this.studio.dispose();
+    disposeAthleteModelCaches(); disposeKitCache();
     this.post.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();

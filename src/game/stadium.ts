@@ -195,7 +195,7 @@ export class Stadium {
     this.sun.shadow.normalBias = 0.03;
     this.sun.shadow.radius = 3;
     scene.add(this.sun, this.sun.target);
-    this.fill.position.set(24, 21, -11);
+    this.fill.position.set(22, 18, 32);
     scene.add(this.fill);
     this.makeSky();
     this.makePitch();
@@ -485,7 +485,7 @@ export class Stadium {
       -.0024, .02, .0012, .0024, .02, .0012, 0, .042, .0018,
     ], 3));
     blade.computeVertexNormals();
-    const mat = new THREE.MeshBasicMaterial({ color: '#3f7a48', side: THREE.DoubleSide });
+    const mat = new THREE.MeshBasicMaterial({ color: '#426d42', side: THREE.DoubleSide });
     mat.onBeforeCompile = shader => {
       shader.uniforms.uTime = this.grassTime;
       shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -552,11 +552,12 @@ export class Stadium {
     this.skyMaterial.uniforms.topColor.value.set(night?'#081226':sunset?'#496b91':'#397caa');
     this.skyMaterial.uniforms.bottomColor.value.set(night?'#304058':sunset?'#e5bb8d':'#c2d2dc');
     this.scene.fog=new THREE.Fog(night?'#192c42':sunset?'#a4b4b0':'#b4c7cf',night?65:85,190);
-    this.hemisphere.color.set(night?'#b5cff2':'#d6e8ff');this.hemisphere.groundColor.set(night?'#243b39':'#57653d');
-    this.hemisphere.intensity=night?1.3:1.8;
-    this.sun.color.set(night?'#e4eeff':sunset?'#ffd9a3':'#fff0d8');this.sun.intensity=night?2.5:sunset?2.65:2.9;
+    // Same light count/shadow budget: cooler open-sky fill, warm directional key and turf bounce.
+    this.hemisphere.color.set(night?'#b4c9e5':sunset?'#b4c8df':'#c2d6e6');this.hemisphere.groundColor.set(night?'#34433a':'#627255');
+    this.hemisphere.intensity=night?1.15:sunset?1.15:1.45;
+    this.sun.color.set(night?'#eff4ff':sunset?'#ffe0b5':'#fff3e3');this.sun.intensity=night?2.65:sunset?2.8:2.95;
     this.sun.position.set(night?-24:-32,night?35:sunset?27:47,night?26:-25);
-    this.fill.color.set(night?'#89bcff':'#c1d8ee');this.fill.intensity=night?.8:.6;
+    this.fill.color.set(night?'#a3c8ef':sunset?'#adc9ec':'#d2e1ee');this.fill.intensity=night?.85:sunset?.95:.7;
     this.sunDisc.visible=!night;this.glows.visible=night;
     this.photoCrowdMaterial.color.set(night?'#98afc9':sunset?'#d5c1a6':'#dde6ea');
     this.sun.shadow.needsUpdate=true;
@@ -565,6 +566,15 @@ export class Stadium {
   private makePhotoCrowd() {
     // A baked, generated anonymous crowd gives richer distant detail in one batched mesh
     // instead of drawing thousands of animated spectator meshes on mobile.
+    // Animate the existing atlas strips on the GPU. Their lower edge stays in the seats;
+    // the upper edge rises in a travelling cheer. No second crowd mesh or per-frame uploads.
+    this.photoCrowdMaterial.onBeforeCompile = shader => {
+      shader.uniforms.crowdTime = this.crowdTime; shader.uniforms.crowdEnergy = this.crowdEnergy;
+      shader.vertexShader = 'uniform float crowdTime; uniform float crowdEnergy; attribute float crowdAnchor;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        float crowdWave = sin(crowdTime * 1.8 + position.x * 0.21 + position.z * 0.17);
+        transformed.y += crowdAnchor * (0.012 + crowdEnergy * 0.22) * (0.5 + 0.5 * crowdWave);
+      `);
+    };
     const geometryParts: THREE.BufferGeometry[] = [];
     const addRow = (x1:number,z1:number,x2:number,z2:number,y:number,u:number,repeats:number,row:number) => {
       const geometry=new THREE.BufferGeometry();
@@ -572,6 +582,7 @@ export class Stadium {
         x1,y,z1, x2,y,z2, x2,y+.95,z2, x1,y+.95,z1,
       ],3));
       const v=(row%12)/12;
+      geometry.setAttribute('crowdAnchor', new THREE.Float32BufferAttribute([0, 0, 1, 1], 1));
       geometry.setAttribute('uv',new THREE.Float32BufferAttribute([u,v,u+repeats,v,u+repeats,v+1/12,u,v+1/12],2));
       geometry.setIndex([0,1,2,0,2,3]);geometry.computeVertexNormals();geometryParts.push(geometry);
     };
@@ -589,7 +600,9 @@ export class Stadium {
       }
     }
     this.photoCrowdMaterial.side=THREE.DoubleSide;
-    this.photoCrowd.add(new THREE.Mesh(mergeGeometries(geometryParts),this.photoCrowdMaterial));
+    const crowdGeometry = mergeGeometries(geometryParts);
+    crowdGeometry.computeBoundingSphere(); crowdGeometry.boundingSphere!.radius += .25;
+    this.photoCrowd.add(new THREE.Mesh(crowdGeometry,this.photoCrowdMaterial));
     geometryParts.forEach(geometry=>geometry.dispose());
     this.photoCrowd.visible=false;this.group.add(this.photoCrowd);
     new THREE.TextureLoader().load('./textures/stadium-crowd.webp',texture=>{

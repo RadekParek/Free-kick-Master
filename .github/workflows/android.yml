@@ -70,7 +70,12 @@ jobs:
           if (!readFileSync('public/textures/stadium-crowd.webp').equals(readFileSync(`${bundled}/textures/stadium-crowd.webp`))) {
             throw new Error('Offline crowd texture differs');
           }
-          console.log('All portraits, photo credits, and crowd texture are bundled byte-for-byte.');
+          for (const name of readdirSync('public/models')) {
+            if (!readFileSync(`public/models/${name}`).equals(readFileSync(`${bundled}/models/${name}`))) {
+              throw new Error(`Offline anatomy asset/license differs: ${name}`);
+            }
+          }
+          console.log('All portraits, crowd, anatomy and model licenses are bundled byte-for-byte.');
           NODE
       - name: Set up Gradle caching
         uses: gradle/actions/setup-gradle@v6.4.0
