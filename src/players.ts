@@ -9,6 +9,15 @@ export interface TakerAttributes {
 }
 export interface TakerAppearance { shirt: string; shorts: string; trim: string; skin: string; hair: string; beard: boolean; height: number }
 /** `standard` is the base card. `special` is the turquoise variant with a handwritten name. */
+export type PlayStyle = 'finesse' | 'power' | 'deadball';
+/** Custom assignments requested for this game, not EA's live ratings. Specials inherit the base. */
+const PLAYSTYLES = new Map<string, PlayStyle>([
+  ['messi', 'finesse'], ['yamal', 'finesse'], ['ronaldo', 'power'], ['haaland', 'power'],
+  ['neymar', 'deadball'], ['vinicius', 'deadball'], ['musiala', 'deadball'], ['dembele', 'deadball'],
+]);
+export function playStyleFor(baseId: string): PlayStyle | undefined { return PLAYSTYLES.get(baseId); }
+export const PLAYSTYLE_LABELS: Record<PlayStyle, string> = { finesse: 'Finesse Shot+', power: 'Power Shot+', deadball: 'Dead Ball+' };
+
 export type Edition = 'standard' | 'special';
 export interface TakerProfile {
   id: string;
@@ -26,7 +35,7 @@ export interface TakerProfile {
   description: string;
   attributes: TakerAttributes;
   appearance: TakerAppearance;
-  /** Only the four photographed players have a licensed local portrait; others use generated monogram art. */
+  /** Locally bundled portrait. See per-image credit/source and players/LICENSE.md; not every image is licensed for redistribution. */
   portrait: string | null;
   photoDate: string | null;
   photoSource: string | null;
@@ -55,6 +64,20 @@ const PHOTO_EXTRA: Record<string, { portrait: string; photoSource: string }> = {
   kubo: { portrait: './players/kubo.jpg', photoSource: 'https://gettyimages.co.uk/photos/takefusa-kubo' },
   luisdiaz: { portrait: './players/luisdiaz.jpg', photoSource: 'https://www.gettyimages.fr/photos/luis-diaz-football' },
   odegaard: { portrait: './players/odegaard.jpg', photoSource: 'https://www.gettyimages.com.au/photos/martin-%C3%B8degaard' },
+  dembele: { portrait: './players/dembele.webp', photoSource: 'https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/dembele.jpg' },
+  bruno: { portrait: './players/bruno.webp', photoSource: 'https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/bruno_fernandes.jpg' },
+  vitinha: { portrait: './players/vitinha.webp', photoSource: 'https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/vitinha.jpg' },
+  rodri: { portrait: './players/rodri.webp', photoSource: 'https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/rodri.jpg' },
+  lautaro: { portrait: './players/lautaro.webp', photoSource: 'https://github.com/maso92/BallonDorPlayerPhotos/blob/fac51a580caf65dbcfebdc9e4ae768ec098094af/lautaro_martinez.jpg' },
+  saka: { portrait: './players/saka.webp', photoSource: 'https://gettyimages.com/detail/news-photo/bukayo-saka-of-england-poses-for-a-portrait-during-a-fifa-news-photo/2279615380' },
+  foden: { portrait: './players/foden.webp', photoSource: 'https://gettyimages.com.au/photos/phil-foden-england' },
+  pedri: { portrait: './players/pedri.webp', photoSource: 'https://gettyimages.ae/photos/pedri' },
+  musiala: { portrait: './players/musiala.webp', photoSource: 'https://gettyimages.com/photos/bayern-munich-portraits' },
+  dimarco: { portrait: './players/dimarco.webp', photoSource: 'https://gettyimages.pt/fotos/federico-dimarco' },
+  barella: { portrait: './players/barella.webp', photoSource: 'https://gettyimages.com.au/photos/nicolo-barella' },
+  dovbyk: { portrait: './players/dovbyk.webp', photoSource: 'https://pngdownload.io/png-image/artem-dovbyk-ukrainian-footballer-of-girona-fc-la-liga-transparent-png-image/' },
+  kulusevski: { portrait: './players/kulusevski.webp', photoSource: 'https://nytimes.com/athletic/7014133/2026/02/06/where-is-dejan-kulusevski-tottenham' },
+  hojlund: { portrait: './players/hojlund.webp', photoSource: 'https://gettyimages.de/fotos/rasmus-hojlund' },
 };
 function resolvePhoto(base: BaseSpec & { id: string }): Pick<TakerProfile, 'portrait' | 'photoDate' | 'photoSource' | 'credit'> {
   const extra = PHOTO_EXTRA[base.id];
@@ -134,7 +157,7 @@ const BASE: (BaseSpec & { id: string })[] = [
     specialty: 'Set-piece crafter', description: 'Dead-ball specialist. A right-footed delivery with swing and a long, curling arc.',
     attributes: { power: 84, curve: 91, knuckle: 62, control: 86 },
     appearance: { shirt: '#7fc4e6', shorts: '#1f2f40', trim: '#f2f2ee', skin: '#e5b48e', hair: '#3b2a1e', beard: false, height: 1.80 } },
-  { id: 'saka', name: 'Bukayo Saka', shortName: 'Saka', nation: 'England', nationCode: 'GB', foot: 'right', number: 7, rating: 87,
+  { id: 'saka', name: 'Bukayo Saka', shortName: 'Saka', nation: 'England', nationCode: 'GB', foot: 'left', number: 7, rating: 87,
     specialty: 'Inside-foot finesse', description: 'Calm in the box and clean on the inside of the right foot.',
     attributes: { power: 76, curve: 84, knuckle: 62, control: 90 },
     appearance: { shirt: '#f5f5f5', shorts: '#f5f5f5', trim: '#c8102e', skin: '#8d5e44', hair: '#1c1510', beard: false, height: 1.78 } },
@@ -154,7 +177,7 @@ const BASE: (BaseSpec & { id: string })[] = [
     specialty: 'Precise placer', description: 'Compact and composed. Places the ball where the keeper is not.',
     attributes: { power: 68, curve: 78, knuckle: 60, control: 92 },
     appearance: { shirt: '#b5121b', shorts: '#006600', trim: '#f2c94c', skin: '#b07a58', hair: '#1f1712', beard: false, height: 1.72 } },
-  { id: 'griezmann', name: 'Antoine Griezmann', shortName: 'Griezmann', nation: 'France', nationCode: 'FR', foot: 'right', number: 7, rating: 83,
+  { id: 'griezmann', name: 'Antoine Griezmann', shortName: 'Griezmann', nation: 'France', nationCode: 'FR', foot: 'left', number: 7, rating: 83,
     specialty: 'Link-up specialist', description: 'Clever in tight spaces. Finds a clean angle and places it low.',
     attributes: { power: 84, curve: 90, knuckle: 70, control: 93 },
     appearance: { shirt: '#1d4ed8', shorts: '#ffffff', trim: '#ffffff', skin: '#1f1712', hair: '#1f1712', beard: false, height: 1.76 } },
@@ -186,23 +209,23 @@ const BASE: (BaseSpec & { id: string })[] = [
     specialty: 'Finesse specialist', description: 'Light touch, neat turns. Likes the far post with the left.',
     attributes: { power: 74, curve: 88, knuckle: 58, control: 91 },
     appearance: { shirt: '#1e3a8a', shorts: '#f8fafc', trim: '#dc2626', skin: '#c68a5e', hair: '#1f1712', beard: false, height: 1.72 } },
-  { id: 'dovbyk', name: 'Artem Dovbyk', shortName: 'Dovbyk', nation: 'Ukraine', nationCode: 'UA', foot: 'right', number: 11, rating: 77,
+  { id: 'dovbyk', name: 'Artem Dovbyk', shortName: 'Dovbyk', nation: 'Ukraine', nationCode: 'UA', foot: 'left', number: 11, rating: 77,
     specialty: 'Power striker', description: 'A physical forward. A firm finish when the box is crowded.',
     attributes: { power: 88, curve: 67, knuckle: 80, control: 79 },
     appearance: { shirt: '#facc15', shorts: '#1e3a8a', trim: '#facc15', skin: '#c08a62', hair: '#1f1712', beard: false, height: 1.90 } },
-  { id: 'luisdiaz', name: 'Luis Díaz', shortName: 'Díaz', nation: 'Colombia', nationCode: 'CO', foot: 'left', number: 7, rating: 80,
+  { id: 'luisdiaz', name: 'Luis Díaz', shortName: 'Díaz', nation: 'Colombia', nationCode: 'CO', foot: 'right', number: 7, rating: 80,
     specialty: 'Driven specialist', description: 'Pace and a direct, quick strike with the left foot.',
     attributes: { power: 84, curve: 80, knuckle: 72, control: 87 },
     appearance: { shirt: '#fde047', shorts: '#1e3a8a', trim: '#dc2626', skin: '#8d5e44', hair: '#1f1712', beard: false, height: 1.80 } },
-  { id: 'kulusevski', name: 'Dejan Kulusevski', shortName: 'Kulusevski', nation: 'Sweden', nationCode: 'SE', foot: 'right', number: 11, rating: 76,
+  { id: 'kulusevski', name: 'Dejan Kulusevski', shortName: 'Kulusevski', nation: 'Sweden', nationCode: 'SE', foot: 'left', number: 11, rating: 76,
     specialty: 'Precise placer', description: 'Quick decision-maker. Likes to wrap it into the corner.',
     attributes: { power: 78, curve: 82, knuckle: 64, control: 85 },
     appearance: { shirt: '#ffffff', shorts: '#1e3a8a', trim: '#fde047', skin: '#e2b99a', hair: '#1f1712', beard: false, height: 1.86 } },
-  { id: 'hojlund', name: 'Rasmus Højlund', shortName: 'Højlund', nation: 'Denmark', nationCode: 'DK', foot: 'right', number: 9, rating: 79,
+  { id: 'hojlund', name: 'Rasmus Højlund', shortName: 'Højlund', nation: 'Denmark', nationCode: 'DK', foot: 'left', number: 9, rating: 79,
     specialty: 'Power striker', description: 'Long-striding forward who hits the ball hard and goes for the top corner.',
     attributes: { power: 88, curve: 70, knuckle: 78, control: 82 },
     appearance: { shirt: '#dc2626', shorts: '#ffffff', trim: '#ffffff', skin: '#e7bb9b', hair: '#1f1712', beard: false, height: 1.90 } },
-  { id: 'odegaard', name: 'Martin Ødegaard', shortName: 'Ødegaard', nation: 'Norway', nationCode: 'NO', foot: 'right', number: 8, rating: 80,
+  { id: 'odegaard', name: 'Martin Ødegaard', shortName: 'Ødegaard', nation: 'Norway', nationCode: 'NO', foot: 'left', number: 8, rating: 80,
     specialty: 'Finesse specialist', description: 'A composed playmaker. A clever touch and a precise finish.',
     attributes: { power: 77, curve: 88, knuckle: 64, control: 94 },
     appearance: { shirt: '#dc2626', shorts: '#1e3a8a', trim: '#ffffff', skin: '#f1c7a6', hair: '#1f1712', beard: false, height: 1.78 } },
@@ -244,7 +267,8 @@ const standardCards: TakerProfile[] = BASE.map(base => ({
 /** Standard cards first, then each player's turquoise special. */
 export const PLAYERS: readonly TakerProfile[] = [...standardCards, ...BASE.filter(base => SPECIAL_IDS.includes(base.id)).map(specialOf)];
 
+const PLAYER_INDEX = new Map(PLAYERS.map(player => [player.id, player]));
 export const DEFAULT_PLAYER_ID = 'ronaldo';
-export function getPlayer(id: string): TakerProfile { return PLAYERS.find(player => player.id === id) ?? PLAYERS[0]; }
-export function isPlayerId(id: unknown): id is string { return typeof id === 'string' && PLAYERS.some(player => player.id === id); }
+export function getPlayer(id: string): TakerProfile { return PLAYER_INDEX.get(id) ?? PLAYERS[0]; }
+export function isPlayerId(id: unknown): id is string { return typeof id === 'string' && PLAYER_INDEX.has(id); }
 export function playerName(player: TakerProfile): string { return player.name; }

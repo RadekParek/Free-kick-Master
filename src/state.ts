@@ -112,7 +112,9 @@ export function loadSettings(): Settings {
     if (isPlayerId(saved.playerId)) defaults.playerId = saved.playerId;
     if (['night', 'sunset', 'day'].includes(saved.atmosphere)) defaults.atmosphere = saved.atmosphere;
     defaults.foot = getPlayer(defaults.playerId).foot;
-    if (saved.foot === 'right' || saved.foot === 'left') defaults.foot = saved.foot;
+    const correctedFoot = ['saka', 'griezmann', 'dovbyk', 'luisdiaz', 'kulusevski', 'hojlund', 'odegaard'].includes(getPlayer(defaults.playerId).baseId);
+    // Old saves stored incorrect defaults as if they were manual choices. Migrate them once.
+    if ((!correctedFoot || saved.rosterVersion >= 2) && (saved.foot === 'right' || saved.foot === 'left')) defaults.foot = saved.foot;
     if (DIFFICULTIES.includes(saved.difficulty)) defaults.difficulty = saved.difficulty;
     if (Number.isInteger(saved.wall) && saved.wall >= 0 && saved.wall <= 5) defaults.wall = saved.wall;
     const pick = <T extends string | number | boolean>(value: unknown, options: readonly T[], fallback: T): T => (options as readonly unknown[]).includes(value) ? value as T : fallback;
@@ -137,7 +139,7 @@ export function loadSettings(): Settings {
   return defaults;
 }
 export function saveSettings(settings: Settings): void {
-  try { localStorage.setItem(KEY, JSON.stringify(settings)); } catch { /* Never block gameplay on storage. */ }
+  try { localStorage.setItem(KEY, JSON.stringify({ ...settings, rosterVersion: 2 })); } catch { /* Never block gameplay on storage. */ }
 }
 export function recordShot(session: Session, result: ShotResult): void {
   session.attempts++;

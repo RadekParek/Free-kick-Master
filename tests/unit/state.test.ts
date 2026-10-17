@@ -27,6 +27,12 @@ describe('local preferences and session statistics', () => {
     store.set('fkm.settings.v1', JSON.stringify({ playerId: 'unknown', atmosphere: 'storm', showFps: null }));
     expect(loadSettings()).toMatchObject({ playerId: 'ronaldo', atmosphere: 'night', showFps: false });
   });
+  it('migrates old incorrect preferred feet but preserves new explicit alternate-foot choices', () => {
+    store.set('fkm.settings.v1', JSON.stringify({ playerId: 'saka', foot: 'right' }));
+    expect(loadSettings().foot).toBe('left');
+    saveSettings({ ...DEFAULT_SETTINGS, playerId: 'saka', foot: 'right' });
+    expect(loadSettings().foot).toBe('right');
+  });
   it('safely ignores broken JSON', () => {
     store.set('fkm.settings.v1', '{broken');
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);

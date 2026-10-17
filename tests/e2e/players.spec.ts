@@ -19,6 +19,9 @@ test('menu opens the full roster with 38 cards, searches real players, switches 
   await page.locator('#menu-players').click();
   await expect(page.locator('.player-card[data-player]')).toHaveCount(38);
   await expect(page.locator('.player-card[data-player].is-special')).toHaveCount(3);
+  await expect(page.locator('.player-card:not(.is-special) .card-name.handwritten')).toHaveCount(0);
+  await expect(page.locator('.player-card.is-special .card-name.handwritten')).toHaveCount(3);
+  await expect(page.locator('.card-portrait')).toHaveCount(38);
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('.card-portrait')].every(image => image.complete && image.naturalWidth > 0));
   expect(await page.locator('.card-portrait').evaluateAll(images => images.every(image => new URL((image as HTMLImageElement).src).origin === location.origin))).toBe(true);
   await page.locator('#player-search').fill('argentina');
@@ -55,7 +58,7 @@ test('menu opens the full roster with 38 cards, searches real players, switches 
   await page.locator('#back-button').click();
   await page.locator('#menu-players').click();
   await page.locator('#roster-credits').click();
-  await expect(page.locator('.photo-credit-list article')).toHaveCount(4);
+  await expect(page.locator('.photo-credit-list article')).toHaveCount(35);
   await expect(page.locator('#modal-content')).toContainText('CC BY-SA 4.0');
   await expect(page.locator('#modal-content')).toContainText('7 July 2026');
   await page.keyboard.press('Escape');

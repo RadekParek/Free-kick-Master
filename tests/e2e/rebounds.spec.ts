@@ -9,7 +9,7 @@ import type { Object3D, Mesh } from 'three';
 
 interface ArenaProbe {
   ball: BallState; keeper: KeeperState; wall: []; phase: Phase; phaseTime: number;
-  frameCounter: number; accumulator: number; resultBallTime: number;
+  analysisPlayed: boolean; frameCounter: number; accumulator: number; resultBallTime: number;
   replayFrames: ReplayBuffer; events: ArenaEvents; lastResult: ShotResult;
   taker: { rigs: (MotionRig & { root: Object3D })[] };
   setPhase(phase: Phase): void;
@@ -44,6 +44,7 @@ test('post-and-in counts once, plays impact feedback, and replays without recoun
     arena.wall = [];
     arena.frameCounter = 0; arena.accumulator = 0; arena.resultBallTime = Infinity;
     arena.replayFrames.clear();
+    arena.analysisPlayed = true; // Isolate aftermath pose/manual replay; automatic analysis has its own regression.
     window.woodworkCount = 0;
     const feedback = arena.events.woodwork;
     arena.events.woodwork = () => { window.woodworkCount++; feedback?.(); };

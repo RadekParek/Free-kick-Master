@@ -1,4 +1,10 @@
-import type { TakerProfile } from '../players';
+import { playStyleFor, PLAYSTYLE_LABELS, type TakerProfile } from '../players';
+
+function playStyleBadge(player: TakerProfile): string {
+  const style = playStyleFor(player.baseId);
+  return style ? `<span class="playstyle-badge" title="${PLAYSTYLE_LABELS[style]}" aria-label="${PLAYSTYLE_LABELS[style]}"><img src="./playstyles/${style}.png" alt="" width="32" height="32"/><small>${PLAYSTYLE_LABELS[style]}</small></span>` : '';
+}
+
 
 const FLAGS: Record<string, string> = {
   pt: '<rect width="30" height="20" fill="#d80027"/><rect width="12" height="20" fill="#046a38"/><circle cx="12" cy="10" r="3.4" fill="#ffda44" stroke="#8a1b1b" stroke-width=".6"/>',
@@ -47,10 +53,10 @@ export function playerCard(player: TakerProfile, selected = false, interactive =
     : `<span class="card-monogram" aria-hidden="true">${monogram(player)}</span>`;
   const body = `<span class="card-foil" aria-hidden="true"></span><span class="card-lines" aria-hidden="true"></span><span class="card-frame" aria-hidden="true"></span>${special ? '<span class="card-hologram" aria-hidden="true"></span><span class="card-seal" aria-hidden="true">✦<small>FK</small></span>' : ''}
     <span class="card-edition">${special ? 'TURQUOISE <b>SPECIAL</b>' : 'SET PIECE <b>ELITE</b>'}</span>
-    <span class="card-rating"><strong>${player.rating}</strong><small>FK</small>${flag(player.nationCode)}</span>
+    <span class="card-rating"><strong>${player.rating}</strong><small>FK</small>${flag(player.nationCode)}${playStyleBadge(player)}</span>
     ${art}
     <span class="card-shade"></span>
-    <span class="card-info"><strong class="card-name handwritten">${player.shortName}</strong><span class="card-specialty">${player.specialty}</span>
+    <span class="card-info"><strong class="card-name${special ? ' handwritten' : ''}">${player.shortName}</strong><span class="card-specialty">${player.specialty}</span>
       <span class="card-stats"><span><b>${player.attributes.power}</b><small>PWR</small></span><span><b>${player.attributes.curve}</b><small>CUR</small></span><span><b>${player.attributes.knuckle}</b><small>KNU</small></span><span><b>${player.attributes.control}</b><small>CTL</small></span></span>
       <span class="card-country">${player.nation} <i>·</i> ${player.appearance.height.toFixed(2)} M <i>·</i> ${player.foot === 'left' ? 'LEFT' : 'RIGHT'} FOOT</span>
     </span><span class="card-selected" aria-hidden="true">✓</span>`;
@@ -61,7 +67,7 @@ export function playerCard(player: TakerProfile, selected = false, interactive =
 export function takerHud(player: TakerProfile): string {
   const special = player.edition === 'special';
   const art = player.portrait ? `<img src="${player.portrait}" alt="" width="500" height="750" draggable="false" />` : `<span class="card-monogram" aria-hidden="true">${monogram(player)}</span>`;
-  return `<span class="mini-card ${special ? 'is-special' : ''}"><span>${player.rating}<small>FK</small></span>${art}</span><span class="sr-only"><strong id="taker-name" class="handwritten">${player.shortName}</strong></span>`;
+  return `<span class="mini-card ${special ? 'is-special' : ''}"><span>${player.rating}<small>FK</small></span>${art}${playStyleBadge(player)}</span><span class="sr-only"><strong id="taker-name" class="${special ? 'handwritten' : ''}">${player.shortName}</strong></span>`;
 }
 
 /** Main-menu showcase: the equipped player's photo or monogram art, without the card frame. */

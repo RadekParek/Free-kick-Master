@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Atmosphere, Quality } from '../state';
 import { GOAL_HEIGHT, GOAL_WIDTH, POST_RADIUS } from './physics';
+import { NetRipple } from './net-ripple';
 
 const standard = (color: THREE.ColorRepresentation, roughness = 0.85) => new THREE.MeshStandardMaterial({ color, roughness });
 const up = new THREE.Vector3(0, 1, 0);
@@ -146,12 +147,7 @@ class Confetti {
 export class Stadium {
   readonly group = new THREE.Group();
   readonly net: THREE.LineSegments;
-  private readonly netRest: Float32Array;
-  private impactTime = -10;
-  private readonly netEdge: Float32Array;
-  private readonly netWave: Float32Array;
-  private readonly netAmplitude: Float32Array;
-  private netActive = false;
+  private readonly netRipple: NetRipple;
   readonly sun: THREE.DirectionalLight;
   readonly crowd: THREE.Group;
   private crowdHeads!: THREE.Group;
@@ -200,14 +196,7 @@ export class Stadium {
     this.makeSky();
     this.makePitch();
     this.net = this.makeGoal();
-    this.netRest = (this.net.geometry.attributes.position.array as Float32Array).slice();
-    (this.net.geometry.attributes.position as THREE.BufferAttribute).setUsage(THREE.DynamicDrawUsage);
-    this.netEdge = new Float32Array(this.netRest.length / 3);
-    this.netWave = new Float32Array(this.netEdge.length);
-    this.netAmplitude = new Float32Array(this.netEdge.length);
-    for (let i = 0; i < this.netEdge.length; i++) {
-      this.netEdge[i] = Math.sin((this.netRest[i * 3] + GOAL_WIDTH / 2) / GOAL_WIDTH * Math.PI) * Math.sin(this.netRest[i * 3 + 1] / GOAL_HEIGHT * Math.PI);
-    }
+    this.netRipple = new NetRipple(this.net as THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial>);
     // Culling bounds include the maximum net displacement; they never need a per-frame rebuild.
     this.net.geometry.computeBoundingSphere();
     this.net.geometry.boundingSphere!.radius += 0.5;
@@ -219,7 +208,7 @@ export class Stadium {
     this.confetti = new Confetti(this.group);
     this.batchStaticGeometry();
     this.setAtmosphere('night');
-    // Stadium transforms are fixed. Crowd/grass/flags animate in shaders, the net in its buffer,
+    // Stadium transforms are fixed. Crowd/grass/flags animate in shaders, including the net,
     // and confetti via instance matrices; none needs Object3D matrix recomposition each frame.
     this.group.updateMatrixWorld(true);
     this.group.traverse(object => {
@@ -475,14 +464,13 @@ export class Stadium {
   }
 
   private makeGrassBlades() {
-    // Thicker three-segment blades in a fixed grid of 8 m tiles covering the whole play area.
+    // Thick single-triangle blades in fixed 8 m tiles plus a dense near-field patch.
     // Density falls with distance from the kick, every tile is its own draw call, and the camera
-    // frustum culls tiles that are off screen. Blades sway in the vertex shader (no CPU work).
+    // frustum culls off-screen tiles. Two times the blades, 1/3 the triangles per blade: denser turf at 2/3 the vertex cost.
+    // Wider, single-triangle blades sway in the vertex shader (no CPU work).
     const blade = new THREE.BufferGeometry();
     blade.setAttribute('position', new THREE.Float32BufferAttribute([
-      -.0042, 0, 0, .0042, 0, 0, .0024, .02, .0012,
-      -.0042, 0, 0, .0024, .02, .0012, -.0024, .02, .0012,
-      -.0024, .02, .0012, .0024, .02, .0012, 0, .042, .0018,
+      -.0078, 0, 0, .0078, 0, 0, 0, .048, .002,
     ], 3));
     blade.computeVertexNormals();
     const mat = new THREE.MeshBasicMaterial({ color: '#426d42', side: THREE.DoubleSide });
@@ -501,16 +489,23 @@ export class Stadium {
     const TILE = 8;
     const centres: number[] = [];
     for (let x = -20; x <= 20; x += TILE) for (let z = 4; z <= 44; z += TILE) centres.push(x, z);
+    centres.push(0, 22); // A dense four-metre near-field patch follows the kick, not the camera.
     this.grassPatches = [];
     this.grassFull = [];
     for (let i = 0; i < centres.length; i += 2) {
       const cx = centres[i], cz = centres[i + 1];
       // Distance from the kick area (0, 22) sets the density: dense near the ball, sparse at the edges.
       const d = Math.hypot(cx, cz - 22);
-      const count = d < 12 ? 1800 : d < 22 ? 1000 : 480;
+      const near = i === centres.length - 2;
+      const count = near ? 12000 : d < 12 ? 3600 : d < 22 ? 2000 : 960;
+      const tile = near ? 4 : TILE;
       const patch = new THREE.InstancedMesh(blade, mat, count);
       for (let n = 0; n < count; n++) {
-        const x = cx + (random() - .5) * TILE, z = cz + (random() - .5) * TILE;
+        const angle = near ? random() * Math.PI * 2 : 0;
+        const radius = near ? 4 * Math.sqrt(random() * random()) : 0;
+        // Radial density fades into the surrounding turf instead of revealing a square patch.
+        const x = cx + (near ? Math.cos(angle) * radius : (random() - .5) * tile);
+        const z = cz + (near ? Math.sin(angle) * radius : (random() - .5) * tile);
         dummy.position.set(x, 0.002, z);
         dummy.rotation.set((random() - .5) * .5, random() * Math.PI * 2, (random() - .5) * .35);
         dummy.scale.set(.75 + random() * .6, .7 + random() * .9, .75 + random() * .6);
@@ -528,9 +523,24 @@ export class Stadium {
       patch.matrixAutoUpdate = false;
       patch.updateMatrix();
       this.group.add(patch);
+      if (near) {
+        // Store local instance coordinates so moving this patch needs one matrix update, no re-upload.
+        for (let n = 0; n < count; n++) {
+          patch.getMatrixAt(n, dummy.matrix); dummy.matrix.elements[12] -= cx; dummy.matrix.elements[14] -= cz; patch.setMatrixAt(n, dummy.matrix);
+        }
+        patch.position.set(cx, 0, cz); patch.updateMatrix(); patch.computeBoundingSphere(); this.nearGrass = patch;
+      }
       this.grassPatches.push(patch);
       this.grassFull.push(count);
     }
+  }
+
+  private nearGrass: THREE.InstancedMesh | null = null;
+  setKickPosition(position: { x: number; z: number }) {
+    if (!this.nearGrass) return;
+    this.nearGrass.position.set(position.x, 0, position.z); this.nearGrass.updateMatrix();
+    // The stadium tree has frozen world transforms: update this one movable patch explicitly.
+    this.nearGrass.matrixWorld.multiplyMatrices(this.group.matrixWorld, this.nearGrass.matrix);
   }
 
   private grassPatches: THREE.InstancedMesh[] = [];
@@ -684,13 +694,7 @@ export class Stadium {
   }
 
   ripple(point: THREE.Vector3, time: number) {
-    this.impactTime = time;
-    this.netActive = true;
-    for (let i = 0; i < this.netEdge.length; i++) {
-      const distance = Math.hypot(this.netRest[i * 3] - point.x, this.netRest[i * 3 + 1] - point.y);
-      this.netWave[i] = distance * 2.5;
-      this.netAmplitude[i] = Math.exp(-distance * 0.5) * 0.5 * this.netEdge[i];
-    }
+    this.netRipple.hit(point, time);
   }
 
   /** Crowd reaction: a goal sends the stands up and fires confetti; a near miss only gets a louder roar. */
@@ -711,20 +715,6 @@ export class Stadium {
     const cheer = time - this.cheerStart;
     this.crowdEnergy.value = cheer < 6 ? Math.exp(-cheer / 2.2) * this.cheerStrength : 0;
     this.confetti.update(dt, time);
-    if (!this.netActive) return;
-    const elapsed = time - this.impactTime;
-    const attribute = this.net.geometry.attributes.position as THREE.BufferAttribute;
-    const vertices = attribute.array as Float32Array;
-    if (elapsed > 3) {
-      vertices.set(this.netRest);
-      this.netActive = false;
-    } else {
-      const decay = Math.exp(-elapsed * 2.2), phase = elapsed * 17;
-      for (let i = 0; i < this.netEdge.length; i++) {
-        const z = i * 3 + 2;
-        vertices[z] = this.netRest[z] - Math.sin(phase - this.netWave[i]) * decay * this.netAmplitude[i];
-      }
-    }
-    attribute.needsUpdate = true;
+    this.netRipple.update(time);
   }
 }

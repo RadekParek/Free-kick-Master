@@ -28,7 +28,7 @@ function sections(rows: number[][], segments: number, cloth = false): THREE.Buff
     const [y, width, depth, z = 0] = rows[r];
     for (let i = 0; i <= segments; i++) {
       const a = i / segments * Math.PI * 2;
-      const fold = cloth ? Math.sin(a * 7 + r * 1.5) * .00065 * Math.sin(r / (rows.length - 1) * Math.PI) : 0;
+      const fold = cloth ? Math.sin(a * 7 + r * 1.5) * .0014 * Math.sin(r / (rows.length - 1) * Math.PI) : 0;
       positions.push(Math.sin(a) * (width + fold), y, Math.cos(a) * (depth + fold) + z);
       uvs.push(i / segments, r / (rows.length - 1));
       const shade = .92 + .08 * Math.sin(r / (rows.length - 1) * Math.PI);
@@ -135,16 +135,18 @@ function buildTemplate(role: PlayerRole, detail: Detail): RigRoot {
   };
   const body = bone('body', root);
   const torso = mesh(sections([
-    [.94, .148, .095], [.98, .161, .102], [1.04, .17, .108], [1.12, .178, .111],
-    [1.22, .201, .123], [1.31, .219, .125], [1.38, .224, .107], [1.445, .181, .083], [1.47, .072, .064],
-  ], radial, true), 'jersey', body);
+    [.94, .153, .098], [.97, .16, .104], [1.015, .169, .109], [1.055, .169, .106],
+    [1.10, .174, .111], [1.16, .185, .117], [1.22, .201, .124],
+    [1.28, .216, .128], [1.33, .223, .124], [1.38, .222, .108],
+    [1.415, .205, .095], [1.445, .167, .079], [1.47, .066, .058],
+  ].filter((_, i) => high || ![1, 4, 7].includes(i)), radial, true), 'jersey', body);
   torso.name = 'torso';
   // Neck, natural shoulder slope and tapered shorts, without separate inflated pecs/glutes.
-  mesh(sections([[1.42, .064, .059], [1.49, .058, .054], [1.54, .059, .054]], high ? 20 : 12), 'skin', body);
+  mesh(sections([[1.42, .068, .061], [1.46, .059, .055], [1.485, .051, .049], [1.515, .05, .047], [1.54, .056, .051]].filter((_, i) => high || (i !== 1 && i !== 3)), high ? 20 : 12), 'skin', body);
   const collar = mesh(new THREE.TorusGeometry(.074, .009, 6, high ? 32 : 16), 'trim', body, 0, 1.468, 0);
   collar.rotation.x = Math.PI / 2; collar.scale.y = .88;
   mesh(sections([[.87, .173, .115], [.85, .178, .12], [.93, .159, .101], [.96, .151, .097]], radial, true), 'shorts', body);
-  const head = bone('head', body, 0, 1.455, 0);
+  const head = bone('head', body, 0, 1.432, 0);
   const features = bone('features', head);
   const face = sculptHead(high); face.computeBoundingBox();
   mesh(face, 'skin', features);
@@ -154,10 +156,13 @@ function buildTemplate(role: PlayerRole, detail: Detail): RigRoot {
       ellipsoid('skin', features, side * .108, .17, .004, .016, .032, .02, 14);
     }
     // Eyes stay inside the lids instead of protruding from the face. Dark iris, no toy-like whites.
-    ellipsoid('eyes', features, side * .037, .202, -.124, .012, .0035, .003, 14);
-    ellipsoid('iris', features, side * .037, .201, -.128, .0055, .0035, .002, 12);
-    ellipsoid('skin', features, side * .037, .206, -.124, .014, .0025, .002, 14);
-    ellipsoid('iris', features, side * .037, .225, -.125, .022, .0025, .003, 14).rotation.z = side * .09;
+    ellipsoid('eyes', features, side * .032, .202, -.124, .012, .0035, .003, 14);
+    ellipsoid('iris', features, side * .032, .201, -.128, .0055, .0035, .002, 12);
+    const pupil = mesh(new THREE.CircleGeometry(1, 12).scale(.0025, .0026, 1), 'sole', features, side * .032, .201, -.130);
+    pupil.rotation.y = Math.PI;
+    ellipsoid('skin', features, side * .032, .206, -.124, .014, .0025, .002, 14);
+    const brow = new THREE.QuadraticBezierCurve3(new THREE.Vector3(side * .032 - .018, .222, -.125), new THREE.Vector3(side * .032, .23, -.128), new THREE.Vector3(side * .032 + .018, .224, -.125));
+    mesh(new THREE.TubeGeometry(brow, 4, .0016, 4, false), 'sole', features);
   }
 
   const beardSurface = fittedHead(detail, (x, y, z) => y < .166 - Math.abs(x) * .25 && y > .052 && z < .035 && !(Math.abs(x) < .026 && y > .105 && y < .135));
@@ -181,10 +186,10 @@ function buildTemplate(role: PlayerRole, detail: Detail): RigRoot {
     ellipsoid('sleeve', arm, 0, .008, 0, .067, .045, .065, 20);
     mesh(sections([[-.175, .064, .062], [-.1, .069, .069], [-.025, .071, .071], [.015, .066, .066], [.045, .048, .052], [.065, .001, .001]], radial, true), 'sleeve', arm);
     mesh(new THREE.CylinderGeometry(.067, .066, .014, high ? 24 : 12), 'trim', arm, 0, -.167);
-    mesh(sections([[-.29, .042, .042], [-.235, .05, .051], [-.17, .057, .055]], radial), role === 'keeper' ? 'sleeve' : 'skin', arm);
+    mesh(sections([[-.29, .038, .039], [-.26, .045, .045], [-.215, .054, .05], [-.17, .057, .055]], radial), role === 'keeper' ? 'sleeve' : 'skin', arm);
     const forearm = bone(`${prefix}Forearm`, arm, 0, -.29);
     ellipsoid(role === 'keeper' ? 'sleeve' : 'skin', forearm, 0, 0, 0, .043, .045, .044, 16);
-    mesh(sections([[-.22, .031, .032], [-.14, .041, .043], [-.055, .047, .047], [.01, .042, .043]], radial), role === 'keeper' ? 'sleeve' : 'skin', forearm);
+    mesh(sections([[-.22, .028, .031], [-.185, .032, .034], [-.12, .043, .044], [-.055, .047, .047], [.01, .039, .041]], radial), role === 'keeper' ? 'sleeve' : 'skin', forearm);
     const hand = role === 'keeper' ? 'glove' : 'skin';
     ellipsoid(hand, forearm, 0, -.266, -.006, role === 'keeper' ? .055 : .036, .061, .022, 16);
     ellipsoid(hand, forearm, -side * .031, -.25, -.018, .013, .033, .014, 12);

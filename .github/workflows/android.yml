@@ -75,7 +75,12 @@ jobs:
               throw new Error(`Offline anatomy asset/license differs: ${name}`);
             }
           }
-          console.log('All portraits, crowd, anatomy and model licenses are bundled byte-for-byte.');
+          for (const name of readdirSync('public/playstyles')) {
+            if (!readFileSync(`public/playstyles/${name}`).equals(readFileSync(`${bundled}/playstyles/${name}`))) {
+              throw new Error(`Offline PlayStyle artwork/provenance differs: ${name}`);
+            }
+          }
+          console.log('All portraits, PlayStyle artwork, crowd, anatomy and notices are bundled byte-for-byte.');
           NODE
       - name: Set up Gradle caching
         uses: gradle/actions/setup-gradle@v6.4.0

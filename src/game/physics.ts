@@ -1,5 +1,5 @@
 /** Seeded, fixed-step set-piece physics. All distances are metres, time is seconds. */
-import type { TakerAttributes } from '../players';
+import type { TakerAttributes, PlayStyle } from '../players';
 export interface Vec3 { x: number; y: number; z: number }
 export interface Position { x: number; z: number }
 export interface Contact { x: number; y: number }
@@ -12,6 +12,7 @@ export interface ShotSetup {
   power: number;
   foot: Foot;
   attributes?: TakerAttributes;
+  playStyle?: PlayStyle;
   /** Per-attempt wake seed. Omitted for a stable nominal trajectory guide. */
   seed?: number;
 }
@@ -27,7 +28,7 @@ export interface BallState {
   bounces: number;
   frameHits: number;
 }
-export interface WallPlayer { x: number; z: number }
+export interface WallPlayer { x: number; z: number; noJump?: boolean }
 export type Outcome = 'goal' | 'saved' | 'wall' | 'post' | 'wide' | 'over' | 'short';
 export const BALL_RADIUS = 0.11;
 export const POST_RADIUS = 0.06;
@@ -51,8 +52,18 @@ export const clamp = (n: number, min: number, max: number) => Math.max(min, Math
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export const distanceToGoal = (p: Position) => Math.hypot(p.x, p.z);
 export const recommendedPower = (p: Position) => clamp(0.48 + distanceToGoal(p) * 0.006, 0.59, 0.79);
-export const shotSpeed = (power: number, attributes?: TakerAttributes) =>
-  (16 + clamp(power, 0, 1) * 21) * (attributes ? 0.9 + (attributes.power - 80) * 0.012 : 1);
+export const shotSpeed = (power: number, attributes?: TakerAttributes, playStyle?: PlayStyle) => {
+  const base = (16 + clamp(power, 0, 1) * 21) * (attributes ? 0.9 + (attributes.power - 80) * 0.012 : 1);
+  // Exactly +10 km/h below 50%, +20 km/h at/above 50%; never an attribute multiplier.
+  return playStyle === 'power' ? base + (power < .5 ? 10 : 20) / 3.6 : playStyle === 'finesse' ? base * 1.06 : base;
+};
+/** Roll once per attempt. Persist the decision for collisions, live animation and replay. */
+export function rollWallJump(wall: WallPlayer[], random = Math.random): void {
+  for (const defender of wall) defender.noJump = random() < .25;
+}
+export function defenderJump(defender: WallPlayer | undefined, time: number): number {
+  return defender?.noJump ? 0 : wallJump(time);
+}
 
 /** Penalty spot, 11 m from the goal line. A kick placed inside the box is moved here, with no wall. */
 export const PENALTY_SPOT: Position = { x: 0, z: 11 };
@@ -113,20 +124,20 @@ export function launchBall(setup: ShotSetup): BallState {
   const dx = clamp(setup.aim.x, -AIM_LIMITS.x, AIM_LIMITS.x) - p.x;
   const dz = -p.z;
   const distance = Math.hypot(dx, dz);
-  const speed = shotSpeed(setup.power, setup.attributes);
+  const speed = shotSpeed(setup.power, setup.attributes, setup.playStyle);
   const controlPenalty = setup.attributes ? Math.max(0, setup.power - recommendedPower(p) - 0.1) ** 2 * (100 - setup.attributes.control) / 100 * 0.65 : 0;
-  const angle = referenceElevation(distance, clamp(setup.aim.y, AIM_LIMITS.yMin, AIM_LIMITS.yMax), shotSpeed(recommendedPower(p), setup.attributes)) - cy * 0.07 + controlPenalty;
+  const angle = referenceElevation(distance, clamp(setup.aim.y, AIM_LIMITS.yMin, AIM_LIMITS.yMax), shotSpeed(recommendedPower(p), setup.attributes, setup.playStyle)) - cy * 0.07 + controlPenalty * (setup.playStyle === 'deadball' ? .15 : 1);
   const curveScale = setup.attributes ? 0.78 + (setup.attributes.curve - 80) * 0.028 : 1;
   const horizontal = speed * Math.cos(angle);
   return {
     position: { x: p.x, y: BALL_RADIUS, z: p.z },
     velocity: { x: dx / distance * horizontal, y: speed * Math.sin(angle), z: dz / distance * horizontal },
-    sideSpin: -cx * 36 * curveScale,
+    sideSpin: -cx * 40 * curveScale * (setup.playStyle === 'finesse' ? 2.35 : 1),
     topSpin: cy * 22,
     knuckle: Math.hypot(cx, cy) < 0.17 && setup.power > 0.64,
-    knuckleStrength: (setup.attributes ? 0.6 + (setup.attributes.knuckle - 60) * 0.017 : 1) * (0.75 + clamp((setup.power - 0.64) / 0.36, 0, 1) * 0.25),
+    knuckleStrength: 1.12 * (setup.attributes ? 0.6 + (setup.attributes.knuckle - 60) * 0.017 : 1) * (0.75 + clamp((setup.power - 0.64) / 0.36, 0, 1) * 0.25),
     // A stateless hash: repeatable for tests/replay, distinct for independently seeded live kicks.
-    wakePhase: (((((setup.seed ?? 0) >>> 0) * 0.61803398875) % 1) * Math.PI * 2),
+    wakePhase: (((((setup.playStyle === 'deadball' ? 0 : setup.seed ?? 0) >>> 0) * 0.61803398875) % 1) * Math.PI * 2),
     time: 0,
     bounces: 0,
     frameHits: 0,
@@ -349,7 +360,7 @@ export function hitsWall(a: Vec3, b: Vec3, wall: WallPlayer[], time: number): bo
     if (minZ > p.z + 0.2 + BALL_RADIUS || maxZ < p.z - 0.2 - BALL_RADIUS) continue;
     // Most ticks never reach the wall's depth. Evaluate its jump only if a slab can hit.
     jump ??= wallJump(time);
-    if (segmentWall(a, b, p, jump)) return true;
+    if (segmentWall(a, b, p, p.noJump ? 0 : jump)) return true;
   }
   return false;
 }

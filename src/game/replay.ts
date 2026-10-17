@@ -21,6 +21,18 @@ export class ReplayBuffer {
     d[i++] = Number(keeper.reacted);
     d[i++] = keeper.velocityX; d[i] = ball.topSpin;
   }
+  /** Static analysis path, copied once on replay entry; no live-shot trail or new sample objects. */
+  copyPath(output: Float32Array, untilTime = Infinity, times?: Float32Array): number {
+    let count = 0;
+    for (let frame = 0; frame < this.length && count < output.length / 3; frame++) {
+      const offset = frame * STRIDE;
+      if (this.data[offset + 6] > untilTime) break;
+      output[count * 3] = this.data[offset]; output[count * 3 + 1] = this.data[offset + 1]; output[count * 3 + 2] = this.data[offset + 2];
+      if (times && count < times.length) times[count] = this.data[offset + 6];
+      count++;
+    }
+    return count;
+  }
   /** Sample into the existing state objects. Continuous keeper motion is interpolated too. */
   sample(frame: number, ball: BallState, keeper: KeeperState): boolean {
     if (!this.length) return false;

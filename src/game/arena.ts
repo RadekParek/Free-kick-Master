@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   AIM_LIMITS, BALL_RADIUS, FIXED_DT, GOAL_HEIGHT, GOAL_WIDTH, clamp, cloneBall,
   distanceToGoal, getWall, integrateBall, launchBall,
-  lerp, previewShotInto, recommendedPower, shotSpeed, strikeName, wallJump,
+  lerp, previewShotInto, recommendedPower, shotSpeed, strikeName, defenderJump, rollWallJump,
   type Aim, type BallState, type Outcome, type ShotSetup, type WallPlayer,
 } from './physics';
 import { inPenaltyBox } from './physics';
@@ -16,18 +16,21 @@ import { PostStack, type PostOptions } from './post';
 import { applyStudioLight, studioEnvironment } from './pbr';
 import { advanceShot, createShotScratch } from './simulation';
 import { ReplayBuffer } from './replay';
+import { GoalAnalysis } from './goal-analysis';
+import { sampleAnalysis, ANALYSIS_DURATION, type AnalysisFrame, type AnalysisStage } from './analysis-timeline';
 import { broadcastLens } from './camera';
 import { disposeAthleteModelCaches } from './athlete-model';
 import { disposeKitCache } from './kits';
-import { getPlayer } from '../players';
+import { disposeIdentityCache } from './identity';
+import { getPlayer, playStyleFor } from '../players';
 import { disposeSceneResources } from './resources';
 import { effectivePixelRatio, isMobileDevice, type Settings, type ShotResult } from '../state';
 
 /** Real penalty run-ups take about 1.2 to 1.4 s; the taker reaches the ball at this run progress. */
 const RUNUP_SECONDS = 1.65;
 const RUNUP_PROGRESS_END = 0.9;
-const CAMERA_ROTATION_STEP = Math.PI / 18;
-const CAMERA_ROTATION_LIMIT = Math.PI / 3;
+const CAMERA_ROTATION_STEP = Math.PI / 90;
+const CAMERA_ROTATION_LIMIT = Math.PI / 9;
 const SHADOW_REFRESH_EVERY = 2;
 
 export type Phase = 'ready' | 'charging' | 'runup' | 'flight' | 'result' | 'replay';
@@ -38,6 +41,7 @@ export interface ArenaEvents {
   aim: (aim: Aim) => void;
   error: (message: string) => void;
   woodwork?: () => void;
+  analysis?: (stage: AnalysisStage) => void;
   performance?: (stats: { fps: number; calls: number; triangles: number; pixelRatio: number }) => void;
 }
 
@@ -64,21 +68,22 @@ export class Arena {
   private ball: BallState;
   private keeper: KeeperState;
   private ring: THREE.Mesh;
-  private guide: THREE.Line;
-  private trace: Line2;
-  private readonly tracePositions = new Float32Array(720);
-  private tracePointCount = 0;
+  private guide: Line2;
+  private readonly guideGeometry = new LineGeometry();
+  private readonly guideMaterial = new LineMaterial({ color: 0x2d9cff, linewidth: 2, transparent: true, opacity: .95, depthWrite: false });
+  private readonly guideSegments = new Float32Array(511 * 6);
+  private readonly guideBuffer = new THREE.InstancedInterleavedBuffer(this.guideSegments, 6).setUsage(THREE.DynamicDrawUsage);
+  private analysisPlayed = false;
+  private readonly goalAnalysis = new GoalAnalysis();
+  private readonly analysisFrame: AnalysisFrame = { stage: 'intro', shotTime: 0, progress: 0 };
+  private analysisCameraCut = false;
   private wallGap = -1;
   private shift = 0;
   private cameraYawOffset = 0;
   private shadowFrame = 0;
   private resizeFrame = 0;
-  private traceGeometry = new LineGeometry();
-  private traceMaterial = new LineMaterial({ color: 0x2d9cff, linewidth: 4.5, transparent: true, opacity: 0.85, depthWrite: false });
   private readonly guidePositions = new Float32Array(512 * 3);
   private previewDirty = false;
-  private readonly traceSegments = new Float32Array(239 * 6);
-  private readonly traceBuffer = new THREE.InstancedInterleavedBuffer(this.traceSegments, 6).setUsage(THREE.DynamicDrawUsage);
   private wall: WallPlayer[] = [];
   private metricsStart = 0;
   private metricsFrames = 0;
@@ -98,8 +103,6 @@ export class Arena {
   private readonly replayFrames = new ReplayBuffer();
   private resultBallTime = Infinity;
   private readonly shotScratch = createShotScratch();
-  private traceDirty = false;
-  private traceUploadedCount = 0;
   private replayClock = 0;
   private savedBall: BallState | null = null;
   private savedKeeper: KeeperState | null = null;
@@ -155,15 +158,12 @@ export class Arena {
     this.ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.14, 20), new THREE.MeshBasicMaterial({ color: '#183420', transparent: true, opacity: 0.3, depthWrite: false }));
     this.ballShadow.rotation.x = -Math.PI / 2;
     this.scene.add(this.ballShadow);
-    this.guide = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(this.guidePositions, 3).setUsage(THREE.DynamicDrawUsage)), new THREE.LineBasicMaterial({ color: '#2d9cff', transparent: true, opacity: 0.95, depthWrite: false }));
+    this.guideGeometry.setAttribute('instanceStart', new THREE.InterleavedBufferAttribute(this.guideBuffer, 3, 0));
+    this.guideGeometry.setAttribute('instanceEnd', new THREE.InterleavedBufferAttribute(this.guideBuffer, 3, 3));
+    this.guideGeometry.instanceCount = 0;
+    this.guide = new Line2(this.guideGeometry, this.guideMaterial);
     this.guide.frustumCulled = false;
-    this.scene.add(this.guide);
-    this.traceGeometry.setAttribute('instanceStart', new THREE.InterleavedBufferAttribute(this.traceBuffer, 3, 0));
-    this.traceGeometry.setAttribute('instanceEnd', new THREE.InterleavedBufferAttribute(this.traceBuffer, 3, 3));
-    this.traceGeometry.instanceCount = 0;
-    this.trace = new Line2(this.traceGeometry, this.traceMaterial);
-    this.trace.frustumCulled = false;
-    this.scene.add(this.trace);
+    this.scene.add(this.guide, this.goalAnalysis.group);
     this.observer = new ResizeObserver(() => this.queueResize());
     this.observer.observe(container);
     this.bindInput();
@@ -181,7 +181,7 @@ export class Arena {
   private setup(power: number): ShotSetup {
     return {
       position: { ...this.settings.position }, aim: { ...this.settings.aim },
-      contact: { ...this.settings.contact }, power, foot: this.settings.foot, attributes: { ...getPlayer(this.settings.playerId).attributes },
+      contact: { ...this.settings.contact }, power, foot: this.settings.foot, attributes: { ...getPlayer(this.settings.playerId).attributes }, playStyle: playStyleFor(getPlayer(this.settings.playerId).baseId),
     };
   }
 
@@ -227,8 +227,6 @@ export class Arena {
     }
     if (moved || playerChanged || (this.phase === 'result' && gameplayChanged)) this.reset();
     else if (this.phase === 'ready' || this.phase === 'charging') this.previewDirty = true;
-    if (settings.guides !== old.guides) this.setTrace();
-    this.trace.visible = this.settings.guides && this.tracePointCount > 1 && (this.phase === 'flight' || this.phase === 'result');
   }
 
   /** Horizontal lens shift: moves the menu subject to the right of centre without moving the camera. */
@@ -265,7 +263,7 @@ export class Arena {
     }
     this.width = width;
     this.height = height;
-    this.traceMaterial.resolution.set(this.width, this.height);
+    this.guideMaterial.resolution.set(this.width, this.height);
     this.post.configure(this.postOptions(), this.width, this.height);
     this.camera.aspect = this.width / this.height;
     // Recompute optics only on resize, not twice per animation frame.
@@ -276,6 +274,9 @@ export class Arena {
 
   reset() {
     this.cameraYawOffset = 0;
+    this.analysisPlayed = false;
+    this.goalAnalysis.hide();
+    this.stadium.setKickPosition(this.settings.position);
     this.keeperModel.yaw = keeperYaw(this.settings.position);
     this.power = 0;
     this.chargeTime = 0;
@@ -288,6 +289,7 @@ export class Arena {
     // 20% of the time one defender leans away and opens a gap; rolled once per kick, not per frame.
     this.wallGap = this.settings.wall > 0 && Math.random() < 0.2 ? Math.floor(Math.random() * this.settings.wall) : -1;
     const wall = this.wall = getWall(this.settings.position, this.settings.wall, this.wallGap);
+    rollWallJump(wall);
     this.renderer.shadowMap.needsUpdate = true;
     this.wallModels.forEach((model, i) => {
       model.group.visible = i < wall.length;
@@ -299,9 +301,6 @@ export class Arena {
     });
     this.positionTaker(0);
     this.keeperModel.keeperPose(this.keeper, this.time);
-    this.tracePointCount = 0;
-    this.traceUploadedCount = 0;
-    this.setTrace();
     this.setPhase('ready');
     this.updatePreview(true);
     this.events.power(0);
@@ -326,9 +325,6 @@ export class Arena {
     this.replayFrames.clear();
     this.resultBallTime = Infinity;
     this.lastResult = null;
-    this.tracePointCount = 0;
-    this.traceUploadedCount = 0;
-    this.setTrace();
     this.setPhase('runup');
   }
 
@@ -346,8 +342,25 @@ export class Arena {
     this.savedBall = cloneBall(this.ball);
     this.savedKeeper = cloneKeeper(this.keeper);
     this.replayClock = 0;
+    this.analysisPlayed = true;
+    if (this.lastResult?.outcome === 'goal') {
+      sampleAnalysis(0, this.resultBallTime, this.analysisFrame);
+      this.analysisCameraCut = true;
+      this.goalAnalysis.show(this.replayFrames, this.lastResult, this.resultBallTime, this.shotSetup.position);
+      this.events.analysis?.('intro');
+    }
     this.setPhase('replay');
-    this.trace.visible = false;
+    return true;
+  }
+
+  /** Exit analysis/replay without resimulating, scoring or changing the recorded outcome. */
+  skipReplay(): boolean {
+    if (this.phase !== 'replay') return false;
+    if (this.savedBall) this.ball = this.savedBall;
+    if (this.savedKeeper) this.keeper = this.savedKeeper;
+    this.goalAnalysis.hide();
+    this.setPhase('result');
+    this.phaseTime = 2;
     return true;
   }
 
@@ -461,12 +474,17 @@ export class Arena {
     if (!force && !this.previewDirty && Math.abs(power - this.previewPower) < 0.025) return;
     this.previewDirty = false;
     this.previewPower = power;
-    const count = previewShotInto(this.setup(power), this.guidePositions);
-    this.guide.geometry.setDrawRange(0, count);
-    const attribute = this.guide.geometry.attributes.position as THREE.BufferAttribute;
-    attribute.clearUpdateRanges();
-    attribute.addUpdateRange(0, count * 3);
-    attribute.needsUpdate = true;
+    const deadBall = playStyleFor(getPlayer(this.settings.playerId).baseId) === 'deadball';
+    const sampled = previewShotInto(this.setup(power), this.guidePositions, deadBall ? 6 : 3);
+    const count = deadBall ? sampled : Math.max(2, Math.floor(sampled * .8));
+    // Screen-space width on Android too; reuse storage instead of LineGeometry.setPositions allocations.
+    for (let i = 0; i < count - 1; i++) {
+      for (let j = 0; j < 6; j++) this.guideSegments[i * 6 + j] = this.guidePositions[i * 3 + j];
+    }
+    this.guideGeometry.instanceCount = count - 1;
+    this.guideBuffer.clearUpdateRanges();
+    this.guideBuffer.addUpdateRange(0, (count - 1) * 6);
+    this.guideBuffer.needsUpdate = true;
   }
 
   private readonly spinAxis = new THREE.Vector3();
@@ -515,6 +533,7 @@ export class Arena {
       this.keeperModel.keeperPose(this.keeper, this.time, Math.max(0, (progress - 0.55) / 0.45));
       if (progress >= 1) {
         this.ball = launchBall(this.shotSetup);
+        this.replayFrames.record(this.ball, this.keeper); // Include exact contact/launch, not only the first 60Hz sample.
         this.frameCounter = 0;
         this.accumulator = 0;
         this.setPhase('flight');
@@ -526,8 +545,7 @@ export class Arena {
         this.accumulator -= FIXED_DT;
       }
       this.taker.followThrough(this.ball.time, this.settings.foot, this.settings.contact);
-      const jump = wallJump(this.ball.time);
-      this.wallModels.forEach(p => { if (this.inView(p.group)) p.wallPose(jump, this.ball.time); });
+      this.wallModels.forEach((p, i) => { if (this.inView(p.group)) p.wallPose(defenderJump(this.wall[i], this.ball.time), this.ball.time); });
       this.keeperModel.keeperPose(this.keeper, this.time);
     } else if (this.phase === 'result') {
       if (this.phaseTime < 1.8) {
@@ -540,6 +558,7 @@ export class Arena {
       this.taker.react(this.lastResult!.outcome, this.phaseTime, this.ball.time, this.settings.foot, this.settings.contact);
       this.wallModels.forEach(p => { if (this.inView(p.group)) p.wallPose(0, this.time); });
       this.keeperModel.keeperRecover(this.keeper, this.time, this.phaseTime, this.lastResult!.outcome);
+      if (this.phaseTime >= 1.8 && this.lastResult?.outcome === 'goal' && !this.analysisPlayed) this.replay();
     } else if (this.phase === 'replay') this.stepReplay(dt);
     this.football.position.set(this.ball.position.x, this.ball.position.y, this.ball.position.z);
     if (this.phase === 'flight' || this.phase === 'result' || this.phase === 'replay') {
@@ -562,7 +581,6 @@ export class Arena {
     this.taker.updateLod(this.camera); this.keeperModel.updateLod(this.camera);
     for (const player of this.wallModels) player.updateLod(this.camera);
     this.refreshDynamicShadows();
-    if (this.traceDirty) this.setTrace();
     this.renderer.info.reset();
     this.post.render();
     this.metricsFrames++;
@@ -619,39 +637,6 @@ export class Arena {
     this.frameCounter++;
     if (this.frameCounter % 2 !== 0) return;
     this.replayFrames.record(this.ball, this.keeper);
-    if (this.tracePointCount >= 240) this.tracePositions.copyWithin(0, 3);
-    else this.tracePointCount++;
-    const i = (this.tracePointCount - 1) * 3;
-    this.tracePositions[i] = this.ball.position.x;
-    this.tracePositions[i + 1] = this.ball.position.y;
-    this.tracePositions[i + 2] = this.ball.position.z;
-    this.traceDirty = true;
-  }
-
-  private setTrace() {
-    if (!this.settings.guides) {
-      // Keep CPU history for toggling guides back on, but do not copy/upload hidden segments.
-      this.trace.visible = false;
-      this.traceUploadedCount = 0;
-      this.traceDirty = false;
-      return;
-    }
-    const count = Math.max(0, this.tracePointCount - 1);
-    // Persistent Line2 segment storage: no setPositions allocations during flight.
-    const start = count === 239 ? 0 : Math.min(this.traceUploadedCount || 0, count);
-    for (let i = start; i < count; i++) {
-      const point = i * 3, segment = i * 6;
-      for (let j = 0; j < 6; j++) this.traceSegments[segment + j] = this.tracePositions[point + j];
-    }
-    this.traceGeometry.instanceCount = count;
-    if (count > start) {
-      this.traceBuffer.clearUpdateRanges();
-      this.traceBuffer.addUpdateRange(start * 6, (count - start) * 6);
-      this.traceBuffer.needsUpdate = true;
-    }
-    this.trace.visible = this.tracePointCount > 1 && this.settings.guides && this.phase !== 'replay';
-    this.traceUploadedCount = count;
-    this.traceDirty = false;
   }
 
   private resolve(outcome: Outcome, point = this.ball.position) {
@@ -660,7 +645,7 @@ export class Arena {
       outcome,
       frameHits: this.ball.frameHits,
       distance: distanceToGoal(this.shotSetup.position),
-      speed: shotSpeed(this.shotSetup.power, this.shotSetup.attributes) * 3.6,
+      speed: shotSpeed(this.shotSetup.power, this.shotSetup.attributes, this.shotSetup.playStyle) * 3.6,
       power: this.shotSetup.power,
       point: { x: point.x, y: point.y },
       technique: strikeName(this.shotSetup.contact, this.shotSetup.foot),
@@ -670,9 +655,17 @@ export class Arena {
   }
 
   private stepReplay(dt: number) {
-    this.replayClock += dt * 0.55;
-    const index = Math.floor(this.replayClock * 60);
-    if (this.replayFrames.sample(this.replayClock * 60, this.ball, this.keeper)) {
+    const goal = this.lastResult?.outcome === 'goal';
+    this.replayClock += dt * (goal ? 1 : .55);
+    if (goal) {
+      const previous = this.analysisFrame.stage;
+      sampleAnalysis(this.replayClock, this.resultBallTime, this.analysisFrame);
+      if (previous !== this.analysisFrame.stage) { this.analysisCameraCut = true; this.events.analysis?.(this.analysisFrame.stage); }
+      this.goalAnalysis.update(this.replayClock, this.analysisFrame.shotTime);
+    }
+    const sampleTime = goal ? this.analysisFrame.shotTime : this.replayClock;
+    const index = Math.floor(sampleTime * 60);
+    if (this.replayFrames.sample(sampleTime * 60, this.ball, this.keeper)) {
       const elapsed = this.ball.time - this.resultBallTime;
       if (elapsed >= 0 && this.lastResult) {
         this.keeperModel.keeperRecover(this.keeper, this.ball.time, elapsed, this.lastResult.outcome);
@@ -681,16 +674,10 @@ export class Arena {
         this.keeperModel.keeperPose(this.keeper, this.ball.time);
         this.taker.followThrough(this.ball.time, this.settings.foot, this.settings.contact);
       }
-      const jump = wallJump(this.ball.time);
-      this.wallModels.forEach(p => { if (p.group.visible) p.wallPose(jump, this.ball.time); });
+      this.wallModels.forEach((p, i) => { if (p.group.visible) p.wallPose(defenderJump(this.wall[i], this.ball.time), this.ball.time); });
     }
-    if (index >= this.replayFrames.length + 15) {
-      if (this.savedBall) this.ball = this.savedBall;
-      if (this.savedKeeper) this.keeper = this.savedKeeper;
-      this.setPhase('result');
-      // Do not simulate or count this shot twice after leaving replay.
-      this.phaseTime = 2;
-      this.trace.visible = this.settings.guides;
+    if (goal ? this.replayClock >= ANALYSIS_DURATION : index >= this.replayFrames.length + 15) {
+      this.skipReplay();
     }
   }
 
@@ -706,8 +693,27 @@ export class Arena {
       this.desiredLook.set(tx, 1.05, tz);
       this.setShift(this.width >= this.height ? -this.width * 0.21 : 0);
     } else if (replay) {
-      this.desiredCamera.set(p.x + 12.5, 9.2, p.z + 8);
-      this.desiredLook.set(p.x * 0.3, 1.0, p.z * 0.3);
+      if (this.lastResult?.outcome === 'goal') {
+        const { stage, progress } = this.analysisFrame;
+        const side = p.x > 0 ? -1 : 1;
+        if (stage === 'intro' || stage === 'overview' || stage === 'done') {
+          this.desiredCamera.set(p.x + side * (10 + progress * 2), 9 + progress * 2, p.z + 6);
+          this.desiredLook.set(p.x * .45, .85, p.z * .45);
+        } else if (stage === 'strike') {
+          this.desiredCamera.set(p.x + side * (3.5 + progress * .4), 1.3, p.z + 3.6);
+          this.desiredLook.set(p.x, .7, p.z - .3);
+        } else if (stage === 'flight') {
+          this.desiredCamera.set(this.ball.position.x + side * (8 + Math.sin(progress * Math.PI) * 3), 3 + Math.sin(progress * Math.PI) * 3, this.ball.position.z + 8);
+          this.desiredLook.set(this.ball.position.x, Math.max(.65, this.ball.position.y), this.ball.position.z - 2);
+        } else {
+          const entry = this.lastResult.point;
+          this.desiredCamera.set(entry.x + side * (3.5 - progress), Math.max(1.5, entry.y + .4), 5 - progress);
+          this.desiredLook.set(entry.x, entry.y, 0);
+        }
+      } else {
+        this.desiredCamera.set(p.x + 12.5, 9.2, p.z + 8);
+        this.desiredLook.set(p.x * .3, 1, p.z * .3);
+      }
     } else {
       const forward = this.phase === 'flight' || this.phase === 'result' ? Math.min(2.3, this.ball.time * 1.8) : 0;
       const portrait = this.width < this.height;
@@ -723,16 +729,18 @@ export class Arena {
         this.desiredCamera.y += Math.sin(this.time * 0.93) * 0.02;
       }
     }
-    if (!this.attract && this.cameraYawOffset !== 0) {
-      const dx = this.desiredCamera.x - this.desiredLook.x;
-      const dz = this.desiredCamera.z - this.desiredLook.z;
+    if (!this.attract && !replay && this.cameraYawOffset !== 0) {
+      const pivot = this.taker.group.position;
+      const dx = this.desiredCamera.x - pivot.x;
+      const dz = this.desiredCamera.z - pivot.z;
       const cosine = Math.cos(this.cameraYawOffset), sine = Math.sin(this.cameraYawOffset);
-      this.desiredCamera.x = this.desiredLook.x + dx * cosine + dz * sine;
-      this.desiredCamera.z = this.desiredLook.z - dx * sine + dz * cosine;
+      this.desiredCamera.x = pivot.x + dx * cosine + dz * sine;
+      this.desiredCamera.z = pivot.z - dx * sine + dz * cosine;
     }
     const lens = this.attract ? 35 : this.phase === 'replay' ? 34 : this.lens.fov;
     if (this.camera.fov !== lens) { this.camera.fov = lens; this.camera.updateProjectionMatrix(); }
-    const blend = snap ? 1 : 1 - Math.exp(-dt * 4.5);
+    const blend = snap || (replay && this.analysisCameraCut) ? 1 : 1 - Math.exp(-dt * 4.5);
+    this.analysisCameraCut = false;
     this.camera.position.lerp(this.desiredCamera, blend);
     this.lookAt.lerp(this.desiredLook, blend);
     this.camera.lookAt(this.lookAt);
@@ -746,7 +754,7 @@ export class Arena {
     this.stadium.dispose();
     disposeSceneResources(this.scene, new Set([this.studio.texture]));
     this.studio.dispose();
-    disposeAthleteModelCaches(); disposeKitCache();
+    disposeAthleteModelCaches(); disposeKitCache(); disposeIdentityCache();
     this.post.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
