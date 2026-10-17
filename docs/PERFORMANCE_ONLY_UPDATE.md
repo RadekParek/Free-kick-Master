@@ -74,6 +74,6 @@ These are **isolated CPU workloads, not whole-game speedups**. In earlier same-p
 - Original run-up positions/yaw match across **3,870 pitch/foot/phase combinations**. All Euler orders, direct quaternion changes, repeated poses, settings ownership, arbitrary/duplicate-time replay seeks, clear/append, DPR-only resizing and focus invalidation are covered.
 - New browser tests cover the 12 GPU variants, zero redundant stationary/hidden label mutations, live camera/value/count-up invalidation, hidden-anchor skipping, accent-preserving search, normalization counts and modal recreation.
 - Full 28-test browser regression suite: **28/28 pass (8.8 minutes)**.
-- Production build and `npm run android:sync`: **pass**. Offline verification: **all 103 build files byte-identical**, including 54 portraits, five songs and the simulation worker. Remote APK/lint checks: **pending CI**.
+- Production build and `npm run android:sync`: **pass**. Offline verification: **all 103 build files byte-identical**, including 54 portraits, five songs and the simulation worker. Remote Android APK build, offline-media checks and Android lint: **pass** on implementation commit `e1361c1`, [CI run 39076715714](https://github.com/RadekParek/Free-kick-Master/actions/runs/39076715714). This finalization only records validation; CI also rechecks the PR head.
 
 The existing scene assets, player catalogue, PlayStyles, soundtrack, shaders and graphics preset values are not changed. No new third-party assets or runtime dependencies are introduced.
