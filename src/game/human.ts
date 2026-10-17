@@ -33,6 +33,23 @@ export function decodeHumanHead(data: ArrayBuffer): THREE.BufferGeometry {
   }
   geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geometry.setAttribute('color', new THREE.BufferAttribute(colour, 3));
+  // The CC0 extraction has a single open neck boundary. Seal it under the jaw so
+  // looking up or tilting the head cannot reveal the hollow interior/backfaces.
+  const edges = new Map<string, { a: number; b: number; count: number }>();
+  for (let i = 0; i < index.length; i += 3) for (let e = 0; e < 3; e++) {
+    const a = index[i + e], b = index[i + (e + 1) % 3], key = `${Math.min(a,b)}/${Math.max(a,b)}`;
+    const old = edges.get(key); if (old) old.count++; else edges.set(key, { a, b, count: 1 });
+  }
+  const boundary = [...edges.values()].filter(e => e.count === 1 && position[e.a*3+1] < .105 && position[e.b*3+1] < .105);
+  if (boundary.length) {
+    const append = (name: string, extra: number[]) => {
+      const source = geometry.getAttribute(name).array;
+      const array = new Float32Array(source.length + extra.length); array.set(source); array.set(extra, source.length);
+      geometry.setAttribute(name, new THREE.BufferAttribute(array, extra.length));
+    };
+    append('position', [0, .065, .005]); append('uv', [.5, .065/.35]); append('color', [.97, .97, .97]);
+    geometry.setIndex([...index, ...boundary.flatMap(e => [e.b, e.a, vertices])]);
+  }
   geometry.computeVertexNormals(); geometry.computeBoundingSphere();
   return geometry;
 }

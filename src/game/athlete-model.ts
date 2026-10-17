@@ -7,7 +7,7 @@ import { humanHead, hasHumanAnatomy } from './human';
 export type Detail = 'high' | 'low';
 export type Surface = 'skin' | 'jersey' | 'sleeve' | 'shorts' | 'trim' | 'sock' | 'boot' | 'sole' | 'hair' | 'glove' | 'eyes' | 'iris';
 export type AthleteMaterials = Record<Surface, THREE.MeshStandardMaterial>;
-export const JOINTS = ['body', 'head', 'torso', 'leftLeg', 'rightLeg', 'leftShin', 'rightShin', 'leftArm', 'rightArm', 'leftForearm', 'rightForearm'] as const;
+export const JOINTS = ['body', 'head', 'torso', 'leftLeg', 'rightLeg', 'leftShin', 'rightShin', 'leftArm', 'rightArm', 'leftForearm', 'rightForearm', 'leftFoot', 'rightFoot'] as const;
 
 /** Three.js normally updates invisible subtrees too. Arena selects LODs BEFORE its scene update. */
 export class RigRoot extends THREE.Group {
@@ -36,6 +36,20 @@ function sections(rows: number[][], segments: number, cloth = false): THREE.Buff
       if (r < rows.length - 1 && i < segments) {
         const n = r * (segments + 1) + i, next = n + segments + 1;
         indices.push(n, n + 1, next, n + 1, next + 1, next);
+      }
+    }
+  }
+  // Close every limb/cloth section. Open rings used to expose backfaces at bent joints.
+  for (const r of [0, rows.length - 1]) {
+    const [y, width, depth, z = 0] = rows[r], base = positions.length / 3;
+    positions.push(0, y, z); uvs.push(.5, .5); colours.push(.95, .95, .95);
+    for (let i = 0; i <= segments; i++) {
+      const a = i / segments * Math.PI * 2;
+      positions.push(Math.sin(a) * width, y, Math.cos(a) * depth + z);
+      uvs.push(.5 + Math.sin(a) * .5, .5 + Math.cos(a) * .5); colours.push(.95, .95, .95);
+      if (i < segments) {
+        if (r === 0) indices.push(base, base + i + 2, base + i + 1);
+        else indices.push(base, base + i + 1, base + i + 2);
       }
     }
   }
@@ -115,7 +129,7 @@ function buildTemplate(role: PlayerRole, detail: Detail): RigRoot {
     m.castShadow = high; m.receiveShadow = true; parent.add(m); return m;
   };
   const ellipsoid = (surface: Surface, parent: THREE.Object3D, x: number, y: number, z: number, sx: number, sy: number, sz: number, segments = 16) => {
-    const geometry = new THREE.SphereGeometry(1, high ? segments : 10, high ? Math.max(8, Math.round(segments * .6)) : 6);
+    const geometry = new THREE.SphereGeometry(1, high ? segments : 8, high ? Math.max(8, Math.round(segments * .6)) : 6);
     geometry.scale(sx, sy, sz);
     return mesh(geometry, surface, parent, x, y, z);
   };
@@ -126,21 +140,24 @@ function buildTemplate(role: PlayerRole, detail: Detail): RigRoot {
   ], radial, true), 'jersey', body);
   torso.name = 'torso';
   // Neck, natural shoulder slope and tapered shorts, without separate inflated pecs/glutes.
-  mesh(sections([[1.42, .064, .059], [1.49, .058, .054], [1.56, .059, .054]], high ? 20 : 12), 'skin', body);
+  mesh(sections([[1.42, .064, .059], [1.49, .058, .054], [1.54, .059, .054]], high ? 20 : 12), 'skin', body);
   const collar = mesh(new THREE.TorusGeometry(.074, .009, 6, high ? 32 : 16), 'trim', body, 0, 1.468, 0);
   collar.rotation.x = Math.PI / 2; collar.scale.y = .88;
-  mesh(sections([[.79, .173, .115], [.85, .178, .12], [.93, .159, .101], [.96, .151, .097]], radial, true), 'shorts', body);
-  const head = bone('head', body, 0, 1.48, 0);
+  mesh(sections([[.87, .173, .115], [.85, .178, .12], [.93, .159, .101], [.96, .151, .097]], radial, true), 'shorts', body);
+  const head = bone('head', body, 0, 1.455, 0);
   const features = bone('features', head);
-  mesh(sculptHead(high), 'skin', features);
+  const face = sculptHead(high); face.computeBoundingBox();
+  mesh(face, 'skin', features);
+  ellipsoid('skin', head, 0, .045, .003, .058, .072, .056, 20);
   for (const side of [-1, 1]) {
     if (!hasHumanAnatomy(high ? 'high' : 'low')) {
       ellipsoid('skin', features, side * .108, .17, .004, .016, .032, .02, 14);
     }
     // Eyes stay inside the lids instead of protruding from the face. Dark iris, no toy-like whites.
-    ellipsoid('eyes', features, side * .037, .202, -.126, .014, .0045, .003, 14);
-    ellipsoid('iris', features, side * .037, .201, -.130, .006, .004, .002, 12);
-    ellipsoid('hair', features, side * .037, .225, -.126, .025, .004, .004, 14).rotation.z = side * .09;
+    ellipsoid('eyes', features, side * .037, .202, -.124, .012, .0035, .003, 14);
+    ellipsoid('iris', features, side * .037, .201, -.128, .0055, .0035, .002, 12);
+    ellipsoid('skin', features, side * .037, .206, -.124, .014, .0025, .002, 14);
+    ellipsoid('iris', features, side * .037, .225, -.125, .022, .0025, .003, 14).rotation.z = side * .09;
   }
 
   const beardSurface = fittedHead(detail, (x, y, z) => y < .166 - Math.abs(x) * .25 && y > .052 && z < .035 && !(Math.abs(x) < .026 && y > .105 && y < .135));
@@ -156,14 +173,17 @@ function buildTemplate(role: PlayerRole, detail: Detail): RigRoot {
     ellipsoid('skin', shin, 0, -.009, -.005, .053, .057, .058, 16);
     mesh(sections([[-.37, .034, .04], [-.29, .038, .045], [-.2, .056, .06], [-.08, .06, .062], [-.04, .055, .057]], radial), 'sock', shin);
     mesh(new THREE.CylinderGeometry(.057, .058, .018, high ? 24 : 12), 'trim', shin, 0, -.048);
-    const boot = ellipsoid('boot', shin, 0, -.39, -.058, .05, .043, .122, 24); boot.rotation.x = -.08;
-    ellipsoid('sole', shin, 0, -.419, -.055, .051, .013, .12, 20);
-    if (high) for (let i = 0; i < 3; i++) mesh(new THREE.BoxGeometry(.039, .004, .006), 'sock', shin, 0, -.351, -.05 - i * .017);
-    const arm = bone(`${prefix}Arm`, body, side * .216, 1.397);
-    mesh(sections([[-.175, .064, .062], [-.1, .075, .075], [-.025, .08, .08], [.015, .073, .073], [.045, .048, .052], [.065, .001, .001]], radial, true), 'sleeve', arm);
+    const foot = bone(`${prefix}Foot`, shin, 0, -.37);
+    const boot = ellipsoid('boot', foot, 0, -.02, -.058, .05, .043, .122, 24); boot.rotation.x = -.08;
+    ellipsoid('sole', foot, 0, -.049, -.055, .051, .013, .12, 20);
+    if (high) for (let i = 0; i < 3; i++) mesh(new THREE.BoxGeometry(.039, .004, .006), 'sock', foot, 0, .019, -.05 - i * .017);
+    const arm = bone(`${prefix}Arm`, body, side * .19, 1.397);
+    ellipsoid('sleeve', arm, 0, .008, 0, .067, .045, .065, 20);
+    mesh(sections([[-.175, .064, .062], [-.1, .069, .069], [-.025, .071, .071], [.015, .066, .066], [.045, .048, .052], [.065, .001, .001]], radial, true), 'sleeve', arm);
     mesh(new THREE.CylinderGeometry(.067, .066, .014, high ? 24 : 12), 'trim', arm, 0, -.167);
     mesh(sections([[-.29, .042, .042], [-.235, .05, .051], [-.17, .057, .055]], radial), role === 'keeper' ? 'sleeve' : 'skin', arm);
     const forearm = bone(`${prefix}Forearm`, arm, 0, -.29);
+    ellipsoid(role === 'keeper' ? 'sleeve' : 'skin', forearm, 0, 0, 0, .043, .045, .044, 16);
     mesh(sections([[-.22, .031, .032], [-.14, .041, .043], [-.055, .047, .047], [.01, .042, .043]], radial), role === 'keeper' ? 'sleeve' : 'skin', forearm);
     const hand = role === 'keeper' ? 'glove' : 'skin';
     ellipsoid(hand, forearm, 0, -.266, -.006, role === 'keeper' ? .055 : .036, .061, .022, 16);
@@ -190,7 +210,19 @@ function buildTemplate(role: PlayerRole, detail: Detail): RigRoot {
   root.traverse(object => {
     if (object instanceof THREE.Mesh && object.name !== 'torso') { object.updateMatrix(); object.matrixAutoUpdate = false; }
   });
+  root.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(root, true);
+  root.userData.floor = bounds.min.y;
+  root.userData.stature = bounds.max.y - bounds.min.y;
   return root;
+}
+
+/** Height is sole-to-skull in metres, excluding hairstyle. Apply equally to both LODs. */
+export function fitStature(root: RigRoot, height: number) {
+  const scale = height / root.userData.stature;
+  root.getObjectByName('body')!.scale.setScalar(scale);
+  root.position.y = -root.userData.floor * scale;
+  root.userData.height = height;
 }
 
 export function athleteModel(role: PlayerRole, detail: Detail, materials: AthleteMaterials): RigRoot {
@@ -212,7 +244,7 @@ export function hairGeometry(style: HairStyle, detail: Detail): THREE.BufferGeom
   const parts: THREE.BufferGeometry[] = [];
   const fitted = fittedHead(detail, (_x, y, z) => {
     const front = Math.max(0, -z / .13), back = Math.max(0, z / .13);
-    return y > .17 + front * .09 - back * (style === 'flow' ? .14 : .045);
+    return y > .165 + front * .085 - back * (style === 'flow' ? .14 : .045);
   });
   const shell = fitted ?? new THREE.SphereGeometry(1, segments, high ? 14 : 8, 0, Math.PI * 2, 0, Math.PI / 2);
   const p = shell.attributes.position;
@@ -227,17 +259,33 @@ export function hairGeometry(style: HairStyle, detail: Detail): THREE.BufferGeom
     const ridge = Math.sin(Math.atan2(x, z) * (style === 'braids' ? 12 : 18)) * .0018;
     p.setXYZ(i, x + ridge, y, z + .003);
   }
+  if (fitted) {
+    const normals = shell.attributes.normal;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      const curl = Math.sin(x * 290 + z * 95) * Math.sin(y * 310 - z * 180);
+      const front = Math.max(0, -z / .13);
+      const volume = style === 'curls' ? .009 + curl * .0035
+        : style === 'quiff' ? .004 + front * Math.max(0, y - .19) * .2
+        : style === 'swept' ? .004 + Math.max(0, x + .09) * .035
+        : style === 'flow' ? .005 + Math.sin(y * 140 + x * 60) * .0015 : .002;
+      p.setXYZ(i, x + normals.getX(i) * volume, y + normals.getY(i) * volume, z + normals.getZ(i) * volume);
+    }
+  }
   shell.computeVertexNormals(); parts.push(shell);
   const clump = (x: number, y: number, z: number, sx: number, sy: number, sz: number, rotate = 0) => {
     const g = new THREE.SphereGeometry(1, high ? 12 : 8, high ? 8 : 5);
     g.scale(sx, sy, sz); g.rotateZ(rotate); g.translate(x, y, z); parts.push(g);
   };
-  if (style === 'quiff' || style === 'swept') {
-    for (let i = 0; i < 5; i++) clump(-.074 + i * .033, .288 + Math.sin(i * .6) * .009, -.023, .027, style === 'quiff' ? .041 : .022, .075, -.25);
-  } else if (style === 'curls') {
-    for (let i = 0; i < 24; i++) {
-      const a = i * 2.39996, radius = Math.sqrt((i + .5) / 24) * .105;
-      clump(Math.cos(a) * radius, .276 + Math.sqrt(Math.max(0, 1 - radius * radius / .013)) * .043, Math.sin(a) * radius, .027, .027, .027);
+  if (style === 'curls') {
+    // Small rooted curls, not the former oversized bead-like clumps. Single merged draw.
+    const count = high ? 56 : 20;
+    for (let i = 0; i < count; i++) {
+      const a = i * 2.39996, radius = Math.sqrt((i + .5) / count) * .082;
+      const g = new THREE.SphereGeometry(1, high ? 8 : 6, high ? 6 : 4);
+      g.scale(.009, .008, .009);
+      g.translate(Math.cos(a) * radius, .242 + Math.sqrt(Math.max(0, 1 - radius * radius / .0075)) * .073, Math.sin(a) * radius - .006);
+      parts.push(g);
     }
   } else if (style === 'bun') {
     clump(0, .264, .113, .047, .038, .038);
@@ -246,7 +294,14 @@ export function hairGeometry(style: HairStyle, detail: Detail): THREE.BufferGeom
   } else if (style === 'flow') {
     for (let i = 0; i < 7; i++) clump(Math.sin(i / 6 * Math.PI - Math.PI / 2) * .097, .173, .063, .032, .092, .047, (i - 3) * -.09);
   }
-  for (const part of parts) vertexColour(part);
+  for (const part of parts) {
+    vertexColour(part);
+    const position = part.attributes.position, colour = part.attributes.color;
+    for (let i = 0; i < position.count; i++) {
+      const root = Math.min(1, Math.max(0, (position.getY(i) - .17) / .12));
+      const shade = .55 + .45 * root; colour.setXYZ(i, shade, shade, shade);
+    }
+  }
   const geometry = mergeGeometries(parts); parts.forEach(part => part.dispose());
   geometry.computeBoundingSphere(); hairCache.set(key, geometry); return geometry;
 }

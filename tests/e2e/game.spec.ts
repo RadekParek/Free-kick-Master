@@ -64,7 +64,7 @@ test('practice cycles atmospheres and the in-game field map works without openin
   expect(secondAtmosphere).not.toBe(firstAtmosphere);
 });
 
-test('uses the phone graphics budget and caps high-DPI rendering on a mobile device', async ({ browser }) => {
+test('uses native-relative phone scaling and a single fast FXAA pass', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const page = await context.newPage();
   await page.addInitScript(() => localStorage.setItem('fkm.settings.v1', JSON.stringify({ sound: false, showFps: true })));
@@ -75,12 +75,14 @@ test('uses the phone graphics budget and caps high-DPI rendering on a mobile dev
   await expect(page.locator('#setting-preset')).toHaveValue('balanced');
   await page.locator('#setting-preset').selectOption('custom');
   await expect(page.locator('#gfx-resolution')).toHaveValue('0.75');
+  await expect(page.locator('#gfx-aa')).toHaveValue('fxaa');
+  await expect(page.locator('#gfx-msaa')).toHaveCount(0);
   await expect(page.locator('#gfx-bloom')).not.toBeChecked();
   await expect(page.locator('#gfx-shadows')).toHaveValue('512');
   await page.locator('#settings-back').click();
   await page.locator('#menu-practice').click();
   await expect(page.locator('#performance')).toBeVisible();
-  await expect(page.locator('#performance')).toHaveText(/RENDER 1\.5×/);
+  await expect(page.locator('#performance')).toHaveText(/RENDER 2\.25×/);
   await context.close();
 });
 
@@ -110,12 +112,14 @@ test('offers and renders the full 3088 × 1440 phone resolution, including after
     await expect(canvas).toHaveAttribute('height', '3088');
     await expect(resolution).toHaveValue('1');
 
+    await expect(resolution.locator('option[value="0.75"]')).toHaveText('75% · 1080 × 2316');
+    await expect(resolution.locator('option[value="0.5"]')).toHaveText('50% · 720 × 1544');
     await resolution.selectOption('0.75');
-    await expect(canvas).toHaveAttribute('width', '540');
-    await expect(canvas).toHaveAttribute('height', '1158');
+    await expect(canvas).toHaveAttribute('width', '1080');
+    await expect(canvas).toHaveAttribute('height', '2316');
     await resolution.selectOption('0.5');
-    await expect(canvas).toHaveAttribute('width', '360');
-    await expect(canvas).toHaveAttribute('height', '772');
+    await expect(canvas).toHaveAttribute('width', '720');
+    await expect(canvas).toHaveAttribute('height', '1544');
     await resolution.selectOption('1');
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('fkm.settings.v1')!).graphics)).toMatchObject({ preset: 'custom', resolution: 1 });
   } finally {

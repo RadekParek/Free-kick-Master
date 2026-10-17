@@ -45,14 +45,14 @@ export function playerCard(player: TakerProfile, selected = false, interactive =
   const art = player.portrait
     ? `<img class="card-portrait" src="${player.portrait}" alt="${player.name}" width="500" height="750" loading="lazy" draggable="false" />`
     : `<span class="card-monogram" aria-hidden="true">${monogram(player)}</span>`;
-  const body = `<span class="card-foil"></span><span class="card-lines"></span>
-    <span class="card-edition">${special ? 'TURQUOISE <b>SPECIAL</b>' : 'FK SERIES <b>01</b>'}</span>
+  const body = `<span class="card-foil" aria-hidden="true"></span><span class="card-lines" aria-hidden="true"></span><span class="card-frame" aria-hidden="true"></span>${special ? '<span class="card-hologram" aria-hidden="true"></span><span class="card-seal" aria-hidden="true">✦<small>FK</small></span>' : ''}
+    <span class="card-edition">${special ? 'TURQUOISE <b>SPECIAL</b>' : 'SET PIECE <b>ELITE</b>'}</span>
     <span class="card-rating"><strong>${player.rating}</strong><small>FK</small>${flag(player.nationCode)}</span>
     ${art}
     <span class="card-shade"></span>
-    <span class="card-info"><strong class="card-name ${special ? 'handwritten' : ''}">${player.shortName}</strong><span class="card-specialty">${player.specialty}</span>
-      <span class="card-stats"><span><b>${player.attributes.power}</b><small>PWR</small></span><span><b>${player.attributes.curve}</b><small>CUR</small></span><span><b>${player.attributes.knuckle}</b><small>KNU</small></span></span>
-      <span class="card-country">${player.nation} <i>·</i> ${player.foot === 'left' ? 'LEFT' : 'RIGHT'} FOOT</span>
+    <span class="card-info"><strong class="card-name handwritten">${player.shortName}</strong><span class="card-specialty">${player.specialty}</span>
+      <span class="card-stats"><span><b>${player.attributes.power}</b><small>PWR</small></span><span><b>${player.attributes.curve}</b><small>CUR</small></span><span><b>${player.attributes.knuckle}</b><small>KNU</small></span><span><b>${player.attributes.control}</b><small>CTL</small></span></span>
+      <span class="card-country">${player.nation} <i>·</i> ${player.appearance.height.toFixed(2)} M <i>·</i> ${player.foot === 'left' ? 'LEFT' : 'RIGHT'} FOOT</span>
     </span><span class="card-selected" aria-hidden="true">✓</span>`;
   if (!interactive) return `<div class="${classes}" aria-label="${player.name}">${body}</div>`;
   return `<button class="${classes}" data-player="${player.id}" aria-label="Select ${player.name}${special ? ', turquoise special' : ''}" aria-pressed="${selected}">${body}</button>`;
@@ -61,7 +61,7 @@ export function playerCard(player: TakerProfile, selected = false, interactive =
 export function takerHud(player: TakerProfile): string {
   const special = player.edition === 'special';
   const art = player.portrait ? `<img src="${player.portrait}" alt="" width="500" height="750" draggable="false" />` : `<span class="card-monogram" aria-hidden="true">${monogram(player)}</span>`;
-  return `<span class="mini-card ${special ? 'is-special' : ''}"><span>${player.rating}<small>FK</small></span>${art}</span><span class="sr-only"><strong id="taker-name" class="${special ? 'handwritten' : ''}">${player.shortName}</strong></span>`;
+  return `<span class="mini-card ${special ? 'is-special' : ''}"><span>${player.rating}<small>FK</small></span>${art}</span><span class="sr-only"><strong id="taker-name" class="handwritten">${player.shortName}</strong></span>`;
 }
 
 /** Main-menu showcase: the equipped player's photo or monogram art, without the card frame. */

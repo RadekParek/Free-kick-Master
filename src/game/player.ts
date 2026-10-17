@@ -1,11 +1,12 @@
 import * as THREE from 'three';
+import { footballSurface } from './ball-surface';
 import { normalMapFromCanvas } from './pbr';
 import type { KeeperState } from './keeper';
-import type { Foot, Outcome } from './physics';
+import type { Contact, Foot, Outcome } from './physics';
 import { idlePose, preparePose, runPose, followThroughPose, reactionPose, wallPose, keeperPose, keeperRecoveryPose, type PlayerRole, type MotionRig } from './animation';
 export type { PlayerRole } from './animation';
 import type { TakerProfile } from '../players';
-import { athleteModel, hairGeometry, JOINTS, type AthleteMaterials, type Detail, type RigRoot } from './athlete-model';
+import { athleteModel, fitStature, hairGeometry, JOINTS, type AthleteMaterials, type Detail, type RigRoot } from './athlete-model';
 import { kitDesign, playerLook, type HairStyle } from './appearance';
 import { kitTexture } from './kits';
 export type { Detail } from './athlete-model';
@@ -74,6 +75,7 @@ function materialsFor(role: PlayerRole, variation: number): AthleteMaterials {
 class Athlete implements MotionRig {
   readonly root: RigRoot;
   readonly body: THREE.Object3D; readonly head: THREE.Object3D; readonly torso: THREE.Object3D;
+  readonly leftFoot: THREE.Object3D; readonly rightFoot: THREE.Object3D;
   readonly leftLeg: THREE.Object3D; readonly rightLeg: THREE.Object3D;
   readonly leftShin: THREE.Object3D; readonly rightShin: THREE.Object3D;
   readonly leftArm: THREE.Object3D; readonly rightArm: THREE.Object3D;
@@ -81,15 +83,18 @@ class Athlete implements MotionRig {
   private readonly animated: THREE.Object3D[];
   private readonly hairMesh: THREE.Mesh;
   private hairStyle: HairStyle = 'crop';
+  private stance: 'ronaldo' | 'neymar' | 'neutral' = 'neutral';
 
   constructor(readonly role: PlayerRole, readonly detail: Detail, materials: AthleteMaterials) {
     this.root = athleteModel(role, detail, materials);
+    fitStature(this.root, role === 'keeper' ? 1.90 : 1.83);
     this.body = this.root.getObjectByName('body')!; this.head = this.root.getObjectByName('head')!;
     this.torso = this.root.getObjectByName('torso')!;
     this.leftLeg = this.root.getObjectByName('leftLeg')!; this.rightLeg = this.root.getObjectByName('rightLeg')!;
     this.leftShin = this.root.getObjectByName('leftShin')!; this.rightShin = this.root.getObjectByName('rightShin')!;
     this.leftArm = this.root.getObjectByName('leftArm')!; this.rightArm = this.root.getObjectByName('rightArm')!;
     this.leftForearm = this.root.getObjectByName('leftForearm')!; this.rightForearm = this.root.getObjectByName('rightForearm')!;
+    this.leftFoot = this.root.getObjectByName('leftFoot')!; this.rightFoot = this.root.getObjectByName('rightFoot')!;
     this.animated = JOINTS.map(name => this.root.getObjectByName(name)!);
     this.hairMesh = new THREE.Mesh(hairGeometry(this.hairStyle, detail), materials.hair);
     this.hairMesh.name = 'hairstyle'; this.hairMesh.castShadow = detail === 'high'; this.hairMesh.receiveShadow = true;
@@ -106,7 +111,8 @@ class Athlete implements MotionRig {
     }
     this.root.getObjectByName('beard')!.visible = look.beard;
     this.root.getObjectByName('features')!.scale.set(look.width, 1, look.jaw);
-    this.body.scale.set(1, profile.appearance.height / 1.83, 1);
+    fitStature(this.root, profile.appearance.height);
+    this.stance = profile.baseId === 'ronaldo' || profile.baseId === 'neymar' ? profile.baseId : 'neutral';
   }
   copyPose(source: Athlete) {
     for (let i = 0; i < this.animated.length; i++) {
@@ -114,11 +120,11 @@ class Athlete implements MotionRig {
       this.animated[i].quaternion.copy(source.animated[i].quaternion);
     }
   }
-  idle(time: number) { idlePose(this, time, this.role); }
-  prepare(time: number, charge: number) { preparePose(this, time, charge); }
-  run(phase: number, foot: Foot) { runPose(this, phase, foot); }
-  followThrough(time: number, foot: Foot) { followThroughPose(this, time, foot); }
-  react(outcome: Outcome, elapsed: number, shotTime: number, foot: Foot) { reactionPose(this, outcome, elapsed, shotTime, foot); }
+  idle(time: number) { idlePose(this, time, this.role, this.stance); }
+  prepare(time: number, charge: number) { preparePose(this, time, charge, this.stance); }
+  run(phase: number, foot: Foot, contact?: Contact) { runPose(this, phase, foot, contact); }
+  followThrough(time: number, foot: Foot, contact?: Contact) { followThroughPose(this, time, foot, contact); }
+  react(outcome: Outcome, elapsed: number, shotTime: number, foot: Foot, contact?: Contact) { reactionPose(this, outcome, elapsed, shotTime, foot, contact); }
   wallPose(jump: number, time: number) { wallPose(this, jump, time); }
   keeperPose(k: KeeperState, time: number, preparation = 0) { keeperPose(this, k, time, preparation); }
   keeperRecover(k: KeeperState, time: number, elapsed: number, outcome: Outcome) { keeperRecoveryPose(this, k, time, elapsed, outcome); }
@@ -131,6 +137,7 @@ export class Player {
   private readonly rigs: Athlete[];
   private readonly materials: AthleteMaterials;
   private profileId = '';
+  private readonly strikePoint = new THREE.Vector3();
   yaw = Math.PI;
 
   constructor(role: PlayerRole, _number = 10, variation = 0) {
@@ -153,6 +160,14 @@ export class Player {
     for (const rig of this.rigs) rig.setProfile(profile);
     this.group.userData.appearance = { player: profile.baseId, hair: playerLook(profile).hair, kit: kit.pattern, nation: kit.code };
   }
+  /** Final plant correction: the rotated outside/inside boot must still meet the ball. */
+  alignStrike(foot: Foot, ball: { x: number; z: number }, blend: number) {
+    if (blend <= 0) return;
+    const ankle = foot === 'right' ? this.rigs[0].rightFoot : this.rigs[0].leftFoot;
+    ankle.localToWorld(this.strikePoint.set(0, -.02, -.12));
+    this.group.position.x += (ball.x - this.strikePoint.x) * blend;
+    this.group.position.z += (ball.z + .09 - this.strikePoint.z) * blend;
+  }
   updateLod(camera: THREE.Camera) {
     if (!this.group.visible) return;
     this.group.updateWorldMatrix(true, false);
@@ -161,9 +176,9 @@ export class Player {
   private syncPose() { this.rigs[1].copyPose(this.rigs[0]); }
   idle(time: number) { this.rigs[0].idle(time); this.syncPose(); }
   prepare(time: number, charge: number) { this.rigs[0].prepare(time, charge); this.syncPose(); }
-  run(phase: number, foot: Foot) { this.rigs[0].run(phase, foot); this.syncPose(); }
-  followThrough(time: number, foot: Foot) { this.rigs[0].followThrough(time, foot); this.syncPose(); }
-  react(outcome: Outcome, elapsed: number, shotTime: number, foot: Foot) { this.rigs[0].react(outcome, elapsed, shotTime, foot); this.syncPose(); }
+  run(phase: number, foot: Foot, contact?: Contact) { this.rigs[0].run(phase, foot, contact); this.syncPose(); }
+  followThrough(time: number, foot: Foot, contact?: Contact) { this.rigs[0].followThrough(time, foot, contact); this.syncPose(); }
+  react(outcome: Outcome, elapsed: number, shotTime: number, foot: Foot, contact?: Contact) { this.rigs[0].react(outcome, elapsed, shotTime, foot, contact); this.syncPose(); }
   wallPose(jump: number, time: number) { this.rigs[0].wallPose(jump, time); this.syncPose(); this.shadow.scale.setScalar(1 - jump * .3); }
   keeperPose(k: KeeperState, time: number, preparation = 0) {
     this.group.position.x = k.x; this.group.rotation.y = this.yaw;
@@ -176,31 +191,15 @@ export class Player {
 }
 
 export function makeFootball(): THREE.Mesh {
-  // Original triangular panel pattern in navy, turquoise and white, drawn in UV space.
-  const canvas = document.createElement('canvas');
-  canvas.width = 1024;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#f7f9f6';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const cols = 16, rows = 8, cw = canvas.width / cols, rh = canvas.height / rows;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = c * cw, y = r * rh;
-      const up = (r + c) % 2 === 0;
-      const triangles = up ? [[x, y + rh, x + cw / 2, y, x + cw, y + rh]] : [[x, y, x + cw, y, x + cw / 2, y + rh]];
-      const colour = (r * 3 + c * 5) % 7 === 0 ? '#2fd8c8' : (r * 7 + c) % 4 === 0 ? '#0e2a44' : '#f7f9f6';
-      for (const [ax, ay, bx, by, cx, cy] of triangles) {
-        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx, cy); ctx.closePath();
-        ctx.fillStyle = colour; ctx.fill();
-        ctx.strokeStyle = '#1b2a36'; ctx.lineWidth = 2; ctx.stroke();
-      }
-    }
-  }
+  const canvas = document.createElement('canvas'), relief = document.createElement('canvas');
+  canvas.width = relief.width = 512; canvas.height = relief.height = 256;
+  const surface = footballSurface();
+  canvas.getContext('2d')!.putImageData(new ImageData(surface.color, 512, 256), 0, 0);
+  relief.getContext('2d')!.putImageData(new ImageData(surface.relief, 512, 256), 0, 0);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 16;
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 64, 48), new THREE.MeshStandardMaterial({ map: texture, normalMap: normalMapFromCanvas(canvas, 1.5), normalScale: new THREE.Vector2(.25, .25), roughness: 0.4 }));
+  texture.anisotropy = 4;
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 48, 32), new THREE.MeshStandardMaterial({ map: texture, normalMap: normalMapFromCanvas(relief, 1.5), normalScale: new THREE.Vector2(.25, .25), roughness: 0.58 }));
   ball.castShadow = true;
   return ball;
 }

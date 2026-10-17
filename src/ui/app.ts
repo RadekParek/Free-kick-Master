@@ -222,14 +222,13 @@ export class GameApp {
             <div class="settings-list">
               <label class="setting-row"><span><strong>Graphics preset</strong><small>Phones use a lower-cost Balanced profile; Performance cuts resolution further.</small></span><select id="setting-preset" aria-label="Graphics preset"><option value="high">High</option><option value="balanced">Balanced</option><option value="performance">Performance</option><option value="custom">Custom</option></select></label>
               <div id="custom-graphics" class="custom-graphics" hidden>
-                <label class="setting-row"><span><strong>Render resolution</strong><small>Native (100%) uses the full display resolution. Reduced phone modes keep a 2× pixel-ratio budget to save power.</small></span><select id="gfx-resolution" aria-label="Render resolution"></select></label>
-                <label class="setting-row"><span><strong>Multisample anti-aliasing</strong><small>Smooths geometry edges. Costs GPU time.</small></span><select id="gfx-msaa" aria-label="Multisample anti-aliasing"><option value="0">Off</option><option value="2">2x</option></select></label>
-                <label class="setting-row"><span><strong>SMAA</strong><small>Cheap edge smoothing on the final image.</small></span><input type="checkbox" id="gfx-smaa"/><span class="toggle" aria-hidden="true"></span></label>
+                <label class="setting-row"><span><strong>Render resolution</strong><small>Every percentage is relative to your full native resolution. 75% renders 56% as many pixels; 50% renders 25%.</small></span><select id="gfx-resolution" aria-label="Render resolution"></select></label>
+                <label class="setting-row"><span><strong>Anti-aliasing</strong><small>FXAA: fast, single-pass smoothing. SMAA: sharper edges, more GPU work. No multisampling.</small></span><select id="gfx-aa" aria-label="Anti-aliasing"><option value="off">Off</option><option value="fxaa">FXAA · fast</option><option value="smaa">SMAA · sharp</option></select></label>
                 <label class="setting-row"><span><strong>Bloom</strong><small>Glow from the floodlights and the ball.</small></span><input type="checkbox" id="gfx-bloom"/><span class="toggle" aria-hidden="true"></span></label>
                 <label class="setting-row"><span><strong>Shadows</strong><small>Shadow map size. Off removes dynamic shadows.</small></span><select id="gfx-shadows" aria-label="Shadow map size"><option value="0">Off</option><option value="512">512</option><option value="1024">1024 (max)</option></select></label>
               </div>
               <label class="setting-row"><span><strong>Stadium atmosphere</strong><small>A new light on the beautiful game</small></span><select id="setting-atmosphere" aria-label="Stadium atmosphere"><option value="night">Floodlit night</option><option value="sunset">Golden hour</option><option value="day">Clear day</option></select></label>
-              ${[['music', 'Background music', 'Your custom songs, shuffled. Full volume in the menu, 75% in play and practice.'], ['guides', 'Trajectory guide', 'Preview the actual spin, power, and player attributes.'], ['showFps', 'Performance monitor', 'Live frame rate, draw calls, and effective render pixel ratio.'], ['sound', 'Stadium sound', 'Crowd ambience, ball strikes, and the sound of the net.'], ['haptics', 'Haptic feedback', 'Feel each strike on supported Android devices.']].map(([key, title, detail]) => `<label class="setting-row"><span><strong>${title}</strong><small>${detail}</small></span><input type="checkbox" id="setting-${key}"/><span class="toggle" aria-hidden="true"></span></label>`).join('')}
+              ${[['music', 'Background music', 'Your custom songs, shuffled. Full volume in the menu, 75% in play and practice.'], ['guides', 'Trajectory guide', 'Nominal spin, power and player attributes. Knuckleball wake varies each attempt.'], ['showFps', 'Performance monitor', 'Live frame rate, draw calls, and effective render pixel ratio.'], ['sound', 'Stadium sound', 'Crowd ambience, ball strikes, and the sound of the net.'], ['haptics', 'Haptic feedback', 'Feel each strike on supported Android devices.']].map(([key, title, detail]) => `<label class="setting-row"><span><strong>${title}</strong><small>${detail}</small></span><input type="checkbox" id="setting-${key}"/><span class="toggle" aria-hidden="true"></span></label>`).join('')}
             </div>
             <p class="settings-note">High and Balanced: up to 1024 px shadows. Performance: no dynamic shadows and athletes switch to low detail sooner. Distant geometry is culled and athletes use level-of-detail in every mode.</p>
             <button id="photo-credits" class="text-link">Player photo credits &amp; licenses ${icon('ArrowUpRight')}</button>
@@ -303,8 +302,7 @@ export class GameApp {
       this.applySettings();
     };
     $('#gfx-resolution').addEventListener('change', event => custom({ resolution: Number((event.target as HTMLSelectElement).value) as RenderScale }));
-    $('#gfx-msaa').addEventListener('change', event => custom({ msaa: Number((event.target as HTMLSelectElement).value) as 0 | 2 }));
-    $('#gfx-smaa').addEventListener('change', event => custom({ smaa: (event.target as HTMLInputElement).checked }));
+    $('#gfx-aa').addEventListener('change', event => custom({ antialias: (event.target as HTMLSelectElement).value as GraphicsOptions['antialias'] }));
     $('#gfx-bloom').addEventListener('change', event => custom({ bloom: (event.target as HTMLInputElement).checked }));
     $('#gfx-shadows').addEventListener('change', event => custom({ shadows: Number((event.target as HTMLSelectElement).value) as ShadowSize }));
     $('#setting-atmosphere').addEventListener('change', event => {
@@ -567,8 +565,7 @@ export class GameApp {
     $<HTMLSelectElement>('#setting-preset').value = g.preset;
     $('#custom-graphics').hidden = g.preset !== 'custom';
     this.syncResolutionOptions();
-    $<HTMLSelectElement>('#gfx-msaa').value = String(g.msaa);
-    $<HTMLInputElement>('#gfx-smaa').checked = g.smaa;
+    $<HTMLSelectElement>('#gfx-aa').value = g.antialias;
     $<HTMLInputElement>('#gfx-bloom').checked = g.bloom;
     $<HTMLSelectElement>('#gfx-shadows').value = String(g.shadows);
     $<HTMLSelectElement>('#setting-atmosphere').value = s.atmosphere;
@@ -617,14 +614,14 @@ export class GameApp {
   }
 
   private syncResolutionOptions() {
-    // Match the renderer: Native bypasses the phone DPR cap; reduced modes keep it.
+    // Match the renderer: all scales use the full native DPR.
     const dpr = window.devicePixelRatio || 1;
     const mobile = isMobileDevice();
     const resolution = $<HTMLSelectElement>('#gfx-resolution');
     const resolutionKey = `${innerWidth}|${innerHeight}|${dpr}|${mobile}`;
     if (resolution.dataset.viewport !== resolutionKey) {
       resolution.dataset.viewport = resolutionKey;
-      resolution.innerHTML = ([[1, 'Native (100%)'], [0.75, mobile ? '75% (capped)' : '75%'], [0.5, mobile ? 'Half (capped)' : 'Half']] as const)
+      resolution.innerHTML = ([[1, 'Native (100%)'], [0.75, '75%'], [0.5, '50%']] as const)
         .map(([scale, label]) => {
           const ratio = effectivePixelRatio(dpr, scale, mobile);
           return `<option value="${scale}">${label} · ${Math.floor(innerWidth * ratio)} × ${Math.floor(innerHeight * ratio)}</option>`;
@@ -918,7 +915,7 @@ export class GameApp {
     let selection = this.settings.playerId;
     const selected = getPlayer(selection);
     const specials = PLAYERS.filter(player => player.edition === 'special').length;
-    this.openModal(`<div class="roster-heading"><span class="modal-eyebrow">THE DIFFERENCE IS IN THE DETAILS</span><h2 id="modal-title">Choose your <em>taker.</em></h2><p>${PLAYERS.length / 2} players. Each one has a turquoise special with a handwritten name.</p><span class="roster-count">${String(PLAYERS.length).padStart(2, '0')} <small>CARDS</small></span></div>
+    this.openModal(`<div class="roster-heading"><span class="modal-eyebrow">THE DIFFERENCE IS IN THE DETAILS</span><h2 id="modal-title">Choose your <em>taker.</em></h2><p>${PLAYERS.filter(player => player.edition === 'standard').length} players. ${specials} turquoise specials with diffraction foil and handwritten names.</p><span class="roster-count">${String(PLAYERS.length).padStart(2, '0')} <small>CARDS</small></span></div>
       <div class="roster-toolbar"><label class="player-search-label">${icon('Focus')}<input type="search" id="player-search" placeholder="Search player or nation" aria-label="Search players" autocomplete="off"/></label>
         <div class="roster-filters" aria-label="Filter players">
           <button data-roster-filter="all" aria-pressed="true">ALL FEET</button><button data-roster-filter="right" aria-pressed="false">RIGHT</button><button data-roster-filter="left" aria-pressed="false">LEFT</button>

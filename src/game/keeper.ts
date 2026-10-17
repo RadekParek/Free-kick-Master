@@ -73,7 +73,10 @@ export function updateKeeper(k: KeeperState, ball: BallState, difficulty: Diffic
   }
   const previousX = k.x;
   const idealBodyX = k.targetX - k.direction * reach * k.dive;
-  k.x += clamp(idealBodyX - k.x, -speed * dt, speed * dt);
+  const desiredVelocity = clamp((idealBodyX - k.x) * 12, -speed, speed);
+  const acceleration = penalty ? 22 : 14;
+  k.velocityX += clamp(desiredVelocity - k.velocityX, -acceleration * dt, acceleration * dt);
+  k.x += k.velocityX * dt;
   k.x = clamp(k.x, -3.5, 3.5);
   k.velocityX = dt > 0 ? (k.x - previousX) / dt : 0;
   k.glove.x = k.x + k.direction * reach * Math.sin(k.dive * Math.PI / 2);

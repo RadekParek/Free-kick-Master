@@ -34,10 +34,10 @@ describe('local preferences and session statistics', () => {
   it('caps every preset and legacy custom shadow setting at 1024 px', () => {
     expect(GRAPHICS_PRESETS.high.shadows).toBe(1024);
     expect(GRAPHICS_PRESETS.balanced.shadows).toBe(1024);
-    store.set('fkm.settings.v1', JSON.stringify({ graphics: { preset: 'custom', resolution: 1, msaa: 0, smaa: true, bloom: true, shadows: 2048 } }));
+    store.set('fkm.settings.v1', JSON.stringify({ graphics: { preset: 'custom', resolution: 1, antialias: 'smaa', bloom: true, shadows: 2048 } }));
     expect(loadSettings().graphics.shadows).toBe(1024);
   });
-  it('keeps phone presets efficient but lets Native use the full display DPR', () => {
+  it('uses full native DPR as the base for every phone resolution', () => {
     const balanced = graphicsForPreset('balanced', true);
     const performance = graphicsForPreset('performance', true);
     expect(balanced).toMatchObject({ resolution: 0.75, bloom: false, shadows: 512 });
@@ -46,12 +46,21 @@ describe('local preferences and session statistics', () => {
     expect(effectivePixelRatio(4, 1, true)).toBe(4);
     expect(772 * effectivePixelRatio(4, 1, true)).toBe(3088);
     expect(360 * effectivePixelRatio(4, 1, true)).toBe(1440);
-    expect(effectivePixelRatio(4, 0.5, true)).toBe(1);
-    expect(effectivePixelRatio(3, 0.75, true)).toBe(1.5);
+    expect(effectivePixelRatio(4, 0.5, true)).toBe(2);
+    expect(effectivePixelRatio(3, 0.75, true)).toBe(2.25);
     expect(effectivePixelRatio(3, 0.75, false)).toBe(2.25);
   });
+  it('migrates old MSAA settings to FXAA without retaining a multisample target', () => {
+    store.set('fkm.settings.v1', JSON.stringify({ graphics: { preset: 'custom', resolution: .75, msaa: 2, smaa: true, bloom: true, shadows: 1024 } }));
+    expect(loadSettings().graphics).toEqual({ preset: 'custom', resolution: .75, antialias: 'fxaa', bloom: true, shadows: 1024 });
+    saveSettings(loadSettings());
+    expect(store.get('fkm.settings.v1')).not.toContain('msaa');
+  });
+  it.each([1, 2, 3, 4])('uses exact native percentages at display DPR %s', dpr => {
+    for (const mobile of [false, true]) for (const scale of [1, .75, .5] as const) expect(effectivePixelRatio(dpr, scale, mobile)).toBe(dpr * scale);
+  });
   it('round-trips a native custom phone resolution without reverting to the capped preset', () => {
-    saveSettings({ ...DEFAULT_SETTINGS, graphics: { preset: 'custom', resolution: 1, msaa: 0, smaa: false, bloom: false, shadows: 0 } });
+    saveSettings({ ...DEFAULT_SETTINGS, graphics: { preset: 'custom', resolution: 1, antialias: 'off', bloom: false, shadows: 0 } });
     expect(loadSettings().graphics).toMatchObject({ preset: 'custom', resolution: 1 });
     expect(effectivePixelRatio(4, loadSettings().graphics.resolution, true)).toBe(4);
   });

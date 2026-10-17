@@ -242,14 +242,14 @@ describe('performance invariants (preserving detail, with the mobile shadow cap)
     expect(buffer.version).toBe(1);
   });
 
-  it('writes the unchanged curved run-up into reusable scratch positions', () => {
+  it('writes the accelerating curved run-up into reusable scratch positions', () => {
     const arena = Object.assign(Object.create(Arena.prototype), { settings: structuredClone(DEFAULT_SETTINGS) });
     const out = { x: 0, z: 0 };
     for (const foot of ['left', 'right']) for (const run of [0, .1, .5, .85, .9, 1]) {
       arena.settings.foot = foot;
       arena.takerGround(run, out);
       const p = arena.settings.position;
-      const t = Math.min(1, Math.max(0, run) / .9), e = t * t * (3 - 2 * t);
+      const t = Math.min(1, Math.max(0, run) / .9), e = t ** 1.35;
       const length = Math.hypot(p.x, p.z);
       const back = 4.8 + (.21 - 4.8) * e;
       const lateral = (foot === 'right' ? -1 : 1) * (1.6 + (.22 - 1.6) * Math.pow(e, .7));
