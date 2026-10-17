@@ -2,7 +2,7 @@
 
 **Current behavior (17 October):** all render scales are fractions of full native DPR, with
 no mobile cap. MSAA has been removed in favor of FXAA/SMAA/off. See
-[REALISM_UPGRADE.md](REALISM_UPGRADE.md) for the latest changes. Earlier DPR-cap entries below
+[ULTRA_ANDROID_UPDATE.md](ULTRA_ANDROID_UPDATE.md) for the newest depth-memory, animation, numerical and resource-lifecycle work. Earlier DPR-cap entries below
 are historical and superseded.
 
 ## 14 October baseline

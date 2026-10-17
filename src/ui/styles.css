@@ -615,3 +615,31 @@ dialog::backdrop { background: #04080cc8; backdrop-filter: blur(3px); }
 .is-icon .card-shade { inset:48% 0 0;background:linear-gradient(transparent,#f3ebda 40%,#d9cdad); }
 .is-icon .card-rating { left:7%;padding:3px;background:#f8f0dddc;border-radius:4px; }
 .is-icon > .playstyle-badge img { background:transparent; }
+
+/* Ball directly above its technique labels, including compact landscape. */
+.contact-dock { flex-direction:column; gap:4px; text-align:center; }
+.contact-copy { align-items:center; }
+@media(max-height:500px) and (orientation:landscape) {
+ .contact-dock {gap:2px;padding:3px 6px;}
+ .contact-dock .contact-pad {width:82px;height:82px;}
+ .contact-copy {gap:3px;}
+ .contact-copy h3 {font-size:17px;}
+ .contact-copy .hud-eyebrow {font-size:7px;}
+ .strike-presets button {min-height:24px;padding:4px 6px;font-size:7px;}
+}
+
+/* Measurements now travel with their scene object, not a simultaneous eight-stat HUD. */
+.goal-analysis .analysis-data {position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important;}
+.world-labels {position:absolute;inset:0;z-index:2;pointer-events:none;overflow:hidden;contain:strict;}
+.world-stat {position:absolute;left:0;top:0;width:156px;padding:8px 11px;border-left:2px solid #ceff83;background:linear-gradient(110deg,#081e2be8,#102a3ba8 78%,#102a3b00);color:#effffb;opacity:0;transition:opacity .16s;box-sizing:border-box;will-change:transform;text-shadow:0 2px 8px #0008;}
+.world-stat::before {content:'';position:absolute;left:-19px;top:36px;width:18px;height:1px;background:#caff76;transform:rotate(-24deg);transform-origin:right;}
+.world-stat small {display:block;font-size:7px;font-weight:800;letter-spacing:1.3px;color:#cceae6;}
+.world-stat b {display:block;font:600 37px/1.1 var(--condensed);color:#d0ff8e;font-variant-numeric:tabular-nums;}
+.world-stat em {display:block;font-size:6px;font-style:normal;letter-spacing:.8px;}
+.world-stat.is-visible,.world-playstyle.is-visible {opacity:1;}
+.world-playstyle {position:absolute;left:0;top:0;width:42px;height:42px;opacity:0;transition:opacity .25s ease;filter:drop-shadow(0 2px 5px #000c);will-change:transform;}
+.world-playstyle img {display:block;width:100%;height:100%;object-fit:contain;}
+.world-transition {position:absolute;inset:-5% 0;opacity:0;background:linear-gradient(108deg,transparent 30%,#d1ffbd33 38%,#bdff7e 39%,#ecffef 40%,transparent 41%,transparent 51%,#bcffd333 52%,transparent 66%);will-change:transform;}
+.analysis-heading h2 {font-size:clamp(26px,4vw,52px);}
+@media(max-height:500px) { .world-stat {padding:6px 9px;width:150px;} .world-stat b {font-size:29px;} .world-playstyle {width:34px;height:34px;} }
+@media(prefers-reduced-motion:reduce) { .world-stat,.world-playstyle {transition:none;} }

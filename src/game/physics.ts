@@ -19,6 +19,8 @@ export interface ShotSetup {
   playStyle?: PlayStyle;
   /** Per-attempt wake seed. Omitted for a stable nominal trajectory guide. */
   seed?: number;
+  speedBonusKph?: number;
+  curveBonus?: number;
 }
 export interface BallState {
   position: Vec3;
@@ -104,7 +106,7 @@ function referenceElevation(distance: number, height: number, speed: number): nu
     const angle = (low + high) / 2;
     let vx = speed * Math.cos(angle), vy = speed * Math.sin(angle), x = 0, y = BALL_RADIUS;
     for (let n = 0; n < 360 && x < distance; n++) {
-      const magnitude = Math.hypot(vx, vy);
+      const magnitude = Math.sqrt(vx*vx + vy*vy);
       const drag = AERO * dragCoefficient(magnitude) * magnitude;
       vx -= drag * vx / 60; vy -= (GRAVITY + drag * vy) / 60;
       const dx = vx / 60;
@@ -126,17 +128,17 @@ export function launchBall(setup: ShotSetup): BallState {
   const dx = clamp(setup.aim.x, -AIM_LIMITS.x, AIM_LIMITS.x) - p.x;
   const dz = -p.z;
   const distance = Math.hypot(dx, dz);
-  const speed = shotSpeed(setup.power, setup.attributes, setup.playStyle);
+  const speed = shotSpeed(setup.power, setup.attributes, setup.playStyle) + (setup.speedBonusKph ?? 0)/3.6;
   const controlPenalty = setup.attributes ? Math.max(0, setup.power - recommendedPower(p) - 0.1) ** 2 * (100 - setup.attributes.control) / 100 * 0.65 : 0;
-  const angle = referenceElevation(distance, clamp(setup.aim.y, AIM_LIMITS.yMin, AIM_LIMITS.yMax), shotSpeed(recommendedPower(p), setup.attributes, setup.playStyle)) - cy * 0.07 + controlPenalty * (setup.playStyle === 'deadball' ? .15 : 1);
-  const curveScale = setup.attributes ? 0.78 + (setup.attributes.curve - 80) * 0.028 : 1;
+  const angle = referenceElevation(distance, clamp(setup.aim.y, AIM_LIMITS.yMin, AIM_LIMITS.yMax), shotSpeed(recommendedPower(p), setup.attributes, setup.playStyle) + (setup.speedBonusKph ?? 0)/3.6) - cy * 0.07 + controlPenalty * (setup.playStyle === 'deadball' ? .15 : 1);
+  const curveScale = setup.attributes ? 0.78 + (setup.attributes.curve + (setup.curveBonus ?? 0) - 80) * 0.028 : 1;
   const horizontal = speed * Math.cos(angle);
   return {
     position: { x: p.x, y: BALL_RADIUS, z: p.z },
     velocity: { x: dx / distance * horizontal, y: speed * Math.sin(angle), z: dz / distance * horizontal },
     sideSpin: -cx * 40 * curveScale * (setup.playStyle === 'finesse' ? 2.35 : 1),
     topSpin: cy * 22,
-    knuckle: Math.hypot(cx, cy) < 0.17 && setup.power > 0.64,
+    knuckle: Math.hypot(cx, cy) < 0.19 && setup.power > 0.64,
     knuckleStrength: 1.12 * (setup.attributes ? 0.6 + (setup.attributes.knuckle - 60) * 0.017 : 1) * (0.75 + clamp((setup.power - 0.64) / 0.36, 0, 1) * 0.25),
     // A stateless hash: repeatable for tests/replay, distinct for independently seeded live kicks.
     wakePhase: (((((setup.playStyle === 'deadball' ? 0 : setup.seed ?? 0) >>> 0) * 0.61803398875) % 1) * Math.PI * 2),
@@ -154,11 +156,14 @@ const FIXED_SPIN_DECAY = Math.exp(-FIXED_DT * .12);
 const FIXED_GROUND_SPIN_DECAY = Math.exp(-FIXED_DT * 3);
 export function integrateBall(ball: BallState, dt = FIXED_DT): void {
   const v = ball.velocity;
-  const horizontalSpeed = Math.hypot(v.x, v.z);
-  const speed3 = Math.hypot(v.x, v.y, v.z);
+  // State velocities/spin are bounded game-scale values, not arbitrary scientific inputs.
+  // Avoid general-purpose scaled hypot reductions in the 120 Hz live/preview/worker loop.
+  const horizontalSquared=v.x*v.x+v.z*v.z;
+  const horizontalSpeed = Math.sqrt(horizontalSquared);
+  const speed3 = Math.sqrt(horizontalSquared+v.y*v.y);
   const drag = AERO * dragCoefficient(speed3) * speed3;
   // Lift saturates at large spin ratios rather than growing without bound.
-  const liftLimit = Math.min(1, .28 / Math.max(.001, 1.05 * BALL_RADIUS * Math.hypot(ball.sideSpin, ball.topSpin) / Math.max(1, speed3)));
+  const liftLimit = Math.min(1, .28 / Math.max(.001, 1.05 * BALL_RADIUS * Math.sqrt(ball.sideSpin*ball.sideSpin+ball.topSpin*ball.topSpin) / Math.max(1, speed3)));
   let ax = -drag * v.x + SIDE_MAGNUS * ball.sideSpin * -v.z * liftLimit;
   let az = -drag * v.z + SIDE_MAGNUS * ball.sideSpin * v.x * liftLimit;
   let ay = -GRAVITY - drag * v.y - TOP_MAGNUS * ball.topSpin * horizontalSpeed * liftLimit;
@@ -384,7 +389,7 @@ export function previewShotInto(setup: ShotSetup, output: Float32Array, maxTime 
 }
 
 export function strikeName(contact: Contact, foot: Foot): string {
-  if (Math.hypot(contact.x, contact.y) < 0.17) return 'Knuckleball';
+  if (Math.hypot(contact.x, contact.y) < 0.19) return 'Knuckleball';
   if (contact.y > 0.5 && Math.abs(contact.x) < 0.3) return 'Low driven';
   if (contact.y < -0.55 && Math.abs(contact.x) < 0.3) return 'Backspin lob';
   if (Math.abs(contact.x) < 0.25) return 'Topspin';

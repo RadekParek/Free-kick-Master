@@ -4,7 +4,7 @@ const initSettings = () => {
   if (!localStorage.getItem('fkm.settings.v1')) localStorage.setItem('fkm.settings.v1', JSON.stringify({ quality: 'low', sound: false }));
 };
 
-test('menu opens the full roster with 42 cards, searches real players, switches the taker and persists the selection', async ({ page }) => {
+test('menu opens the full roster with 57 cards, searches real players, switches the taker and persists the selection', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' || message.type() === 'warning') errors.push(message.text()); });
@@ -15,13 +15,13 @@ test('menu opens the full roster with 42 cards, searches real players, switches 
   await expect(page.locator('#game-view')).toBeHidden();
   await expect(page.locator('#menu-play')).toBeVisible();
   await expect(page.locator('#menu-practice')).toBeVisible();
-  await expect(page.locator('#menu-player-count')).toHaveText('42');
+  await expect(page.locator('#menu-player-count')).toHaveText('57');
   await page.locator('#menu-players').click();
-  await expect(page.locator('.player-card[data-player]')).toHaveCount(42);
+  await expect(page.locator('.player-card[data-player]')).toHaveCount(57);
   await expect(page.locator('.player-card[data-player].is-special')).toHaveCount(3);
   await expect(page.locator('.player-card:not(.is-special) .card-name.handwritten')).toHaveCount(0);
   await expect(page.locator('.player-card.is-special .card-name.handwritten')).toHaveCount(3);
-  await expect(page.locator('.card-portrait')).toHaveCount(42);
+  await expect(page.locator('.card-portrait')).toHaveCount(57);
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('.card-portrait')].every(image => image.complete && image.naturalWidth > 0));
   expect(await page.locator('.card-portrait').evaluateAll(images => images.every(image => new URL((image as HTMLImageElement).src).origin === location.origin))).toBe(true);
   await page.locator('#player-search').fill('argentina');
@@ -58,7 +58,7 @@ test('menu opens the full roster with 42 cards, searches real players, switches 
   await page.locator('#back-button').click();
   await page.locator('#menu-players').click();
   await page.locator('#roster-credits').click();
-  await expect(page.locator('.photo-credit-list article')).toHaveCount(39);
+  await expect(page.locator('.photo-credit-list article')).toHaveCount(54);
   await expect(page.locator('#modal-content')).toContainText('CC BY-SA 4.0');
   await expect(page.locator('#modal-content')).toContainText('7 July 2026');
   await page.keyboard.press('Escape');

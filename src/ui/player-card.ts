@@ -7,6 +7,9 @@ function playStyleBadge(player: TakerProfile): string {
 
 
 const FLAGS: Record<string, string> = {
+  ma:'<rect width="30" height="20" fill="#c1272d"/><path d="m15 4 3.5 10-9-6.2h11l-9 6.2z" fill="none" stroke="#006233" stroke-width="1"/>',
+  sn:'<rect width="10" height="20" fill="#00853f"/><rect x="10" width="10" height="20" fill="#fdef42"/><rect x="20" width="10" height="20" fill="#e31b23"/><path d="m15 6 1 3h3l-2.5 2 1 3-2.5-2-2.5 2 1-3-2.5-2h3z" fill="#00853f"/>',
+  ge:'<rect width="30" height="20" fill="#fff"/><path d="M15 0v20M0 10h30" stroke="#ff0000" stroke-width="3"/><path d="M7 3v5M4.5 5.5h5M23 3v5M20.5 5.5h5M7 12v5M4.5 14.5h5M23 12v5M20.5 14.5h5" stroke="#ff0000" stroke-width="1.3"/>',
   pt: '<rect width="30" height="20" fill="#d80027"/><rect width="12" height="20" fill="#046a38"/><circle cx="12" cy="10" r="3.4" fill="#ffda44" stroke="#8a1b1b" stroke-width=".6"/>',
   ar: '<rect width="30" height="20" fill="#74acdf"/><rect y="6.67" width="30" height="6.66" fill="#fff"/><circle cx="15" cy="10" r="1.7" fill="#f6b40e"/>',
   fr: '<rect width="10" height="20" fill="#002395"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#ed2939"/>',

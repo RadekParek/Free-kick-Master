@@ -69,8 +69,8 @@ test('loads CC0 anatomy offline and renders all hair/kit identities through the 
     post.dispose(); renderer.dispose(); renderer.domElement.remove();
     return { results, image, aaModes, contacts, height, depthBindings, dofChangesPixels, lodCopies, lowMatches };
   });
-  expect(rendered.results).toHaveLength(42);
-  expect(rendered.contacts).toHaveLength(42);
+  expect(rendered.results).toHaveLength(57);
+  expect(rendered.contacts).toHaveLength(57);
   expect(rendered.aaModes.map(aa => aa.samples)).toEqual([0, 0, 0]);
   expect(rendered.height).toBe(1.8);
   expect(rendered.depthBindings).toEqual(Array(6).fill(true));
@@ -79,7 +79,7 @@ test('loads CC0 anatomy offline and renders all hair/kit identities through the 
   expect(rendered.results.find(result => result.id === 'ronaldo')!.build).toBeCloseTo(1.04);
   expect(rendered.results.find(result => result.id === 'yamal')!.build).toBeCloseTo(.94);
   for (const point of rendered.contacts) { expect(point.x).toBeCloseTo(0, 5); expect(point.z).toBeCloseTo(.09, 5); }
-  expect(new Set(rendered.results.map(result => result.hair)).size).toBe(9);
+  expect(new Set(rendered.results.map(result => result.hair)).size).toBe(12);
   expect(rendered.results.find(result => result.id === 'messi')!.kit).toBe('stripes');
   expect(rendered.results.find(result => result.id === 'modric')!.kit).toBe('checks');
   expect(rendered.results.find(result => result.id === 'vinicius-special')!.kit).toBe('sash');

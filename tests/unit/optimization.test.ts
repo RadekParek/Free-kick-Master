@@ -66,7 +66,7 @@ describe('quality-preserving mobile optimization regressions', () => {
     const composer = { setSize: vi.fn(), setPixelRatio: vi.fn() };
     const bloomPass = bloom ? { strength: .16 } : null;
     const post = Object.assign(Object.create(PostStack.prototype), {
-      key: `fxaa|${bloom}|false`, composer, bloom: bloomPass, width: 800, height: 600, pixelRatio: 2,
+      key: `fxaa|${bloom}|false|false`, composer, bloom: bloomPass, width: 800, height: 600, pixelRatio: 2,
       renderer: { getPixelRatio: () => 2 },
     });
     const dispose = vi.spyOn(post, 'dispose');

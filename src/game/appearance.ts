@@ -1,6 +1,6 @@
 import type { TakerProfile } from '../players';
 
-export type HairStyle = 'quiff' | 'crop' | 'curls' | 'swept' | 'bun' | 'flow' | 'braids' | 'bald' | 'ponytail';
+export type HairStyle = 'quiff' | 'crop' | 'curls' | 'swept' | 'bun' | 'flow' | 'braids' | 'bald' | 'ponytail' | 'fade-curls' | 'neymar-fade' | 'r9';
 export type KitPattern = 'solid' | 'stripes' | 'checks' | 'sash';
 export interface KitDesign {
   base: string; secondary: string; trim: string; shorts: string; socks: string; ink: string;
@@ -10,6 +10,12 @@ export interface PlayerLook { hair: HairStyle; width: number; jaw: number; beard
 
 // Recognisable silhouettes, not scanned likenesses. Base IDs keep special cards consistent.
 const LOOKS: Record<string, PlayerLook> = {
+  'ronaldo-nazario': { hair:'r9',width:1.06,jaw:1.1,beard:false },
+  juninho: { hair:'crop',width:.98,jaw:1.03,beard:false },
+  pirlo: { hair:'flow',width:.97,jaw:1.02,beard:true },
+  cucurella: { hair:'flow',width:1,jaw:1,beard:true },
+  'joao-neves': { hair:'flow',width:.97,jaw:1,beard:true },
+  olise: { hair:'braids',width:.97,jaw:.96,beard:false },
   'roberto-carlos': { hair: 'bald', width: 1.06, jaw: 1.09, beard: false },
   zidane: { hair: 'bald', width: .97, jaw: 1.04, beard: false },
   ronaldinho: { hair: 'ponytail', width: 1.03, jaw: 1.04, beard: false },
@@ -20,12 +26,12 @@ const LOOKS: Record<string, PlayerLook> = {
   salah: { hair: 'curls', width: .98, jaw: .96, beard: true },
   haaland: { hair: 'bun', width: 1.02, jaw: 1.1, beard: false },
   debruyne: { hair: 'swept', width: 1.01, jaw: 1.02, beard: true },
-  neymar: { hair: 'quiff', width: .94, jaw: .94, beard: true },
+  neymar: { hair: 'neymar-fade', width: .94, jaw: .94, beard: true },
   vandijk: { hair: 'bun', width: 1.02, jaw: 1.06, beard: true },
   kane: { hair: 'swept', width: 1.05, jaw: 1.09, beard: true },
   vinicius: { hair: 'braids', width: .96, jaw: .94, beard: false },
   bellingham: { hair: 'crop', width: .98, jaw: 1.03, beard: false },
-  yamal: { hair: 'curls', width: .94, jaw: .94, beard: false },
+  yamal: { hair: 'fade-curls', width: .94, jaw: .94, beard: false },
   modric: { hair: 'flow', width: .94, jaw: .94, beard: true },
   'alexander-arnold': { hair: 'braids', width: 1, jaw: 1, beard: true },
   saka: { hair: 'curls', width: .98, jaw: .97, beard: false },
@@ -57,6 +63,9 @@ export function playerLook(profile: TakerProfile): PlayerLook {
 // National home-kit colours, shorts, socks and characteristic patterns,
 // deliberately no unlicensed federation crests, brand marks or sponsor artwork.
 const NATIONS: Record<string, Partial<KitDesign>> = {
+  MA: { base:'#bb2638',secondary:'#24754e',trim:'#d9c383',shorts:'#24754e',socks:'#bb2638',ink:'#f5e8ce',pattern:'solid' },
+  SN: { base:'#f4f0e3',secondary:'#31985c',trim:'#d6b949',shorts:'#f4f0e3',socks:'#f4f0e3',ink:'#2b7952',pattern:'solid' },
+  GE: { base:'#f3f1e9',secondary:'#bc2b32',trim:'#bc2b32',shorts:'#bc2b32',socks:'#f3f1e9',ink:'#bc2b32',pattern:'solid' },
   PT: { base: '#ac202d', secondary: '#174d3a', trim: '#d9b967', shorts: '#173e33', socks: '#a11c2b', ink: '#f8ead0' },
   AR: { base: '#f3f4ed', secondary: '#79b9dc', trim: '#122737', shorts: '#152835', socks: '#f0f2e9', ink: '#152332', pattern: 'stripes' },
   FR: { base: '#182b54', secondary: '#233f70', trim: '#d1b473', shorts: '#162744', socks: '#b52b39', ink: '#e4cf97' },

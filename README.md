@@ -2,6 +2,8 @@
 
 **The pitch is yours.** An original, playable 3D free-kick practice game for the browser and Android, built from an empty repository.
 
+Latest: [Ultra, Android performance and spatial replay update](docs/ULTRA_ANDROID_UPDATE.md).
+
 ## Play
 
 ```bash
@@ -106,7 +108,7 @@ scaling, signature poses, outside-foot animation and original holographic-style 
 
 ## Latest cinematic / ICON update
 
-See [the cinematic replay, ICON, DOF and performance update](docs/CINEMATIC_ICON_UPDATE.md) for recorded run-ups and rotation, immediate goal analysis, the 64-trial conversion estimate, model-aligned collisions, five-track playback and eight workload reductions. DOF defaults on only in High and can be toggled in Custom. The roster has 42 cards, including Roberto Carlos, Ronaldinho, Zidane and Beckham ICON tributes.
+See [the cinematic replay, ICON, DOF and performance update](docs/CINEMATIC_ICON_UPDATE.md) for recorded run-ups and rotation, immediate goal analysis, the 64-trial conversion estimate, model-aligned collisions, five-track playback and eight workload reductions. DOF defaults on in High and Ultra and can be toggled in Custom. The expanded roster has 57 cards / 7 ICONs, including Juninho, Ronaldo Nazário and Pirlo. See the [Ultra / Android / spatial replay update](docs/ULTRA_ANDROID_UPDATE.md) for progressive object-anchored statistics, charging PlayStyle badges, gameplay-only ICON bonuses and optional shaders.
 
 ### Previous presentation update
 

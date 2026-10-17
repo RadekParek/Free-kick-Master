@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { DeferredBone } from './deferred-bone';
+import { surfaceDetail } from './surface-detail';
 import { footballSurface } from './ball-surface';
 import { normalMapFromCanvas } from './pbr';
 import type { KeeperState } from './keeper';
@@ -102,7 +104,7 @@ class Athlete implements MotionRig {
     this.hairMesh.name = 'hairstyle'; this.hairMesh.castShadow = detail === 'high'; this.hairMesh.receiveShadow = true;
     this.hairMesh.matrixAutoUpdate = false;
     this.root.getObjectByName('hairMount')!.add(this.hairMesh);
-    this.idle(0);
+    this.idle(0);this.flushPose();
   }
 
   setProfile(profile: TakerProfile) {
@@ -122,6 +124,7 @@ class Athlete implements MotionRig {
     this.body.scale.x *= faceShape(profile).build;
     this.stance = profile.baseId === 'ronaldo' || profile.baseId === 'neymar' ? profile.baseId : 'neutral';
   }
+  flushPose() { for(const bone of this.animated) if(bone instanceof DeferredBone)bone.flushRotation(); }
   copyPose(source: Athlete) {
     for (let i = 0; i < this.animated.length; i++) {
       this.animated[i].position.copy(source.animated[i].position);
@@ -156,6 +159,13 @@ export class Player {
     this.group.autoUpdate = false;
     this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.15, .85), new THREE.MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false }));
     this.shadow.rotation.x = -Math.PI / 2; this.shadow.position.y = .025; this.group.add(this.shadow);
+  }
+  headWorldPosition(out:THREE.Vector3) {
+    const rig=this.rigs[0].root.visible ? this.rigs[0] : this.rigs[1];
+    return out.setFromMatrixPosition(rig.head.matrixWorld);
+  }
+  setSurfaceDetail(enabled:boolean) {
+    for(const m of Object.values(this.materials)) if(['skin','hair','jersey','sleeve','shorts','sock'].includes(m.name)) surfaceDetail(m, enabled);
   }
   setProfile(profile: TakerProfile) {
     if (this.profileId === profile.id) return;
@@ -192,7 +202,7 @@ export class Player {
     this.group.update(camera);
     if (!wasLow && this.rigs[1].root.visible) this.rigs[1].copyPose(this.rigs[0]);
   }
-  private syncPose() { if (this.rigs[1].root.visible) this.rigs[1].copyPose(this.rigs[0]); }
+  private syncPose() { this.rigs[0].flushPose(); if (this.rigs[1].root.visible) this.rigs[1].copyPose(this.rigs[0]); }
   idle(time: number) { this.rigs[0].idle(time); this.syncPose(); }
   prepare(time: number, charge: number) { this.rigs[0].prepare(time, charge); this.syncPose(); }
   run(phase: number, foot: Foot, contact?: Contact) { this.rigs[0].run(phase, foot, contact); this.syncPose(); }

@@ -1,5 +1,6 @@
 import { RIG_REST } from './skeleton-layout';
 import * as THREE from 'three';
+import { DeferredBone } from './deferred-bone';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { PlayerRole } from './animation';
 import type { HairStyle } from './appearance';
@@ -120,7 +121,7 @@ function buildTemplate(role: PlayerRole, detail: Detail): RigRoot {
   const high = detail === 'high', radial = high ? 32 : 16;
   const root = new RigRoot();
   const bone = (name: string, parent: THREE.Object3D, x = 0, y = 0, z = 0) => {
-    const group = new THREE.Group(); group.name = name; group.position.fromArray(RIG_REST[name as keyof typeof RIG_REST] ?? [x,y,z]); parent.add(group); return group;
+    const group = new DeferredBone(); group.name = name; group.position.fromArray(RIG_REST[name as keyof typeof RIG_REST] ?? [x,y,z]); parent.add(group); return group;
   };
   const placeholder = Object.fromEntries((['skin', 'jersey', 'sleeve', 'shorts', 'trim', 'sock', 'boot', 'sole', 'hair', 'glove', 'eyes', 'iris'] as Surface[])
     .map(name => { const mat = new THREE.MeshStandardMaterial(); mat.name = name; return [name, mat]; })) as AthleteMaterials;
@@ -252,7 +253,10 @@ export function hairGeometry(style: HairStyle, detail: Detail): THREE.BufferGeom
   }
   const high = detail === 'high', segments = high ? 32 : 16;
   const parts: THREE.BufferGeometry[] = [];
-  const fitted = fittedHead(detail, (_x, y, z) => {
+  const fade=style==='fade-curls'||style==='neymar-fade';
+  const fitted = fittedHead(detail, (x, y, z) => {
+    // R9's 2002 frontal patch: the rest of the scalp remains bare.
+    if(style==='r9')return z<-.065 && y>.225 && y<.31 && Math.abs(x)<.074;
     const front = Math.max(0, -z / .13), back = Math.max(0, z / .13);
     return y > .165 + front * .085 - back * (style === 'flow' || style === 'ponytail' ? .14 : .045);
   });
@@ -275,7 +279,7 @@ export function hairGeometry(style: HairStyle, detail: Detail): THREE.BufferGeom
       const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
       const curl = Math.sin(x * 290 + z * 95) * Math.sin(y * 310 - z * 180);
       const front = Math.max(0, -z / .13);
-      const volume = style === 'curls' ? .009 + curl * .0035
+      const volume = fade ? .0015 + Math.max(0,Math.min(1,(y-.235)/.045))*(style==='neymar-fade'?.009:.014) + (y>.25?curl*.003:0) : style==='r9' ? .002 : style === 'curls' ? .009 + curl * .0035
         : style === 'quiff' ? .004 + front * Math.max(0, y - .19) * .2
         : style === 'swept' ? .004 + Math.max(0, x + .09) * .035
         : style === 'flow' ? .005 + Math.sin(y * 140 + x * 60) * .0015 : .002;
@@ -287,14 +291,14 @@ export function hairGeometry(style: HairStyle, detail: Detail): THREE.BufferGeom
     const g = new THREE.SphereGeometry(1, high ? 12 : 8, high ? 8 : 5);
     g.scale(sx, sy, sz); g.rotateZ(rotate); g.translate(x, y, z); parts.push(g);
   };
-  if (style === 'curls') {
+  if (style === 'curls' || fade) {
     // Small rooted curls, not the former oversized bead-like clumps. Single merged draw.
-    const count = high ? 56 : 20;
+    const count = high ? (fade?76:56) : (fade?28:20);
     for (let i = 0; i < count; i++) {
       const a = i * 2.39996, radius = Math.sqrt((i + .5) / count) * .082;
       const g = new THREE.SphereGeometry(1, high ? 8 : 6, high ? 6 : 4);
-      g.scale(.009, .008, .009);
-      g.translate(Math.cos(a) * radius, .242 + Math.sqrt(Math.max(0, 1 - radius * radius / .0075)) * .073, Math.sin(a) * radius - .006);
+      g.scale(fade?.0065:.009,fade?.006:.008,fade?.0065:.009);
+      g.translate(Math.cos(a) * radius, (style==='neymar-fade'?.24:.242) + Math.sqrt(Math.max(0, 1 - radius * radius / .0075)) * (fade?.061:.073), Math.sin(a) * radius - (style==='neymar-fade'?.018:.006));
       parts.push(g);
     }
   } else if (style === 'bun') {
@@ -313,7 +317,7 @@ export function hairGeometry(style: HairStyle, detail: Detail): THREE.BufferGeom
     const position = part.attributes.position, colour = part.attributes.color;
     for (let i = 0; i < position.count; i++) {
       const root = Math.min(1, Math.max(0, (position.getY(i) - .17) / .12));
-      const shade = .55 + .45 * root; colour.setXYZ(i, shade, shade, shade);
+      const shade = fade ? .16 + .84 * Math.min(1,Math.max(0,(position.getY(i)-.235)/.075)) : .55 + .45 * root; colour.setXYZ(i, shade, shade, shade);
     }
   }
   const geometry = mergeGeometries(parts); parts.forEach(part => part.dispose());

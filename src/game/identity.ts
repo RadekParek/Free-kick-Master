@@ -46,6 +46,7 @@ export function identitySurfaces(profile: TakerProfile): Surfaces {
 }
 
 const FACE_SHAPES: Record<string, [number, number, number, number, number?]> = {
+  'ronaldo-nazario': [.011,1.2,1.08,1.13,1.14], juninho:[.008,.99,1.02,1.01,1.03], pirlo:[.014,.96,1.05,.98,1.0],
   'roberto-carlos': [.008, 1.10, 1.12, 1.15, 1.04], ronaldinho: [.009, 1.17, 1.02, 1.01, 1.16],
   zidane: [.013, .96, 1.02, 1.03, 1.0], beckham: [.006, .98, 1.09, 1.01, .97],
   debruyne: [.004, .96, 1.05, 1.01, 1.01], kane: [.012, .98, 1.11, 1.05, 1.0],
@@ -53,8 +54,8 @@ const FACE_SHAPES: Record<string, [number, number, number, number, number?]> = {
   vinicius: [.006, 1.13, 1.0, .98, 1.04], lewandowski: [.008, .97, 1.08, 1.04, 1.0],
   ronaldo: [.006, .94, 1.08, 1.04], messi: [.008, 1.08, 1.03, .97],
   haaland: [.003, .98, 1.12, 1.09], mbappe: [-.003, 1.13, 1.05, 1.04],
-  yamal: [.001, 1.03, .94, .94], salah: [.009, 1.05, .98, .98],
-  neymar: [.004, .96, .95, .96], musiala: [.002, .96, .93, .93],
+  yamal: [.002, 1.06, .95, .94, 1.05], salah: [.009, 1.05, .98, .98],
+  neymar: [.006, .97, .96, .96, 1.05], musiala: [.002, .96, .93, .93],
 };
 
 /** Conservative landmark adjustments, in metres; remain original stylised likenesses, not scans. */

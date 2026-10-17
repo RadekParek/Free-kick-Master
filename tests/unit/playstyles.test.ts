@@ -10,11 +10,11 @@ import { createKeeper } from '../../src/game/keeper';
 
 const setup: ShotSetup = { position: { x: 0, z: 30 }, aim: { x: 1.3, y: 2 }, contact: { x: -.43, y: 0 }, power: .8, foot: 'right' };
 describe('custom PlayStyle+ effects and identity fixes', () => {
-  it('assigns exactly the requested eight base players and inherits specials', () => {
+  it('assigns the requested base and expanded players and inherits specials', () => {
     const base = PLAYERS.filter(p => p.edition === 'standard');
-    expect(base.filter(p => playStyleFor(p.baseId) === 'finesse').map(p => p.id)).toEqual(['messi', 'yamal']);
+    expect(base.filter(p => playStyleFor(p.baseId) === 'finesse').map(p => p.id)).toEqual(['messi', 'yamal','olise','kvaratskhelia']);
     expect(base.filter(p => playStyleFor(p.baseId) === 'power').map(p => p.id)).toEqual(['ronaldo', 'haaland']);
-    expect(base.filter(p => playStyleFor(p.baseId) === 'deadball').map(p => p.id)).toEqual(['neymar', 'vinicius', 'dembele', 'musiala']);
+    expect(base.filter(p => playStyleFor(p.baseId) === 'deadball').map(p => p.id)).toEqual(['mbappe','neymar', 'vinicius', 'dembele', 'musiala','hakimi']);
     expect(playStyleFor(getPlayer('vinicius-special').baseId)).toBe('deadball');
   });
   it.each([0, .2, .4999, .5, .5001, 1])('adds exact km/h for Power Shot+ at power %s', power => {
@@ -51,8 +51,8 @@ describe('custom PlayStyle+ effects and identity fixes', () => {
   });
   it('gives all base players stable distinct identities and shares special identities', () => {
     const base = PLAYERS.filter(p => p.edition === 'standard');
-    expect(new Set(base.map(p => identitySeed(p.baseId))).size).toBe(35);
-    expect(new Set(base.map(p => JSON.stringify(faceShape(p)))).size).toBe(35);
+    expect(new Set(base.map(p => identitySeed(p.baseId))).size).toBe(base.length);
+    expect(new Set(base.map(p => JSON.stringify(faceShape(p)))).size).toBe(base.length);
     expect(faceShape(getPlayer('yamal'))).toEqual(faceShape(getPlayer('yamal-special')));
   });
   it('does not deform shared model templates or accumulate face morphs when switching players', () => {

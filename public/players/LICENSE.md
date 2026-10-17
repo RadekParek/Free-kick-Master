@@ -38,3 +38,20 @@ removal). Copyright remains with Getty Images/the credited photographer. **Reuse
 cleared; these are for personal testing, not permission to publicly/commercially redistribute.**
 Replace with appropriately licensed photographs before distribution. Original ICON-style card
 frames and fan-made training attributes are not official EA card data or game artwork.
+
+## Expanded roster / additional ICONs — 17 October 2026
+
+Twelve additional current-player photographs come from the same pinned
+`maso92/BallonDorPlayerPhotos` revision listed above: Hakimi, Rice, Saliba, Gabriel,
+Olise, Kvaratskhelia, Nuno Mendes, João Neves, Mané, Marquinhos, Cucurella and
+Upamecano. A public mirror is **not** evidence of a reusable copyright license.
+
+Juninho, Ronaldo Nazário and Pirlo use intact editorial Getty search previews
+(image IDs 51338043, 891940 and 51230816 respectively), desaturated, resized and
+WebP-encoded, without watermark removal. Pirlo's preview is an entrance/action
+photo rather than a studio headshot. Exact source-page references are in
+`ADDED-PORTRAITS.json` and the in-game credits. These are real photographs, not
+generated face substitutions; no current-season claim is made. **All fifteen
+additional images have uncleared reuse rights and need permission/replacement
+before public/commercial distribution.** Card/3D styling does not grant athlete
+publicity rights. The unbranded contact-ball artwork is separately original.

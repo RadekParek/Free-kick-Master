@@ -3,12 +3,13 @@ import { DEFAULT_PLAYER_ID, getPlayer, isPlayerId } from './players';
 import { DIFFICULTIES, type Difficulty } from './game/keeper';
 
 export type Quality = 'high' | 'balanced' | 'low';
-export type Preset = 'high' | 'balanced' | 'performance' | 'custom';
+export type Preset = 'ultra' | 'high' | 'balanced' | 'performance' | 'custom';
 export type RenderScale = 1 | 0.75 | 0.5;
 export type ShadowSize = 0 | 512 | 1024;
 /** Graphics options. Presets fill these in; Custom lets each one be changed. */
-export interface GraphicsOptions { preset: Preset; resolution: RenderScale; antialias: 'off' | 'fxaa' | 'smaa'; bloom: boolean; dof: boolean; shadows: ShadowSize }
+export interface GraphicsOptions { preset: Preset; resolution: RenderScale; antialias: 'off' | 'fxaa' | 'smaa'; bloom: boolean; dof: boolean; shadows: ShadowSize; ambientOcclusion?: boolean; lensEffects?: boolean; surfaceDetail?: boolean }
 export const GRAPHICS_PRESETS: Record<Exclude<Preset, 'custom'>, Omit<GraphicsOptions, 'preset'>> = {
+  ultra: { resolution:1, antialias:'smaa', bloom:true, dof:true, shadows:1024, ambientOcclusion:true, lensEffects:true, surfaceDetail:true },
   // Single-pass FXAA replaces multisampled HDR targets; shadow resolution remains bounded.
   high: { resolution: 1, antialias: 'fxaa', bloom: true, dof: true, shadows: 1024 },
   balanced: { resolution: .75, antialias: 'fxaa', bloom: false, dof: false, shadows: 1024 },
@@ -125,9 +126,9 @@ export function loadSettings(): Settings {
     const pick = <T extends string | number | boolean>(value: unknown, options: readonly T[], fallback: T): T => (options as readonly unknown[]).includes(value) ? value as T : fallback;
     if (saved.graphics && typeof saved.graphics === 'object') {
       const g = saved.graphics;
-      const preset = pick<Preset>(g.preset, ['high', 'balanced', 'performance', 'custom'], defaults.graphics.preset);
+      const preset = pick<Preset>(g.preset, ['ultra', 'high', 'balanced', 'performance', 'custom'], defaults.graphics.preset);
       defaults.graphics = preset === 'custom'
-        ? { preset, resolution: pick<RenderScale>(g.resolution, [1, 0.75, 0.5], 1), antialias: pick<GraphicsOptions['antialias']>(g.antialias, ['off', 'fxaa', 'smaa'], g.msaa === 2 ? 'fxaa' : g.smaa === false ? 'off' : 'smaa'), bloom: typeof g.bloom === 'boolean' ? g.bloom : true, dof: typeof g.dof === 'boolean' ? g.dof : false, shadows: pick<ShadowSize>(g.shadows, [0, 512, 1024], 1024) }
+        ? { preset, resolution: pick<RenderScale>(g.resolution, [1, 0.75, 0.5], 1), antialias: pick<GraphicsOptions['antialias']>(g.antialias, ['off', 'fxaa', 'smaa'], g.msaa === 2 ? 'fxaa' : g.smaa === false ? 'off' : 'smaa'), bloom: typeof g.bloom === 'boolean' ? g.bloom : true, dof: typeof g.dof === 'boolean' ? g.dof : false, ambientOcclusion: g.ambientOcclusion === true, lensEffects:g.lensEffects === true, surfaceDetail:g.surfaceDetail === true, shadows: pick<ShadowSize>(g.shadows, [0, 512, 1024], 1024) }
         : graphicsForPreset(preset as Exclude<Preset, 'custom'>);
     } else if (['high', 'balanced', 'low'].includes(saved.quality)) {
       // Settings saved before the graphics options existed.

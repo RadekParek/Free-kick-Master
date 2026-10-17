@@ -63,10 +63,10 @@ export function advanceShot(ball: BallState, keeper: KeeperState, wall: WallPlay
   }
   // Rebounds stay live near the line (including bar -> ground -> goal). Only resolve an
   // outward rebound once it is clearly back on the pitch, or when the ball settles/times out.
-  const horizontalSpeed = Math.hypot(ball.velocity.x, ball.velocity.z);
+  const horizontalSquared=ball.velocity.x*ball.velocity.x+ball.velocity.z*ball.velocity.z;
   const settled = ball.frameHits
-    ? horizontalSpeed < 0.12 && Math.abs(ball.velocity.y) < 0.15 && ball.position.y <= BALL_RADIUS + 0.001
-    : horizontalSpeed < 1.5;
+    ? horizontalSquared < 0.12*0.12 && Math.abs(ball.velocity.y) < 0.15 && ball.position.y <= BALL_RADIUS + 0.001
+    : horizontalSquared < 1.5*1.5;
   if ((ball.frameHits > 0 && ball.position.z > 2 && ball.velocity.z > 0) ||
       ball.time > (ball.frameHits ? 8 : 5) || (ball.time > 2 && settled)) {
     return { outcome: ball.frameHits ? 'post' : 'short', point: { ...ball.position }, frameImpact };
