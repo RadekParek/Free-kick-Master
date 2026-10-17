@@ -37,14 +37,27 @@ describe('local preferences and session statistics', () => {
     store.set('fkm.settings.v1', JSON.stringify({ graphics: { preset: 'custom', resolution: 1, msaa: 0, smaa: true, bloom: true, shadows: 2048 } }));
     expect(loadSettings().graphics.shadows).toBe(1024);
   });
-  it('uses lighter phone presets and caps high-DPI rendering without affecting desktop', () => {
+  it('keeps phone presets efficient but lets Native use the full display DPR', () => {
     const balanced = graphicsForPreset('balanced', true);
     const performance = graphicsForPreset('performance', true);
     expect(balanced).toMatchObject({ resolution: 0.75, bloom: false, shadows: 512 });
     expect(performance).toMatchObject({ resolution: 0.5, bloom: false, shadows: 0 });
-    expect(effectivePixelRatio(3, 1, true)).toBe(2);
+    expect(effectivePixelRatio(3, 1, true)).toBe(3);
+    expect(effectivePixelRatio(4, 1, true)).toBe(4);
+    expect(772 * effectivePixelRatio(4, 1, true)).toBe(3088);
+    expect(360 * effectivePixelRatio(4, 1, true)).toBe(1440);
+    expect(effectivePixelRatio(4, 0.5, true)).toBe(1);
     expect(effectivePixelRatio(3, 0.75, true)).toBe(1.5);
     expect(effectivePixelRatio(3, 0.75, false)).toBe(2.25);
+  });
+  it('round-trips a native custom phone resolution without reverting to the capped preset', () => {
+    saveSettings({ ...DEFAULT_SETTINGS, graphics: { preset: 'custom', resolution: 1, msaa: 0, smaa: false, bloom: false, shadows: 0 } });
+    expect(loadSettings().graphics).toMatchObject({ preset: 'custom', resolution: 1 });
+    expect(effectivePixelRatio(4, loadSettings().graphics.resolution, true)).toBe(4);
+  });
+  it.each([NaN, Infinity, 0, -1])('handles invalid display DPR %s safely in native and reduced modes', dpr => {
+    expect(effectivePixelRatio(dpr, 1, true)).toBe(1);
+    expect(effectivePixelRatio(dpr, 0.75, true)).toBe(0.75);
   });
   it('chooses a new atmosphere for every practice launch', () => {
     expect(nextPracticeAtmosphere('night', () => 0)).toBe('sunset');

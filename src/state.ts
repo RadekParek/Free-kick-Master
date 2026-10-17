@@ -24,10 +24,11 @@ export function isMobileDevice(): boolean {
   return typeof window !== 'undefined' && (window.innerWidth < 800 || window.matchMedia('(pointer: coarse)').matches);
 }
 
-/** Cap high-DPI phone rendering before applying the user's quality scale; desktops stay native. */
+/** Native explicitly uses the full display DPR; reduced phone modes retain their GPU budget. */
 export function effectivePixelRatio(devicePixelRatio: number, resolution: RenderScale, mobile: boolean): number {
   const dpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
-  return Math.min(dpr, mobile ? MOBILE_DEVICE_PIXEL_RATIO_CAP : Number.POSITIVE_INFINITY) * resolution;
+  const renderDpr = mobile && resolution < 1 ? Math.min(dpr, MOBILE_DEVICE_PIXEL_RATIO_CAP) : dpr;
+  return renderDpr * resolution;
 }
 
 export function graphicsForPreset(preset: Exclude<Preset, 'custom'>, mobile = isMobileDevice()): GraphicsOptions {
